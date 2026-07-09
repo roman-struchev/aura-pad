@@ -33,9 +33,15 @@ function App() {
   const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
+  // New file/folder dialog state
+  const [createTarget, setCreateTarget] = useState<{ parentPath: string; type: 'file' | 'directory' } | null>(null);
+  const [createValue, setCreateValue] = useState('');
+  const [revealPath, setRevealPath] = useState<string | null>(null);
+
   const editorRef = useRef<any>(null);
   const lastShiftTime = useRef<number>(0);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Load workspaces on mount
@@ -172,6 +178,12 @@ function App() {
     }
   }, [renameTarget]);
 
+  useEffect(() => {
+    if (createTarget) {
+      createInputRef.current?.focus();
+    }
+  }, [createTarget]);
+
   const openNewTerminal = async (cwd?: string, runCommand?: string) => {
     setShowTerminal(true);
     const termId = await window.api.createPty(cwd);
@@ -237,6 +249,49 @@ function App() {
       setSelectedPath(result.newPath);
     } else if (node.type === 'directory' && selectedPath?.startsWith(node.path + '/')) {
       setSelectedPath(result.newPath + selectedPath.slice(node.path.length));
+    }
+  };
+
+  const startCreate = (node: FileNode, type: 'file' | 'directory') => {
+    const parentPath = node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'));
+    setContextMenu(null);
+    setCreateValue('');
+    setCreateTarget({ parentPath, type });
+  };
+
+  const confirmCreate = async () => {
+    const target = createTarget;
+    if (!target) return;
+    const name = createValue.trim();
+    setCreateTarget(null);
+    if (!name) return;
+
+    const result = await window.api.createPath(target.parentPath, name, target.type);
+    if (!result.success || !result.newPath) {
+      alert(result.error || 'Failed to create.');
+      return;
+    }
+    setRootNodes(result.trees || []);
+    setRevealPath(target.parentPath);
+    if (target.type === 'file') {
+      handleFileSelect(result.newPath);
+    }
+  };
+
+  const handleMove = async (sourcePath: string, targetDirPath: string) => {
+    if (sourcePath === targetDirPath) return;
+    const result = await window.api.movePath(sourcePath, targetDirPath);
+    if (!result.success || !result.newPath) {
+      if (result.error) alert(result.error);
+      return;
+    }
+    setRootNodes(result.trees || []);
+    setRevealPath(targetDirPath);
+
+    if (selectedPath === sourcePath) {
+      setSelectedPath(result.newPath);
+    } else if (selectedPath?.startsWith(sourcePath + '/')) {
+      setSelectedPath(result.newPath + selectedPath.slice(sourcePath.length));
     }
   };
 
@@ -357,7 +412,16 @@ function App() {
             {rootNodes.length > 0 ? (
               <div className="flex flex-col gap-2">
                 {rootNodes.map(rootNode => (
-                  <FileTree key={rootNode.path} node={rootNode} onSelect={handleFileSelect} onContextMenu={handleContextMenu} selectedPath={selectedPath} />
+                  <FileTree
+                    key={rootNode.path}
+                    node={rootNode}
+                    onSelect={handleFileSelect}
+                    onContextMenu={handleContextMenu}
+                    onCreateNew={startCreate}
+                    onMove={handleMove}
+                    selectedPath={selectedPath}
+                    revealPath={revealPath}
+                  />
                 ))}
               </div>
             ) : (
@@ -374,6 +438,8 @@ function App() {
         <div className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]" style={{ top: contextMenu.y, left: contextMenu.x }}>
           {contextMenu.node.path.endsWith('.py') && <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => runPython(contextMenu.node)}>Run Script</button>}
           <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => openTerminalHere(contextMenu.node)}>Open Terminal</button>
+          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => startCreate(contextMenu.node, 'file')}>New File</button>
+          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => startCreate(contextMenu.node, 'directory')}>New Folder</button>
           <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => startRename(contextMenu.node)}>Rename</button>
           {(contextMenu.node as any).isRoot && (
             <>
@@ -401,6 +467,31 @@ function App() {
             <div className="flex justify-end gap-2 mt-3">
               <button className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400" onClick={() => setRenameTarget(null)}>Cancel</button>
               <button className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white" onClick={confirmRename}>Rename</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {createTarget && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40" onClick={() => setCreateTarget(null)}>
+          <div className="bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl p-4 w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="text-xs text-gray-400 mb-2 truncate">
+              New {createTarget.type === 'directory' ? 'Folder' : 'File'} in &quot;{createTarget.parentPath.split('/').pop()}&quot;
+            </div>
+            <input
+              ref={createInputRef}
+              className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-sm text-fleet-text outline-none focus:border-blue-500"
+              value={createValue}
+              placeholder={createTarget.type === 'directory' ? 'folder-name' : 'file-name.ts'}
+              onChange={(e) => setCreateValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmCreate();
+                if (e.key === 'Escape') setCreateTarget(null);
+              }}
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400" onClick={() => setCreateTarget(null)}>Cancel</button>
+              <button className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white" onClick={confirmCreate}>Create</button>
             </div>
           </div>
         </div>

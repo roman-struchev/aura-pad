@@ -12,6 +12,8 @@ declare global {
       readFile: (path: string) => Promise<{success: boolean, content?: string, error?: string}>
       saveFile: (path: string, content: string) => Promise<{success: boolean, error?: string}>
       renamePath: (oldPath: string, newName: string) => Promise<{success: boolean, newPath?: string, trees?: any[], error?: string}>
+      createPath: (parentPath: string, name: string, type: 'file' | 'directory') => Promise<{success: boolean, newPath?: string, trees?: any[], error?: string}>
+      movePath: (sourcePath: string, targetDirPath: string) => Promise<{success: boolean, newPath?: string, trees?: any[], error?: string}>
       
       createPty: (cwd?: string) => Promise<string>
       destroyPty: (termId: string) => void

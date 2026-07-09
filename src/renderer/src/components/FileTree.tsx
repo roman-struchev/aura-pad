@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, FileJson, FileType2, FileCode2, FileText, File } from 'lucide-react';
+import { ChevronRight, ChevronDown, FileJson, FileType2, FileCode2, FileText, File, FilePlus, FolderPlus } from 'lucide-react';
 import clsx from 'clsx';
 
 export type FileNode = {
@@ -14,9 +14,14 @@ interface FileTreeProps {
   node: FileNode;
   onSelect: (path: string) => void;
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
+  onCreateNew: (node: FileNode, type: 'file' | 'directory') => void;
+  onMove: (sourcePath: string, targetDirPath: string) => void;
   selectedPath: string | null;
+  revealPath?: string | null;
   level?: number;
 }
+
+export const DRAG_PATH_MIME = 'application/x-aura-path';
 
 const getIcon = (name: string, type: 'file' | 'directory', expanded: boolean) => {
   if (type === 'directory') {
@@ -32,20 +37,24 @@ const getIcon = (name: string, type: 'file' | 'directory', expanded: boolean) =>
   return <File size={14} className="text-gray-400" />;
 };
 
-export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMenu, selectedPath, level = 0 }) => {
+export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMenu, onCreateNew, onMove, selectedPath, revealPath, level = 0 }) => {
   const [expanded, setExpanded] = useState<boolean>(level === 0);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const isSelected = selectedPath === node.path;
+  const isDirectory = node.type === 'directory';
 
-  // Auto-expand if the selected path is a descendant of this directory
+  // Auto-expand if the selected/revealed path is this directory or a descendant of it
   useEffect(() => {
-    if (selectedPath && node.type === 'directory' && selectedPath.startsWith(node.path + '/')) {
+    const target = revealPath || selectedPath;
+    if (target && isDirectory && (target === node.path || target.startsWith(node.path + '/'))) {
       setExpanded(true);
     }
-  }, [selectedPath, node.path, node.type]);
+  }, [revealPath, selectedPath, node.path, isDirectory]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (node.type === 'directory') {
+    if (isDirectory) {
       setExpanded(!expanded);
     } else {
       onSelect(node.path);
@@ -58,33 +67,99 @@ export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMen
     onContextMenu(e, node);
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    e.stopPropagation();
+    e.dataTransfer.setData(DRAG_PATH_MIME, node.path);
+    e.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isDirectory) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes(DRAG_PATH_MIME)) {
+      e.dataTransfer.dropEffect = 'move';
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!isDirectory) return;
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!isDirectory) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const sourcePath = e.dataTransfer.getData(DRAG_PATH_MIME);
+    if (sourcePath) onMove(sourcePath, node.path);
+  };
+
   return (
     <div className="select-none font-sans">
-      <div 
+      <div
         className={clsx(
-          "flex items-center py-1 px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors",
-          isSelected && "bg-fleet-active text-fleet-textHover"
+          "group flex items-center py-1 px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors",
+          isSelected && "bg-fleet-active text-fleet-textHover",
+          isDragOver && "bg-blue-500/20 ring-1 ring-inset ring-blue-500",
+          isDragging && "opacity-40"
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
+        draggable={!node.isRoot}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
           {getIcon(node.name, node.type, expanded)}
         </span>
-        <span className="truncate">{node.name}</span>
+        <span className="truncate flex-1">{node.name}</span>
+        {isDirectory && (
+          <div className="hidden group-hover:flex items-center gap-1 ml-1 shrink-0">
+            <button
+              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white"
+              title="New File"
+              onClick={(e) => { e.stopPropagation(); onCreateNew(node, 'file'); }}
+            >
+              <FilePlus size={13} />
+            </button>
+            <button
+              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white"
+              title="New Folder"
+              onClick={(e) => { e.stopPropagation(); onCreateNew(node, 'directory'); }}
+            >
+              <FolderPlus size={13} />
+            </button>
+          </div>
+        )}
       </div>
-      
-      {node.type === 'directory' && expanded && node.children && (
+
+      {isDirectory && expanded && node.children && (
         <div>
           {node.children.map(child => (
-            <FileTree 
-              key={child.path} 
-              node={child} 
+            <FileTree
+              key={child.path}
+              node={child}
               onSelect={onSelect}
               onContextMenu={onContextMenu}
-              selectedPath={selectedPath} 
-              level={level + 1} 
+              onCreateNew={onCreateNew}
+              onMove={onMove}
+              selectedPath={selectedPath}
+              revealPath={revealPath}
+              level={level + 1}
             />
           ))}
         </div>

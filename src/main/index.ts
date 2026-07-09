@@ -288,6 +288,56 @@ ipcMain.handle('rename-path', async (_, oldPath: string, newName: string) => {
   }
 })
 
+ipcMain.handle('create-path', async (_, parentPath: string, name: string, type: 'file' | 'directory') => {
+  try {
+    const newPath = path.join(parentPath, name)
+    if (fs.existsSync(newPath)) {
+      return { success: false, error: 'A file or folder with this name already exists' }
+    }
+    if (type === 'directory') {
+      fs.mkdirSync(newPath)
+    } else {
+      fs.writeFileSync(newPath, '')
+    }
+    return { success: true, newPath, trees: getWorkspaceTrees() }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('move-path', async (_, sourcePath: string, targetDirPath: string) => {
+  try {
+    const sourceParent = path.dirname(sourcePath)
+    if (sourcePath === targetDirPath || sourceParent === targetDirPath) {
+      return { success: true, newPath: sourcePath, trees: getWorkspaceTrees() }
+    }
+
+    // Prevent moving a folder into itself or one of its own descendants
+    const rel = path.relative(sourcePath, targetDirPath)
+    if (rel === '' || !rel.startsWith('..')) {
+      return { success: false, error: 'Cannot move a folder into itself or its subfolder' }
+    }
+
+    const newPath = path.join(targetDirPath, path.basename(sourcePath))
+    if (fs.existsSync(newPath)) {
+      return { success: false, error: 'A file or folder with this name already exists in the destination' }
+    }
+    fs.renameSync(sourcePath, newPath)
+
+    // Keep workspace roots in sync if a root folder was moved
+    const workspacePaths = loadWorkspaces()
+    const idx = workspacePaths.indexOf(sourcePath)
+    if (idx !== -1) {
+      workspacePaths[idx] = newPath
+      saveWorkspaces(workspacePaths)
+    }
+
+    return { success: true, newPath, trees: getWorkspaceTrees() }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+})
+
 // Terminal action handlers
 ipcMain.on('pty-write', (_, termId, data) => {
   ptys.get(termId)?.write(data)

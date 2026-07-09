@@ -10,6 +10,10 @@ const api = {
   readFile: (path: string) => ipcRenderer.invoke('read-file', path),
   saveFile: (path: string, content: string) => ipcRenderer.invoke('save-file', path, content),
   renamePath: (oldPath: string, newName: string) => ipcRenderer.invoke('rename-path', oldPath, newName),
+  createPath: (parentPath: string, name: string, type: 'file' | 'directory') =>
+    ipcRenderer.invoke('create-path', parentPath, name, type),
+  movePath: (sourcePath: string, targetDirPath: string) =>
+    ipcRenderer.invoke('move-path', sourcePath, targetDirPath),
   
   createPty: (cwd?: string) => ipcRenderer.invoke('create-pty', cwd),
   destroyPty: (termId: string) => ipcRenderer.send('destroy-pty', termId),
