@@ -15,6 +15,7 @@ export interface AppSettings {
   diagnosticsEnabled: boolean
   sidebarPosition: SidebarPosition
   sidebarWidth: number
+  lineNumbersEnabled: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -25,5 +26,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gitEnabled: true,
   diagnosticsEnabled: true,
   sidebarPosition: 'right',
-  sidebarWidth: 256
+  sidebarWidth: 256,
+  lineNumbersEnabled: true
 }

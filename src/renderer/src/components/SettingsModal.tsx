@@ -97,6 +97,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
+        <SettingToggle
+          label="Line Numbers"
+          description="Show line numbers in the editor"
+          checked={settings.lineNumbersEnabled}
+          onChange={(v) => updateSetting('lineNumbersEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
       </div>
 
       <div className="border-t border-fleet-border mt-4 pt-3">

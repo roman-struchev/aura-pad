@@ -358,7 +358,9 @@ function App() {
                     fontSize: density.editorFontSize,
                     wordWrap: 'on',
                     padding: { top: 16 },
-                    scrollBeyondLastLine: false
+                    scrollBeyondLastLine: false,
+                    lineNumbers: settings.lineNumbersEnabled ? 'on' : 'off',
+                    scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 }
                   }}
                 />
               )
@@ -444,7 +446,9 @@ function App() {
           <div
             className={clsx(
               'absolute top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-blue-500/50 transition-colors z-10',
-              settings.sidebarPosition === 'left' ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'
+              settings.sidebarPosition === 'left'
+                ? 'right-0 translate-x-1/2'
+                : 'left-0 -translate-x-1/2'
             )}
             onMouseDown={(e) => {
               e.preventDefault()
