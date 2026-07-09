@@ -65,29 +65,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {gitRepos.length > 0 && (
-        <div className="flex border-b border-fleet-border shrink-0 text-xs">
-          <button
-            className={clsx(
-              'flex-1 flex items-center justify-center gap-1.5 py-1.5',
-              sidebarView === 'files'
-                ? 'text-fleet-textHover bg-fleet-active'
-                : 'text-gray-400 hover:text-gray-200'
-            )}
-            onClick={() => setSidebarView('files')}
-          >
-            <Files size={12} /> Files
-          </button>
-          <button
-            className={clsx(
-              'flex-1 flex items-center justify-center gap-1.5 py-1.5',
-              sidebarView === 'git'
-                ? 'text-fleet-textHover bg-fleet-active'
-                : 'text-gray-400 hover:text-gray-200'
-            )}
-            onClick={() => setSidebarView('git')}
-          >
-            <GitBranch size={12} /> Git
-          </button>
+        <div className="px-2 pt-2 shrink-0">
+          <div className="flex gap-0.5 bg-fleet-bg rounded-md p-0.5 text-xs">
+            <button
+              className={clsx(
+                'flex-1 flex items-center justify-center gap-1.5 py-1 rounded transition-colors',
+                sidebarView === 'files'
+                  ? 'bg-fleet-active text-fleet-textHover'
+                  : 'text-gray-400 hover:text-gray-200'
+              )}
+              onClick={() => setSidebarView('files')}
+            >
+              <Files size={12} /> Files
+            </button>
+            <button
+              className={clsx(
+                'flex-1 flex items-center justify-center gap-1.5 py-1 rounded transition-colors',
+                sidebarView === 'git'
+                  ? 'bg-fleet-active text-fleet-textHover'
+                  : 'text-gray-400 hover:text-gray-200'
+              )}
+              onClick={() => setSidebarView('git')}
+            >
+              <GitBranch size={12} /> Git
+            </button>
+          </div>
         </div>
       )}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-3">

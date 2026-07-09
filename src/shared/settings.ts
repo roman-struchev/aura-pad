@@ -14,6 +14,7 @@ export interface AppSettings {
   gitEnabled: boolean
   diagnosticsEnabled: boolean
   sidebarPosition: SidebarPosition
+  sidebarWidth: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -23,5 +24,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiMode: 'compact',
   gitEnabled: true,
   diagnosticsEnabled: true,
-  sidebarPosition: 'right'
+  sidebarPosition: 'right',
+  sidebarWidth: 256
 }

@@ -16,6 +16,7 @@ import { useTabs } from './hooks/useTabs'
 import { useWorkspaceTree } from './hooks/useWorkspaceTree'
 import { useGitStatus } from './hooks/useGitStatus'
 import { useDiagnostics } from './hooks/useDiagnostics'
+import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
@@ -56,6 +57,9 @@ function App() {
   })
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
+  const sidebarWidth = useSidebarWidth(settings.sidebarWidth, settings.sidebarPosition, (w) =>
+    updateSetting('sidebarWidth', w)
+  )
 
   // Search / settings overlay state
   const [showSearch, setShowSearch] = useState(false)
@@ -432,10 +436,21 @@ function App() {
         <div
           ref={sidebarRef}
           className={clsx(
-            'w-64 bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
+            'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
             settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
           )}
+          style={{ width: `${sidebarWidth.width}px` }}
         >
+          <div
+            className={clsx(
+              'absolute top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-blue-500/50 transition-colors z-10',
+              settings.sidebarPosition === 'left' ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'
+            )}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              sidebarWidth.startResizing()
+            }}
+          />
           <Sidebar
             isDark={isDark}
             rowPadding={density.treeRowPadding}
@@ -484,7 +499,6 @@ function App() {
           node={tree.contextMenu.node}
           hasClipboard={!!tree.clipboard}
           onClose={() => tree.setContextMenu(null)}
-          onRunPython={(node) => runPythonFile(node.path)}
           onOpenTerminalHere={openTerminalHere}
           onCreateNew={tree.startCreate}
           onRename={tree.startRename}
