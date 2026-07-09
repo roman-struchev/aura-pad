@@ -167,7 +167,7 @@ function createWindow(): void {
   }
 
   // Multi-terminal PTY handlers
-  ipcMain.handle('create-pty', (event, cwd?: string) => {
+  ipcMain.handle('create-pty', (_event, cwd?: string) => {
     const termId = `term-${ptyIdCounter++}`
     
     const ptyProcess = pty.spawn(shellExec, [], {
