@@ -29,13 +29,8 @@ function App() {
   // Context Menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileNode } | null>(null);
 
-  // Rename dialog state
-  const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-
   const editorRef = useRef<any>(null);
   const lastShiftTime = useRef<number>(0);
-  const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Load workspaces on mount
@@ -165,13 +160,6 @@ function App() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (renameTarget) {
-      renameInputRef.current?.focus();
-      renameInputRef.current?.select();
-    }
-  }, [renameTarget]);
-
   const openNewTerminal = async (cwd?: string, runCommand?: string) => {
     setShowTerminal(true);
     const termId = await window.api.createPty(cwd);
@@ -211,33 +199,6 @@ function App() {
     const cwd = node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'));
     openNewTerminal(cwd);
     setContextMenu(null);
-  };
-
-  const startRename = (node: FileNode) => {
-    setContextMenu(null);
-    setRenameValue(node.name);
-    setRenameTarget(node);
-  };
-
-  const confirmRename = async () => {
-    const node = renameTarget;
-    if (!node) return;
-    const newName = renameValue.trim();
-    setRenameTarget(null);
-    if (!newName || newName === node.name) return;
-
-    const result = await window.api.renamePath(node.path, newName);
-    if (!result.success || !result.newPath) {
-      alert(result.error || 'Failed to rename.');
-      return;
-    }
-    setRootNodes(result.trees || []);
-
-    if (selectedPath === node.path) {
-      setSelectedPath(result.newPath);
-    } else if (node.type === 'directory' && selectedPath?.startsWith(node.path + '/')) {
-      setSelectedPath(result.newPath + selectedPath.slice(node.path.length));
-    }
   };
 
   const handleFormatJson = () => {
@@ -374,7 +335,6 @@ function App() {
         <div className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]" style={{ top: contextMenu.y, left: contextMenu.x }}>
           {contextMenu.node.path.endsWith('.py') && <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => runPython(contextMenu.node)}>Run Script</button>}
           <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => openTerminalHere(contextMenu.node)}>Open Terminal</button>
-          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => startRename(contextMenu.node)}>Rename</button>
           {(contextMenu.node as any).isRoot && (
             <>
               <div className="h-px bg-fleet-border my-1" />
