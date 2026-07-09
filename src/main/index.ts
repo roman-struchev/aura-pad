@@ -1,10 +1,11 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs'
 import path from 'path'
 import * as pty from 'node-pty'
+import ignore, { type Ignore } from 'ignore'
 
 // Detect shell
 const shellExec = process.env[process.platform === 'win32' ? 'COMSPEC' : 'SHELL'] || '/bin/zsh'
@@ -32,6 +33,36 @@ function saveWorkspaces(paths: string[]) {
   } catch(e) {}
 }
 
+// App settings (feature toggles)
+const settingsConfigPath = path.join(userDataPath, 'settings.json')
+
+interface AppSettings {
+  tabsEnabled: boolean
+  autosaveEnabled: boolean
+  uiMode: 'micro' | 'compact' | 'normal'
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  tabsEnabled: true,
+  autosaveEnabled: true,
+  uiMode: 'compact'
+}
+
+function loadSettings(): AppSettings {
+  try {
+    if (fs.existsSync(settingsConfigPath)) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsConfigPath, 'utf-8')) }
+    }
+  } catch (e) {}
+  return { ...DEFAULT_SETTINGS }
+}
+
+function saveSettings(settings: AppSettings) {
+  try {
+    fs.writeFileSync(settingsConfigPath, JSON.stringify(settings))
+  } catch (e) {}
+}
+
 // Helper to check if a directory should be ignored
 function isIgnored(name: string) {
   // Ignore hidden folders (starting with .) and common system/build folders
@@ -49,20 +80,36 @@ function isIgnored(name: string) {
   ].includes(name);
 }
 
-function buildFileTree(dirPath: string, isRoot = false): any {
+// Load .gitignore rules (if any) at the root of a workspace, on top of the
+// hardcoded isIgnored() rules above.
+function loadGitignore(rootPath: string): Ignore {
+  const ig = ignore()
+  try {
+    const gitignorePath = path.join(rootPath, '.gitignore')
+    if (fs.existsSync(gitignorePath)) {
+      ig.add(fs.readFileSync(gitignorePath, 'utf-8'))
+    }
+  } catch (e) {}
+  return ig
+}
+
+function buildFileTree(dirPath: string, rootPath: string, ig: Ignore, isRoot = false): any {
   const name = path.basename(dirPath)
   const item: any = { name, path: dirPath, type: 'directory', children: [], isRoot }
-  
+
   try {
     const files = fs.readdirSync(dirPath)
     for (const file of files) {
       if (file === '.git' || file === '.DS_Store' || isIgnored(file)) continue
-      
+
       const fullPath = path.join(dirPath, file)
+      const relPath = path.relative(rootPath, fullPath)
+      if (relPath && ig.ignores(relPath)) continue
+
       try {
         const stat = fs.statSync(fullPath)
         if (stat.isDirectory()) {
-          item.children.push(buildFileTree(fullPath))
+          item.children.push(buildFileTree(fullPath, rootPath, ig))
         } else {
           item.children.push({ name: file, path: fullPath, type: 'file' })
         }
@@ -73,7 +120,7 @@ function buildFileTree(dirPath: string, isRoot = false): any {
       return a.type === 'directory' ? -1 : 1
     })
   } catch (e) {}
-  
+
   return item
 }
 
@@ -82,7 +129,7 @@ function getWorkspaceTrees() {
   const trees: any[] = []
   for (const p of paths) {
     if (fs.existsSync(p)) {
-      trees.push(buildFileTree(p, true))
+      trees.push(buildFileTree(p, p, loadGitignore(p), true))
     }
   }
   return trees
@@ -98,16 +145,20 @@ async function searchInWorkspaces(query: string) {
 
   for (const rootPath of workspacePaths) {
     if (!fs.existsSync(rootPath)) continue
-    
+
+    const ig = loadGitignore(rootPath)
     const searchRecursive = (currentPath: string) => {
       try {
         const files = fs.readdirSync(currentPath)
         for (const file of files) {
           if (isIgnored(file)) continue;
-          
+
           const fullPath = path.join(currentPath, file)
+          const relPath = path.relative(rootPath, fullPath)
+          if (relPath && ig.ignores(relPath)) continue
+
           const stat = fs.statSync(fullPath)
-          
+
           if (stat.isDirectory()) {
             searchRecursive(fullPath)
           } else {
@@ -136,6 +187,71 @@ async function searchInWorkspaces(query: string) {
     searchRecursive(rootPath)
   }
   return results
+}
+
+// File watching: react to changes made outside the app (other editors, git,
+// other windows of this app) without reacting to our own writes.
+//
+// - 'save-file' records a timestamp per path right after we write it.
+// - When the watcher reports a 'change' for that same path shortly after,
+//   we treat it as self-triggered and stay quiet (the renderer already has
+//   that content, since it's the one that wrote it).
+// - A structural change ('rename': create/delete/move) always triggers a
+//   debounced tree rebuild, since other files may be affected.
+const activeWatchers = new Map<string, fs.FSWatcher>()
+const recentSelfWrites = new Map<string, number>()
+const structureDebounceTimers = new Map<string, NodeJS.Timeout>()
+const SELF_WRITE_GRACE_MS = 1500
+const STRUCTURE_DEBOUNCE_MS = 300
+
+function broadcast(channel: string, ...args: any[]) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, ...args)
+  }
+}
+
+function handleFsWatchEvent(rootPath: string, eventType: string, filename: string | null) {
+  if (!filename) return
+  const base = path.basename(filename)
+  if (base === '.git' || base === '.DS_Store' || isIgnored(base)) return
+
+  const fullPath = path.join(rootPath, filename)
+
+  if (eventType === 'change') {
+    const lastSelfWrite = recentSelfWrites.get(fullPath)
+    if (lastSelfWrite && Date.now() - lastSelfWrite < SELF_WRITE_GRACE_MS) return
+    broadcast('file-changed-externally', fullPath)
+    return
+  }
+
+  // 'rename' covers create/delete/move of an entry - the tree shape may differ.
+  clearTimeout(structureDebounceTimers.get(rootPath))
+  structureDebounceTimers.set(
+    rootPath,
+    setTimeout(() => {
+      structureDebounceTimers.delete(rootPath)
+      broadcast('workspaces-changed', getWorkspaceTrees())
+    }, STRUCTURE_DEBOUNCE_MS)
+  )
+}
+
+function setupWatchers(): void {
+  for (const watcher of activeWatchers.values()) watcher.close()
+  activeWatchers.clear()
+
+  for (const rootPath of loadWorkspaces()) {
+    if (!fs.existsSync(rootPath)) continue
+    try {
+      const watcher = fs.watch(rootPath, { recursive: true }, (eventType, filename) =>
+        handleFsWatchEvent(rootPath, eventType, filename)
+      )
+      activeWatchers.set(rootPath, watcher)
+    } catch (e) {
+      // Recursive fs.watch isn't supported on every platform/filesystem;
+      // degrade gracefully by simply not watching that root.
+      console.error(`Failed to watch workspace "${rootPath}":`, e)
+    }
+  }
 }
 
 function createWindow(): void {
@@ -265,6 +381,11 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(buildAppMenu())
 
   createWindow()
+  setupWatchers()
+
+  nativeTheme.on('updated', () => {
+    broadcast('theme-updated', nativeTheme.shouldUseDarkColors)
+  })
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -274,6 +395,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   ptys.forEach(p => p.kill())
   ptys.clear()
+  activeWatchers.forEach((w) => w.close())
+  activeWatchers.clear()
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -294,8 +417,9 @@ ipcMain.handle('add-workspace', async () => {
   if (!paths.includes(selectedPath)) {
     paths.push(selectedPath)
     saveWorkspaces(paths)
+    setupWatchers()
   }
-  
+
   return getWorkspaceTrees()
 })
 
@@ -303,6 +427,7 @@ ipcMain.handle('remove-workspace', (_, pathToRemove) => {
   let paths = loadWorkspaces()
   paths = paths.filter(p => p !== pathToRemove)
   saveWorkspaces(paths)
+  setupWatchers()
   return getWorkspaceTrees()
 })
 
@@ -322,10 +447,20 @@ ipcMain.handle('read-file', async (_, filePath) => {
 ipcMain.handle('save-file', async (_, filePath, content) => {
   try {
     fs.writeFileSync(filePath, content, 'utf-8')
+    recentSelfWrites.set(filePath, Date.now())
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
+})
+
+ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors)
+
+ipcMain.handle('get-settings', () => loadSettings())
+
+ipcMain.handle('save-settings', (_, settings: AppSettings) => {
+  saveSettings(settings)
+  return settings
 })
 
 ipcMain.handle('rename-path', async (_, oldPath: string, newName: string) => {
@@ -342,6 +477,7 @@ ipcMain.handle('rename-path', async (_, oldPath: string, newName: string) => {
     if (idx !== -1) {
       workspacePaths[idx] = newPath
       saveWorkspaces(workspacePaths)
+      setupWatchers()
     }
 
     return { success: true, newPath, trees: getWorkspaceTrees() }
@@ -362,6 +498,61 @@ ipcMain.handle('create-path', async (_, parentPath: string, name: string, type: 
       fs.writeFileSync(newPath, '')
     }
     return { success: true, newPath, trees: getWorkspaceTrees() }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+})
+
+// Finds a free destination name, Finder/Explorer-style: "name copy.ext", "name copy 2.ext", ...
+function getAvailableDestName(destDir: string, originalName: string): string {
+  const ext = path.extname(originalName)
+  const stem = ext ? originalName.slice(0, -ext.length) : originalName
+
+  let candidate = originalName
+  if (fs.existsSync(path.join(destDir, candidate))) {
+    candidate = `${stem} copy${ext}`
+    let n = 2
+    while (fs.existsSync(path.join(destDir, candidate))) {
+      candidate = `${stem} copy ${n}${ext}`
+      n++
+    }
+  }
+  return candidate
+}
+
+ipcMain.handle('copy-path', async (_, sourcePath: string, requestedTargetDirPath: string) => {
+  try {
+    // Pasting onto the exact folder that was copied means "duplicate it",
+    // so copy alongside it (into its parent) instead of into itself.
+    const targetDirPath =
+      requestedTargetDirPath === sourcePath ? path.dirname(sourcePath) : requestedTargetDirPath
+
+    const rel = path.relative(sourcePath, targetDirPath)
+    if (fs.statSync(sourcePath).isDirectory() && (rel === '' || !rel.startsWith('..'))) {
+      return { success: false, error: 'Cannot copy a folder into itself or its subfolder' }
+    }
+
+    const destName = getAvailableDestName(targetDirPath, path.basename(sourcePath))
+    const newPath = path.join(targetDirPath, destName)
+    fs.cpSync(sourcePath, newPath, { recursive: true })
+
+    return { success: true, newPath, trees: getWorkspaceTrees() }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('delete-path', async (_, targetPath: string) => {
+  try {
+    await shell.trashItem(targetPath)
+
+    const workspacePaths = loadWorkspaces()
+    if (workspacePaths.includes(targetPath)) {
+      saveWorkspaces(workspacePaths.filter((p) => p !== targetPath))
+      setupWatchers()
+    }
+
+    return { success: true, trees: getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
@@ -392,6 +583,7 @@ ipcMain.handle('move-path', async (_, sourcePath: string, targetDirPath: string)
     if (idx !== -1) {
       workspacePaths[idx] = newPath
       saveWorkspaces(workspacePaths)
+      setupWatchers()
     }
 
     return { success: true, newPath, trees: getWorkspaceTrees() }

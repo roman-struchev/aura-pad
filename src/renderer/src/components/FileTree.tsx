@@ -16,8 +16,10 @@ interface FileTreeProps {
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void;
   onMove: (sourcePath: string, targetDirPath: string) => void;
+  onFocusNode: (node: FileNode) => void;
   selectedPath: string | null;
   revealPath?: string | null;
+  rowPadding?: string;
   level?: number;
 }
 
@@ -37,7 +39,7 @@ const getIcon = (name: string, type: 'file' | 'directory', expanded: boolean) =>
   return <File size={14} className="text-gray-400" />;
 };
 
-export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMenu, onCreateNew, onMove, selectedPath, revealPath, level = 0 }) => {
+export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMenu, onCreateNew, onMove, onFocusNode, selectedPath, revealPath, rowPadding = 'py-1', level = 0 }) => {
   const [expanded, setExpanded] = useState<boolean>(level === 0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -108,13 +110,16 @@ export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMen
     <div className="select-none font-sans">
       <div
         className={clsx(
-          "group flex items-center py-1 px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors",
+          "group flex items-center px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400/60",
+          rowPadding,
           isSelected && "bg-fleet-active text-fleet-textHover",
           isDragOver && "bg-blue-500/20 ring-1 ring-inset ring-blue-500",
           isDragging && "opacity-40"
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
+        tabIndex={-1}
         onClick={handleClick}
+        onFocus={() => onFocusNode(node)}
         onContextMenu={handleContextMenu}
         draggable={!node.isRoot}
         onDragStart={handleDragStart}
@@ -157,8 +162,10 @@ export const FileTree: React.FC<FileTreeProps> = ({ node, onSelect, onContextMen
               onContextMenu={onContextMenu}
               onCreateNew={onCreateNew}
               onMove={onMove}
+              onFocusNode={onFocusNode}
               selectedPath={selectedPath}
               revealPath={revealPath}
+              rowPadding={rowPadding}
               level={level + 1}
             />
           ))}

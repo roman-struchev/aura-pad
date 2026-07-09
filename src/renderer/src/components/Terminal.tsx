@@ -7,9 +7,10 @@ interface TerminalProps {
   termId: string;
   onExit?: () => void;
   isActive: boolean;
+  fontSize?: number;
 }
 
-export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive }) => {
+export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fontSize = 13 }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -25,7 +26,7 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive }) 
         selectionBackground: '#5c5c5c',
       },
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: 13,
+      fontSize,
       cursorBlink: true,
       allowProposedApi: true,
     });
@@ -74,6 +75,16 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive }) 
       term.dispose();
     };
   }, [termId]);
+
+  // Live-update font size (e.g. when the UI density mode changes) without
+  // recreating the terminal/pty.
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.options.fontSize = fontSize;
+      fitAddonRef.current?.fit();
+      if (isActive) window.api.ptyResize(termId, xtermRef.current.cols, xtermRef.current.rows);
+    }
+  }, [fontSize]);
 
   // Reliable refit when terminal becomes active
   useEffect(() => {

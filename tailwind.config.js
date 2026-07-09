@@ -8,13 +8,13 @@ module.exports = {
     extend: {
       colors: {
         fleet: {
-          bg: '#181818',
-          sidebar: '#1E1E1E',
-          border: '#323232',
-          text: '#CCCCCC',
-          textHover: '#FFFFFF',
-          active: '#2D2D2D',
-          header: '#252525'
+          bg: 'var(--fleet-bg)',
+          sidebar: 'var(--fleet-sidebar)',
+          border: 'var(--fleet-border)',
+          text: 'var(--fleet-text)',
+          textHover: 'var(--fleet-textHover)',
+          active: 'var(--fleet-active)',
+          header: 'var(--fleet-header)'
         }
       }
     },
