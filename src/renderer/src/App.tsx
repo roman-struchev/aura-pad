@@ -113,6 +113,15 @@ function App() {
     }
   };
 
+  const handleCloseFile = () => {
+    if (!selectedPath) return;
+    if (!isSaved && !window.confirm('You have unsaved changes. Close without saving?')) return;
+    setSelectedPath(null);
+    setFileContent('');
+    setIsSaved(true);
+    setJumpToLine(null);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Double Shift detection
@@ -129,6 +138,10 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
         handleSave();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        handleCloseFile();
       }
       if ((e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') || (e.shiftKey && e.key === 'F' && !e.metaKey && !e.ctrlKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA')) {
         // Only trigger Shift+F if not in an input field (to avoid interference with typing)
