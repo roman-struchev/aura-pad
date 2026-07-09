@@ -270,7 +270,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-fleet-bg text-fleet-text flex-col relative overflow-hidden">
-      <div className="h-[52px] border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
+      <div className="h-10 border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
         <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 truncate max-w-[50%]">
           {selectedPath ? selectedPath.split('/').pop() : 'Light Editor'}
           {!isSaved && selectedPath && <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>}
