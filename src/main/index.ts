@@ -39,7 +39,7 @@ const settingsConfigPath = path.join(userDataPath, 'settings.json')
 interface AppSettings {
   tabsEnabled: boolean
   autosaveEnabled: boolean
-  uiMode: 'micro' | 'compact' | 'normal'
+  uiMode: 'micro' | 'compact' | 'normal' | 'large'
 }
 
 const DEFAULT_SETTINGS: AppSettings = {

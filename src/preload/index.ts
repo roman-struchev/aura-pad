@@ -4,7 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 interface AppSettings {
   tabsEnabled: boolean
   autosaveEnabled: boolean
-  uiMode: 'micro' | 'compact' | 'normal'
+  uiMode: 'micro' | 'compact' | 'normal' | 'large'
 }
 
 const api = {

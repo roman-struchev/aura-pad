@@ -5,6 +5,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { FileSearch } from './components/FileSearch';
 import { MarkdownPreview } from './components/MarkdownPreview';
 import { SettingToggle } from './components/SettingToggle';
+import { SettingSelect } from './components/SettingSelect';
 import { DENSITY, UI_MODES, UiMode } from './density';
 import Editor from '@monaco-editor/react';
 import clsx from 'clsx';
@@ -820,24 +821,13 @@ function App() {
                 checked={settings.autosaveEnabled}
                 onChange={(v) => updateSetting('autosaveEnabled', v)}
               />
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm text-fleet-text">Mode</span>
-                <span className="text-xs text-gray-500">UI density - editor font size, row height, spacing</span>
-                <div className="flex rounded-md overflow-hidden border border-fleet-border mt-1 w-fit">
-                  {UI_MODES.map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => updateSetting('uiMode', mode)}
-                      className={clsx(
-                        'px-3 py-1 text-xs capitalize transition-colors',
-                        settings.uiMode === mode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-fleet-active'
-                      )}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <SettingSelect
+                label="Mode"
+                description="UI density - editor font size, row height, spacing"
+                value={settings.uiMode}
+                options={UI_MODES}
+                onChange={(v) => updateSetting('uiMode', v)}
+              />
             </div>
             <div className="flex justify-end mt-4">
               <button className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white" onClick={() => setShowSettings(false)}>Done</button>
