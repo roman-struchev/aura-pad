@@ -1,14 +1,19 @@
-import React from 'react';
-import clsx from 'clsx';
+import React from 'react'
+import clsx from 'clsx'
 
 interface SettingToggleProps {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
+  label: string
+  description: string
+  checked: boolean
+  onChange: (value: boolean) => void
 }
 
-export const SettingToggle: React.FC<SettingToggleProps> = ({ label, description, checked, onChange }) => (
+export const SettingToggle: React.FC<SettingToggleProps> = ({
+  label,
+  description,
+  checked,
+  onChange
+}) => (
   <label className="flex items-center justify-between gap-4 cursor-pointer">
     <div className="flex flex-col min-w-0">
       <span className="text-sm text-fleet-text">{label}</span>
@@ -33,4 +38,4 @@ export const SettingToggle: React.FC<SettingToggleProps> = ({ label, description
       />
     </button>
   </label>
-);
+)

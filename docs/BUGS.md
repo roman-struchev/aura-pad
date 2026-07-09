@@ -9,6 +9,7 @@ button shows a native OS-style tooltip reading `(Escape)`. This clashes
 visually with the rest of the app.
 
 **What was tried:**
+
 - Removed the `title` attribute from the toolbar's own Global Search icon
   (unrelated button, but was suspected first) - `src/renderer/src/App.tsx`.
 - Added a `MutationObserver` in `handleEditorDidMount` scoped to

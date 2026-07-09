@@ -46,15 +46,15 @@ $ npm run build:linux
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-| --- | --- |
-| `Cmd/Ctrl + S` | Save the current file |
-| `Cmd/Ctrl + W` | Close the current file |
-| `Cmd/Ctrl + F` | Find (and Replace) in the current file |
-| `Shift + Cmd/Ctrl + F` | Global search across all workspaces |
-| Double-tap `Shift` | Quick file search |
-| `Cmd/Ctrl + C` | Copy the selected file/folder (when the file tree has focus) |
-| `Cmd/Ctrl + V` | Paste/duplicate into the selected folder (when the file tree has focus) |
-| `Delete` / `Backspace` | Move the selected file/folder to Trash (when the file tree has focus) |
+| Shortcut               | Action                                                                  |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `Cmd/Ctrl + S`         | Save the current file                                                   |
+| `Cmd/Ctrl + W`         | Close the current file                                                  |
+| `Cmd/Ctrl + F`         | Find (and Replace) in the current file                                  |
+| `Shift + Cmd/Ctrl + F` | Global search across all workspaces                                     |
+| Double-tap `Shift`     | Quick file search                                                       |
+| `Cmd/Ctrl + C`         | Copy the selected file/folder (when the file tree has focus)            |
+| `Cmd/Ctrl + V`         | Paste/duplicate into the selected folder (when the file tree has focus) |
+| `Delete` / `Backspace` | Move the selected file/folder to Trash (when the file tree has focus)   |
 
 Files and folders can also be dragged and dropped between folders in the tree, and all of the above actions are available from the right-click context menu.

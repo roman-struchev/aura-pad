@@ -1,21 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-
-interface AppSettings {
-  tabsEnabled: boolean
-  autosaveEnabled: boolean
-  uiMode: 'micro' | 'compact' | 'normal' | 'large'
-}
+import type { AppSettings } from '../shared/settings'
+import type { FileNode } from '../shared/fileNode'
 
 const api = {
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
   addWorkspace: () => ipcRenderer.invoke('add-workspace'),
   removeWorkspace: (path: string) => ipcRenderer.invoke('remove-workspace', path),
   searchProjects: (query: string) => ipcRenderer.invoke('search-projects', query),
-  
+
   readFile: (path: string) => ipcRenderer.invoke('read-file', path),
   saveFile: (path: string, content: string) => ipcRenderer.invoke('save-file', path, content),
-  renamePath: (oldPath: string, newName: string) => ipcRenderer.invoke('rename-path', oldPath, newName),
+  renamePath: (oldPath: string, newName: string) =>
+    ipcRenderer.invoke('rename-path', oldPath, newName),
   createPath: (parentPath: string, name: string, type: 'file' | 'directory') =>
     ipcRenderer.invoke('create-path', parentPath, name, type),
   movePath: (sourcePath: string, targetDirPath: string) =>
@@ -34,8 +31,8 @@ const api = {
     return () => ipcRenderer.removeListener('theme-updated', listener)
   },
 
-  onWorkspacesChanged: (callback: (trees: any[]) => void) => {
-    const listener = (_, trees: any[]) => callback(trees)
+  onWorkspacesChanged: (callback: (trees: FileNode[]) => void) => {
+    const listener = (_, trees: FileNode[]) => callback(trees)
     ipcRenderer.on('workspaces-changed', listener)
     return () => ipcRenderer.removeListener('workspaces-changed', listener)
   },
@@ -45,19 +42,20 @@ const api = {
     ipcRenderer.on('file-changed-externally', listener)
     return () => ipcRenderer.removeListener('file-changed-externally', listener)
   },
-  
+
   createPty: (cwd?: string) => ipcRenderer.invoke('create-pty', cwd),
   destroyPty: (termId: string) => ipcRenderer.send('destroy-pty', termId),
   ptyWrite: (termId: string, data: string) => ipcRenderer.send('pty-write', termId, data),
-  ptyResize: (termId: string, cols: number, rows: number) => ipcRenderer.send('pty-resize', termId, cols, rows),
-  
+  ptyResize: (termId: string, cols: number, rows: number) =>
+    ipcRenderer.send('pty-resize', termId, cols, rows),
+
   onPtyData: (termId: string, callback: (data: string) => void) => {
     const channel = `pty-data-${termId}`
     const listener = (_, data) => callback(data)
     ipcRenderer.on(channel, listener)
     return () => ipcRenderer.removeListener(channel, listener)
   },
-  
+
   onPtyExit: (termId: string, callback: () => void) => {
     const channel = `pty-exit-${termId}`
     const listener = () => callback()
