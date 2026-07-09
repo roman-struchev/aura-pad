@@ -68,6 +68,7 @@ const api = {
   getGitDiff: (root: string, relPath: string) => ipcRenderer.invoke('git-diff', root, relPath),
   gitStage: (root: string, relPath: string) => ipcRenderer.invoke('git-stage', root, relPath),
   gitUnstage: (root: string, relPath: string) => ipcRenderer.invoke('git-unstage', root, relPath),
+  gitDiscard: (root: string, relPath: string) => ipcRenderer.invoke('git-discard', root, relPath),
   gitCommit: (root: string, message: string) => ipcRenderer.invoke('git-commit', root, message),
   gitPush: (root: string) => ipcRenderer.invoke('git-push', root),
   gitPull: (root: string) => ipcRenderer.invoke('git-pull', root),

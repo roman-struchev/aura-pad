@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { DiffEditor } from '@monaco-editor/react'
-import { GitBranch, ArrowUpFromLine, ArrowDownToLine, Plus, Minus } from 'lucide-react'
+import { GitBranch, ArrowUpFromLine, ArrowDownToLine, Plus, Minus, RotateCcw } from 'lucide-react'
 import type { GitRepoStatus, GitFileEntry } from '../../../shared/gitStatus'
 import { Modal } from './Modal'
 import { getLanguage } from '../lib/language'
@@ -10,6 +10,7 @@ interface GitPanelProps {
   isDark: boolean
   onStage: (root: string, relPath: string) => void
   onUnstage: (root: string, relPath: string) => void
+  onDiscard: (root: string, entry: GitFileEntry) => void
   onCommit: (root: string, message: string) => Promise<boolean>
   onPush: (root: string) => void
   onPull: (root: string) => void
@@ -19,25 +20,30 @@ interface GitPanelProps {
 interface FileRowProps {
   entry: GitFileEntry
   onClick: () => void
-  action: { icon: React.ReactNode; title: string; onClick: () => void }
+  actions: { icon: React.ReactNode; title: string; onClick: () => void }[]
 }
 
-const FileRow: React.FC<FileRowProps> = ({ entry, onClick, action }) => (
+const FileRow: React.FC<FileRowProps> = ({ entry, onClick, actions }) => (
   <div
     className="group flex items-center gap-2 px-1.5 py-1 rounded hover:bg-fleet-active cursor-pointer text-xs text-gray-300"
     onClick={onClick}
   >
     <span className="truncate flex-1">{entry.relPath}</span>
-    <button
-      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
-      title={action.title}
-      onClick={(e) => {
-        e.stopPropagation()
-        action.onClick()
-      }}
-    >
-      {action.icon}
-    </button>
+    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0">
+      {actions.map((action) => (
+        <button
+          key={action.title}
+          className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white"
+          title={action.title}
+          onClick={(e) => {
+            e.stopPropagation()
+            action.onClick()
+          }}
+        >
+          {action.icon}
+        </button>
+      ))}
+    </div>
   </div>
 )
 
@@ -49,6 +55,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
   isDark,
   onStage,
   onUnstage,
+  onDiscard,
   onCommit,
   onPush,
   onPull,
@@ -109,11 +116,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                   key={entry.path}
                   entry={entry}
                   onClick={() => openDiff(repo.root, entry.relPath)}
-                  action={{
-                    icon: <Minus size={12} />,
-                    title: 'Unstage',
-                    onClick: () => onUnstage(repo.root, entry.relPath)
-                  }}
+                  actions={[
+                    {
+                      icon: <Minus size={12} />,
+                      title: 'Unstage',
+                      onClick: () => onUnstage(repo.root, entry.relPath)
+                    },
+                    {
+                      icon: <RotateCcw size={12} />,
+                      title: 'Discard changes',
+                      onClick: () => onDiscard(repo.root, entry)
+                    }
+                  ]}
                 />
               ))}
             </div>
@@ -129,11 +143,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                   key={entry.path}
                   entry={entry}
                   onClick={() => openDiff(repo.root, entry.relPath)}
-                  action={{
-                    icon: <Plus size={12} />,
-                    title: 'Stage',
-                    onClick: () => onStage(repo.root, entry.relPath)
-                  }}
+                  actions={[
+                    {
+                      icon: <Plus size={12} />,
+                      title: 'Stage',
+                      onClick: () => onStage(repo.root, entry.relPath)
+                    },
+                    {
+                      icon: <RotateCcw size={12} />,
+                      title: entry.state === 'untracked' ? 'Delete' : 'Discard changes',
+                      onClick: () => onDiscard(repo.root, entry)
+                    }
+                  ]}
                 />
               ))}
             </div>

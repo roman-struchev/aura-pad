@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
-import { alertDialog } from '../lib/dialogs'
+import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
+import { alertDialog, confirmDialog } from '../lib/dialogs'
 
 // Owns git status for all open workspace roots: fetches it, subscribes to the
 // watcher-driven push updates, and wraps the mutating IPC calls (stage/
@@ -53,6 +53,22 @@ export function useGitStatus(enabled: boolean) {
     return true
   }
 
+  // Untracked files have nothing in git to check out, so "discard" for them
+  // means deleting the file (to Trash, via the same IPC the file tree uses)
+  // rather than `git checkout HEAD`, which only applies to tracked paths.
+  const discard = async (root: string, entry: GitFileEntry): Promise<void> => {
+    if (entry.state === 'untracked') {
+      if (!(await confirmDialog(`Move "${entry.relPath}" to Trash?`))) return
+      await window.api.deletePath(entry.path)
+      return
+    }
+    if (!(await confirmDialog(`Discard changes to "${entry.relPath}"? This can't be undone.`)))
+      return
+    const result = await window.api.gitDiscard(root, entry.relPath)
+    setRawRepos(result.statuses)
+    if (!result.success) await alertDialog(result.error || 'Discard failed.')
+  }
+
   const push = async (root: string): Promise<void> => {
     const result = await window.api.gitPush(root)
     await alertDialog(result.output || (result.success ? 'Pushed successfully.' : 'Push failed.'))
@@ -67,5 +83,5 @@ export function useGitStatus(enabled: boolean) {
   const diff = (root: string, relPath: string): Promise<{ original: string; modified: string }> =>
     window.api.getGitDiff(root, relPath)
 
-  return { repos, fileStates, refresh, stage, unstage, commit, push, pull, diff }
+  return { repos, fileStates, refresh, stage, unstage, discard, commit, push, pull, diff }
 }

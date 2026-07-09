@@ -134,6 +134,21 @@ export async function unstagePath(
   }
 }
 
+// Resets both the index and working tree for one path back to HEAD, discarding
+// staged and unstaged changes alike. Only meaningful for tracked files - the
+// caller handles untracked ones (there's nothing to check out) by deleting instead.
+export async function discardPath(
+  root: string,
+  relPath: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await runGit(root, ['checkout', 'HEAD', '--', relPath])
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+}
+
 export async function commit(
   root: string,
   message: string

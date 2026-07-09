@@ -1,27 +1,29 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { FileTree, FileNode } from './components/FileTree'
+import type { FileNode } from './components/FileTree'
 import { Terminal } from './components/Terminal'
 import { GlobalSearch } from './components/GlobalSearch'
 import { FileSearch } from './components/FileSearch'
 import { MarkdownPreview } from './components/MarkdownPreview'
-import { SettingToggle } from './components/SettingToggle'
-import { SettingSelect } from './components/SettingSelect'
 import { GitPanel } from './components/GitPanel'
-import { DENSITY, UI_MODES } from './density'
-import { SIDEBAR_POSITIONS } from '../../shared/settings'
+import { SettingsModal } from './components/SettingsModal'
+import { TabBar } from './components/TabBar'
+import { Sidebar } from './components/Sidebar'
+import { TreeContextMenu } from './components/TreeContextMenu'
+import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
 import { useSettings } from './hooks/useSettings'
 import { useTerminals } from './hooks/useTerminals'
 import { useTabs } from './hooks/useTabs'
 import { useWorkspaceTree } from './hooks/useWorkspaceTree'
 import { useGitStatus } from './hooks/useGitStatus'
+import { useDiagnostics } from './hooks/useDiagnostics'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
-import { alertDialog, confirmDialog } from './lib/dialogs'
+import { alertDialog } from './lib/dialogs'
 import { getLanguage } from './lib/language'
+import { dirname } from './lib/path'
 import Editor from '@monaco-editor/react'
-import * as monaco from 'monaco-editor'
 import clsx from 'clsx'
 import {
   FolderOpen,
@@ -34,23 +36,8 @@ import {
   Search,
   Eye,
   Code2,
-  Settings as SettingsIcon,
-  Pin,
-  PinOff,
-  GitBranch,
-  Files
+  Settings as SettingsIcon
 } from 'lucide-react'
-
-const SHORTCUTS: { keys: string; description: string }[] = [
-  { keys: '⌘S', description: 'Save file' },
-  { keys: '⌘W', description: 'Close tab' },
-  { keys: '⇧⌘T', description: 'Reopen closed tab' },
-  { keys: '⇧⌘F', description: 'Search in workspace' },
-  { keys: 'Shift Shift', description: 'Quick open a file or folder' },
-  { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
-  { keys: 'Delete', description: 'Delete in the file tree (row focused)' },
-  { keys: 'Esc', description: 'Close a dialog' }
-]
 
 function App() {
   const isDark = useTheme()
@@ -69,17 +56,16 @@ function App() {
     createInputRef
   })
   const git = useGitStatus(settings.gitEnabled)
+  useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
 
-  // Search / settings overlay state
+  // Search / settings / commit overlay state
   const [showSearch, setShowSearch] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
+  const [showCommitPalette, setShowCommitPalette] = useState(false)
 
   const lastShiftTime = useRef<number>(0)
   const sidebarRef = useRef<HTMLDivElement>(null)
-  const [draggedTab, setDraggedTab] = useState<string | null>(null)
-  const [dragOverTab, setDragOverTab] = useState<string | null>(null)
 
   // Monaco's built-in widgets (e.g. the Find/Replace bar's icon buttons) use
   // native title="" attributes, which pop up an OS-style tooltip that clashes
@@ -133,6 +119,10 @@ function App() {
         e.preventDefault()
         tabs.reopenClosedTab()
       }
+      if (!e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setShowCommitPalette(true)
+      }
       if (
         (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') ||
         (e.shiftKey &&
@@ -176,72 +166,8 @@ function App() {
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
-  // TS/JS diagnostics are Monaco's own bundled worker - free once each file
-  // has a stable path-based model (see the Editor's `path` prop below).
-  // Toggle it globally through the setting rather than per-model.
-  useEffect(() => {
-    const diagnosticsOptions = {
-      noSyntaxValidation: !settings.diagnosticsEnabled,
-      noSemanticValidation: !settings.diagnosticsEnabled
-    }
-    monaco.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticsOptions)
-    monaco.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticsOptions)
-  }, [settings.diagnosticsEnabled])
-
-  // Python (via ast.parse) and ESLint (via the opened project's own local
-  // install, if any) aren't live like Monaco's TS worker, so re-check once a
-  // tab becomes active and again whenever a save completes.
-  useEffect(() => {
-    if (!settings.diagnosticsEnabled || !tabs.selectedPath || !tabs.isSaved) return
-    const path = tabs.selectedPath
-    const model = monaco.editor.getModel(monaco.Uri.parse(path))
-    if (!model) return
-
-    const run = async () => {
-      if (path.endsWith('.py')) {
-        const marker = await window.api.lintPython(path)
-        monaco.editor.setModelMarkers(
-          model,
-          'aura-python',
-          marker
-            ? [
-                {
-                  severity: monaco.MarkerSeverity.Error,
-                  startLineNumber: marker.line,
-                  startColumn: marker.column,
-                  endLineNumber: marker.line,
-                  endColumn: marker.column + 1,
-                  message: marker.message
-                }
-              ]
-            : []
-        )
-      } else if (/\.(ts|tsx|js|jsx)$/.test(path)) {
-        const root = tree.rootNodes.find((r) => path.startsWith(r.path + '/'))
-        if (!root) return
-        const markers = await window.api.lintEslint(path, root.path)
-        monaco.editor.setModelMarkers(
-          model,
-          'aura-eslint',
-          markers.map((m) => ({
-            severity:
-              m.severity === 'error' ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
-            startLineNumber: m.line,
-            startColumn: m.column,
-            endLineNumber: m.endLine || m.line,
-            endColumn: m.endColumn || m.column + 1,
-            message: m.message
-          }))
-        )
-      }
-    }
-    run()
-  }, [settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes])
-
-  const runPython = (node: FileNode) => {
-    const cwd = node.path.substring(0, node.path.lastIndexOf('/'))
-    terminal.openNewTerminal(cwd, `python3 "${node.path}"`)
-    tree.setContextMenu(null)
+  const runPythonFile = (path: string): void => {
+    terminal.openNewTerminal(dirname(path), `python3 "${path}"`)
   }
 
   const previewMarkdown = async (node: FileNode): Promise<void> => {
@@ -249,11 +175,9 @@ function App() {
     tabs.updateTab(node.path, { showPreview: true })
   }
 
-  const openTerminalHere = (node: FileNode) => {
-    const cwd =
-      node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'))
+  const openTerminalHere = (node: FileNode): void => {
+    const cwd = node.type === 'directory' ? node.path : dirname(node.path)
     terminal.openNewTerminal(cwd)
-    tree.setContextMenu(null)
   }
 
   const handleFormatJson = () => {
@@ -263,13 +187,6 @@ function App() {
         tabs.updateTab(tabs.activeTabPath, { content: formatted, isSaved: false })
     } catch (e) {
       alertDialog('Invalid JSON format.')
-    }
-  }
-
-  const handleRunCurrentPython = () => {
-    if (tabs.selectedPath) {
-      const cwd = tabs.selectedPath.substring(0, tabs.selectedPath.lastIndexOf('/'))
-      terminal.openNewTerminal(cwd, `python3 "${tabs.selectedPath}"`)
     }
   }
 
@@ -320,7 +237,7 @@ function App() {
           <div className="w-px h-4 bg-fleet-border mx-1" />
           {tabs.selectedPath?.endsWith('.py') && (
             <ToolbarButton
-              onClick={handleRunCurrentPython}
+              onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
               title="Run Python"
               colorClassName="text-green-500"
             >
@@ -384,78 +301,16 @@ function App() {
             settings.sidebarPosition === 'left' && 'order-2'
           )}
         >
-          {settings.tabsEnabled && tabs.tabs.length > 0 && (
-            <div
-              className={clsx(
-                'flex items-stretch border-b border-fleet-border overflow-x-auto shrink-0 bg-fleet-header',
-                density.tabBarHeight
-              )}
-            >
-              {tabs.tabs.map((tab) => (
-                <div
-                  key={tab.path}
-                  draggable
-                  onClick={() => tabs.setActiveTabPath(tab.path)}
-                  onDragStart={() => setDraggedTab(tab.path)}
-                  onDragEnd={() => {
-                    setDraggedTab(null)
-                    setDragOverTab(null)
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    if (draggedTab && draggedTab !== tab.path) setDragOverTab(tab.path)
-                  }}
-                  onDragLeave={() => setDragOverTab(null)}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    setDragOverTab(null)
-                    if (draggedTab) tabs.reorderTab(draggedTab, tab.path)
-                  }}
-                  className={clsx(
-                    'group flex items-center gap-2 px-3 text-xs cursor-pointer border-r border-fleet-border shrink-0 max-w-[200px]',
-                    tabs.activeTabPath === tab.path
-                      ? 'bg-fleet-bg text-fleet-textHover'
-                      : 'text-gray-400 hover:bg-fleet-active hover:text-gray-200',
-                    dragOverTab === tab.path && 'bg-blue-500/20',
-                    draggedTab === tab.path && 'opacity-40'
-                  )}
-                >
-                  <span className="truncate">{tab.path.split('/').pop()}</span>
-                  {!tab.isSaved && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                  )}
-                  {tab.pinned ? (
-                    <Pin
-                      size={12}
-                      className="opacity-70 hover:opacity-100 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        tabs.togglePin(tab.path)
-                      }}
-                    />
-                  ) : (
-                    <PinOff
-                      size={12}
-                      className="opacity-0 group-hover:opacity-50 hover:!opacity-100 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        tabs.togglePin(tab.path)
-                      }}
-                    />
-                  )}
-                  <X
-                    size={12}
-                    className="opacity-50 hover:opacity-100 shrink-0"
-                    onClick={async (e) => {
-                      e.stopPropagation()
-                      if (tab.pinned && !(await confirmDialog('This tab is pinned. Close anyway?')))
-                        return
-                      tabs.closeTab(tab.path)
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
+          {settings.tabsEnabled && (
+            <TabBar
+              tabs={tabs.tabs}
+              activeTabPath={tabs.activeTabPath}
+              setActiveTabPath={tabs.setActiveTabPath}
+              closeTab={tabs.closeTab}
+              togglePin={tabs.togglePin}
+              reorderTab={tabs.reorderTab}
+              heightClassName={density.tabBarHeight}
+            />
           )}
 
           {tabs.externalChangeAvailable && (
@@ -572,73 +427,35 @@ function App() {
         </div>
 
         <div
+          ref={sidebarRef}
           className={clsx(
             'w-64 bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
             settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
           )}
         >
-          {git.repos.length > 0 && (
-            <div className="flex border-b border-fleet-border shrink-0 text-xs">
-              <button
-                className={clsx(
-                  'flex-1 flex items-center justify-center gap-1.5 py-1.5',
-                  sidebarView === 'files'
-                    ? 'text-fleet-textHover bg-fleet-active'
-                    : 'text-gray-400 hover:text-gray-200'
-                )}
-                onClick={() => setSidebarView('files')}
-              >
-                <Files size={12} /> Files
-              </button>
-              <button
-                className={clsx(
-                  'flex-1 flex items-center justify-center gap-1.5 py-1.5',
-                  sidebarView === 'git'
-                    ? 'text-fleet-textHover bg-fleet-active'
-                    : 'text-gray-400 hover:text-gray-200'
-                )}
-                onClick={() => setSidebarView('git')}
-              >
-                <GitBranch size={12} /> Git
-              </button>
-            </div>
-          )}
-          <div ref={sidebarRef} className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-3">
-            {sidebarView === 'git' && git.repos.length > 0 ? (
-              <GitPanel
-                repos={git.repos}
-                isDark={isDark}
-                onStage={git.stage}
-                onUnstage={git.unstage}
-                onCommit={git.commit}
-                onPush={git.push}
-                onPull={git.pull}
-                onDiff={git.diff}
-              />
-            ) : tree.rootNodes.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {tree.rootNodes.map((rootNode) => (
-                  <FileTree
-                    key={rootNode.path}
-                    node={rootNode}
-                    onSelect={tabs.openTab}
-                    onContextMenu={tree.handleContextMenu}
-                    onCreateNew={tree.startCreate}
-                    onMove={tree.handleMove}
-                    onFocusNode={tree.handleFocusNode}
-                    onRunPython={runPython}
-                    onPreviewMarkdown={previewMarkdown}
-                    selectedPath={tabs.selectedPath}
-                    revealPath={tree.revealPath}
-                    rowPadding={density.treeRowPadding}
-                    gitStatus={git.fileStates}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
-            )}
-          </div>
+          <Sidebar
+            isDark={isDark}
+            rowPadding={density.treeRowPadding}
+            rootNodes={tree.rootNodes}
+            selectedPath={tabs.selectedPath}
+            revealPath={tree.revealPath}
+            onSelect={tabs.openTab}
+            onContextMenu={tree.handleContextMenu}
+            onCreateNew={tree.startCreate}
+            onMove={tree.handleMove}
+            onFocusNode={tree.handleFocusNode}
+            onRunPython={(node) => runPythonFile(node.path)}
+            onPreviewMarkdown={previewMarkdown}
+            gitFileStates={git.fileStates}
+            gitRepos={git.repos}
+            onGitStage={git.stage}
+            onGitUnstage={git.unstage}
+            onGitDiscard={git.discard}
+            onGitCommit={git.commit}
+            onGitPush={git.push}
+            onGitPull={git.pull}
+            onGitDiff={git.diff}
+          />
         </div>
       </div>
 
@@ -656,80 +473,21 @@ function App() {
       )}
 
       {tree.contextMenu && (
-        <div
-          className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]"
-          style={{ top: tree.contextMenu.y, left: tree.contextMenu.x }}
-        >
-          {tree.contextMenu.node.path.endsWith('.py') && (
-            <button
-              className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-              onClick={() => runPython(tree.contextMenu!.node)}
-            >
-              Run Script
-            </button>
-          )}
-          <button
-            className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-            onClick={() => openTerminalHere(tree.contextMenu!.node)}
-          >
-            Open Terminal
-          </button>
-          <button
-            className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-            onClick={() => tree.startCreate(tree.contextMenu!.node, 'file')}
-          >
-            New File
-          </button>
-          <button
-            className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-            onClick={() => tree.startCreate(tree.contextMenu!.node, 'directory')}
-          >
-            New Folder
-          </button>
-          <button
-            className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-            onClick={() => tree.startRename(tree.contextMenu!.node)}
-          >
-            Rename
-          </button>
-          <div className="h-px bg-fleet-border my-1" />
-          <button
-            className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-            onClick={() => {
-              tree.setClipboard({ path: tree.contextMenu!.node.path })
-              tree.setContextMenu(null)
-            }}
-          >
-            Copy
-          </button>
-          {tree.clipboard && (
-            <button
-              className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-              onClick={() => tree.pasteIntoNode(tree.contextMenu!.node)}
-            >
-              Paste
-            </button>
-          )}
-          {!tree.contextMenu.node.isRoot && (
-            <button
-              className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-              onClick={() => tree.deleteNode(tree.contextMenu!.node)}
-            >
-              Delete
-            </button>
-          )}
-          {tree.contextMenu.node.isRoot && (
-            <>
-              <div className="h-px bg-fleet-border my-1" />
-              <button
-                className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-                onClick={() => tree.handleRemoveFolder(tree.contextMenu!.node.path)}
-              >
-                Remove from Workspace
-              </button>
-            </>
-          )}
-        </div>
+        <TreeContextMenu
+          x={tree.contextMenu.x}
+          y={tree.contextMenu.y}
+          node={tree.contextMenu.node}
+          hasClipboard={!!tree.clipboard}
+          onClose={() => tree.setContextMenu(null)}
+          onRunPython={(node) => runPythonFile(node.path)}
+          onOpenTerminalHere={openTerminalHere}
+          onCreateNew={tree.startCreate}
+          onRename={tree.startRename}
+          onCopy={(node) => tree.setClipboard({ path: node.path })}
+          onPaste={tree.pasteIntoNode}
+          onDelete={tree.deleteNode}
+          onRemoveFolder={tree.handleRemoveFolder}
+        />
       )}
 
       {tree.renameTarget && (
@@ -797,92 +555,29 @@ function App() {
       )}
 
       {showSettings && (
-        <Modal onClose={() => setShowSettings(false)} width="w-[30rem]">
-          <div
-            className={clsx(density.settingsLabelClass, 'font-medium text-fleet-textHover mb-3')}
-          >
-            Settings
-          </div>
-          <div className="flex flex-col gap-4">
-            <SettingToggle
-              label="Tabs"
-              description="Keep multiple files open at once"
-              checked={settings.tabsEnabled}
-              onChange={(v) => updateSetting('tabsEnabled', v)}
-              labelClassName={density.settingsLabelClass}
-              descriptionClassName={density.settingsDescriptionClass}
-            />
-            <SettingToggle
-              label="Autosave"
-              description="Save automatically a moment after you stop typing"
-              checked={settings.autosaveEnabled}
-              onChange={(v) => updateSetting('autosaveEnabled', v)}
-              labelClassName={density.settingsLabelClass}
-              descriptionClassName={density.settingsDescriptionClass}
-            />
-            <SettingSelect
-              label="Mode"
-              description="UI density - editor font size, row height, spacing"
-              value={settings.uiMode}
-              options={UI_MODES}
-              onChange={(v) => updateSetting('uiMode', v)}
-              labelClassName={density.settingsLabelClass}
-              descriptionClassName={density.settingsDescriptionClass}
-            />
-            <SettingSelect
-              label="Sidebar"
-              description="Which side the file tree/git panel sits on"
-              value={settings.sidebarPosition}
-              options={SIDEBAR_POSITIONS}
-              onChange={(v) => updateSetting('sidebarPosition', v)}
-              labelClassName={density.settingsLabelClass}
-              descriptionClassName={density.settingsDescriptionClass}
-            />
-            <SettingToggle
-              label="Git"
-              description="Show git status badges and the Git panel for repositories"
-              checked={settings.gitEnabled}
-              onChange={(v) => updateSetting('gitEnabled', v)}
-              labelClassName={density.settingsLabelClass}
-              descriptionClassName={density.settingsDescriptionClass}
-            />
-            <SettingToggle
-              label="Diagnostics"
-              description="Inline error checking for TypeScript, JavaScript and Python"
-              checked={settings.diagnosticsEnabled}
-              onChange={(v) => updateSetting('diagnosticsEnabled', v)}
-              labelClassName={density.settingsLabelClass}
-              descriptionClassName={density.settingsDescriptionClass}
-            />
-          </div>
+        <SettingsModal
+          settings={settings}
+          updateSetting={updateSetting}
+          density={density}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
-          <div className="border-t border-fleet-border mt-4 pt-3">
-            <div
-              className={clsx(density.settingsLabelClass, 'font-medium text-fleet-textHover mb-2')}
-            >
-              Shortcuts
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {SHORTCUTS.map((s) => (
-                <div key={s.description} className="flex items-center justify-between gap-3">
-                  <span className={clsx(density.settingsDescriptionClass, 'text-gray-400')}>
-                    {s.description}
-                  </span>
-                  <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-gray-300 font-mono shrink-0">
-                    {s.keys}
-                  </kbd>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end mt-4">
-            <button
-              className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
-              onClick={() => setShowSettings(false)}
-            >
-              Done
-            </button>
+      {showCommitPalette && (
+        <Modal onClose={() => setShowCommitPalette(false)} width="w-[34rem]" height="max-h-[75vh]">
+          <div className="text-sm font-medium text-fleet-textHover mb-3 shrink-0">Commit</div>
+          <div className="overflow-y-auto flex-1 min-h-0">
+            <GitPanel
+              repos={git.repos}
+              isDark={isDark}
+              onStage={git.stage}
+              onUnstage={git.unstage}
+              onDiscard={git.discard}
+              onCommit={git.commit}
+              onPush={git.push}
+              onPull={git.pull}
+              onDiff={git.diff}
+            />
           </div>
         </Modal>
       )}

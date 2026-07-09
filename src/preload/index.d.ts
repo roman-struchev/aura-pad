@@ -62,6 +62,10 @@ declare global {
         root: string,
         relPath: string
       ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
+      gitDiscard: (
+        root: string,
+        relPath: string
+      ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
       gitCommit: (
         root: string,
         message: string

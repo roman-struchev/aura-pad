@@ -4,7 +4,7 @@ export type { UiMode }
 
 export const UI_MODES: UiMode[] = ['micro', 'compact', 'normal', 'large']
 
-interface DensityPreset {
+export interface DensityPreset {
   editorFontSize: number
   treeRowPadding: string
   tabBarHeight: string

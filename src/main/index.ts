@@ -25,6 +25,7 @@ import {
   getDiff,
   stagePath,
   unstagePath,
+  discardPath,
   commit as gitCommit,
   push as gitPush,
   pull as gitPull
@@ -172,9 +173,12 @@ ipcMain.handle('move-path', async (_, sourcePath: string, targetDirPath: string)
 })
 
 // Git IPC Handlers
+const refreshedStatuses = (): ReturnType<typeof getAllRepoStatuses> =>
+  getAllRepoStatuses(loadWorkspaces())
+
 ipcMain.handle('git-status', async () => {
   if (!loadSettings().gitEnabled) return []
-  return getAllRepoStatuses(loadWorkspaces())
+  return refreshedStatuses()
 })
 
 ipcMain.handle('git-diff', async (_, root: string, relPath: string) => {
@@ -183,17 +187,22 @@ ipcMain.handle('git-diff', async (_, root: string, relPath: string) => {
 
 ipcMain.handle('git-stage', async (_, root: string, relPath: string) => {
   const result = await stagePath(root, relPath)
-  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+  return { ...result, statuses: await refreshedStatuses() }
 })
 
 ipcMain.handle('git-unstage', async (_, root: string, relPath: string) => {
   const result = await unstagePath(root, relPath)
-  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+  return { ...result, statuses: await refreshedStatuses() }
+})
+
+ipcMain.handle('git-discard', async (_, root: string, relPath: string) => {
+  const result = await discardPath(root, relPath)
+  return { ...result, statuses: await refreshedStatuses() }
 })
 
 ipcMain.handle('git-commit', async (_, root: string, message: string) => {
   const result = await gitCommit(root, message)
-  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+  return { ...result, statuses: await refreshedStatuses() }
 })
 
 ipcMain.handle('git-push', async (_, root: string) => {
@@ -202,7 +211,7 @@ ipcMain.handle('git-push', async (_, root: string) => {
 
 ipcMain.handle('git-pull', async (_, root: string) => {
   const result = await gitPull(root)
-  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+  return { ...result, statuses: await refreshedStatuses() }
 })
 
 // Diagnostics IPC Handlers
