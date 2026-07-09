@@ -4,7 +4,6 @@ import { Terminal } from './components/Terminal'
 import { GlobalSearch } from './components/GlobalSearch'
 import { FileSearch } from './components/FileSearch'
 import { MarkdownPreview } from './components/MarkdownPreview'
-import { GitPanel } from './components/GitPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
@@ -40,8 +39,8 @@ import {
 } from 'lucide-react'
 
 function App() {
-  const isDark = useTheme()
   const { settings, updateSetting } = useSettings()
+  const isDark = useTheme(settings.theme)
   const density = DENSITY[settings.uiMode]
 
   const terminal = useTerminals()
@@ -58,11 +57,11 @@ function App() {
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
 
-  // Search / settings / commit overlay state
+  // Search / settings overlay state
   const [showSearch, setShowSearch] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [showCommitPalette, setShowCommitPalette] = useState(false)
+  const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
 
   const lastShiftTime = useRef<number>(0)
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -121,7 +120,7 @@ function App() {
       }
       if (!e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        setShowCommitPalette(true)
+        setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
       }
       if (
         (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') ||
@@ -170,9 +169,13 @@ function App() {
     terminal.openNewTerminal(dirname(path), `python3 "${path}"`)
   }
 
+  // Toggles: clicking the hover icon again on an already-previewing tab flips
+  // it back to source. Checked before opening, since an already-open tab's
+  // showPreview is untouched by openTab (only a brand-new tab starts at false).
   const previewMarkdown = async (node: FileNode): Promise<void> => {
+    const wasPreviewing = tabs.tabs.find((t) => t.path === node.path)?.showPreview ?? false
     await tabs.openTab(node.path)
-    tabs.updateTab(node.path, { showPreview: true })
+    tabs.updateTab(node.path, { showPreview: !wasPreviewing })
   }
 
   const openTerminalHere = (node: FileNode): void => {
@@ -436,6 +439,8 @@ function App() {
           <Sidebar
             isDark={isDark}
             rowPadding={density.treeRowPadding}
+            sidebarView={sidebarView}
+            setSidebarView={setSidebarView}
             rootNodes={tree.rootNodes}
             selectedPath={tabs.selectedPath}
             revealPath={tree.revealPath}
@@ -561,25 +566,6 @@ function App() {
           density={density}
           onClose={() => setShowSettings(false)}
         />
-      )}
-
-      {showCommitPalette && (
-        <Modal onClose={() => setShowCommitPalette(false)} width="w-[34rem]" height="max-h-[75vh]">
-          <div className="text-sm font-medium text-fleet-textHover mb-3 shrink-0">Commit</div>
-          <div className="overflow-y-auto flex-1 min-h-0">
-            <GitPanel
-              repos={git.repos}
-              isDark={isDark}
-              onStage={git.stage}
-              onUnstage={git.unstage}
-              onDiscard={git.discard}
-              onCommit={git.commit}
-              onPush={git.push}
-              onPull={git.pull}
-              onDiff={git.diff}
-            />
-          </div>
-        </Modal>
       )}
 
       <DialogHost />

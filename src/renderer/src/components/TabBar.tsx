@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { X, Pin, PinOff } from 'lucide-react'
 import type { OpenTab } from '../hooks/useTabs'
-import { confirmDialog } from '../lib/dialogs'
 
 interface TabBarProps {
   tabs: OpenTab[]
@@ -15,8 +14,8 @@ interface TabBarProps {
 }
 
 // The tab strip: click to switch, drag to reorder, hover for a pin toggle and
-// close button. Pinned tabs ask for confirmation before closing (see the X
-// handler below) so they can't be closed by an absent-minded click.
+// close button. Pinned-tab close confirmation lives in closeTab itself (so
+// Cmd+W respects it too, not just this button).
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabPath,
@@ -29,7 +28,9 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [draggedTab, setDraggedTab] = useState<string | null>(null)
   const [dragOverTab, setDragOverTab] = useState<string | null>(null)
 
-  if (tabs.length === 0) return null
+  // A single open file is already obvious from the window title bar - no
+  // need for a tab strip until there's actually something to switch between.
+  if (tabs.length <= 1) return null
 
   return (
     <div
@@ -91,9 +92,8 @@ export const TabBar: React.FC<TabBarProps> = ({
           <X
             size={12}
             className="opacity-50 hover:opacity-100 shrink-0"
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation()
-              if (tab.pinned && !(await confirmDialog('This tab is pinned. Close anyway?'))) return
               closeTab(tab.path)
             }}
           />

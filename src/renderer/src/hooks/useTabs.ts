@@ -106,6 +106,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   const closeTab = async (path: string): Promise<void> => {
     const tab = tabs.find((t) => t.path === path)
     if (!tab) return
+    if (tab.pinned && !(await confirmDialog('This tab is pinned. Close anyway?'))) return
     if (!tab.isSaved && !(await confirmDialog('You have unsaved changes. Close without saving?')))
       return
 

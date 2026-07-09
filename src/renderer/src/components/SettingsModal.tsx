@@ -1,7 +1,7 @@
 import React from 'react'
 import clsx from 'clsx'
 import type { AppSettings } from '../../../shared/settings'
-import { SIDEBAR_POSITIONS } from '../../../shared/settings'
+import { SIDEBAR_POSITIONS, THEME_MODES } from '../../../shared/settings'
 import { UI_MODES, type DensityPreset } from '../density'
 import { Modal } from './Modal'
 import { SettingToggle } from './SettingToggle'
@@ -18,7 +18,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⌘S', description: 'Save file' },
   { keys: '⌘W', description: 'Close tab' },
   { keys: '⇧⌘T', description: 'Reopen closed tab' },
-  { keys: '⌘K', description: 'Open commit palette' },
+  { keys: '⌘K', description: 'Toggle the Git sidebar tab' },
   { keys: '⇧⌘F', description: 'Search in workspace' },
   { keys: 'Shift Shift', description: 'Quick open a file or folder' },
   { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
@@ -37,6 +37,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       Settings
     </div>
     <div className="flex flex-col gap-4">
+      <SettingSelect
+        label="Theme"
+        description="Dark, light, or follow the OS"
+        value={settings.theme}
+        options={THEME_MODES}
+        onChange={(v) => updateSetting('theme', v)}
+        labelClassName={density.settingsLabelClass}
+        descriptionClassName={density.settingsDescriptionClass}
+      />
       <SettingToggle
         label="Tabs"
         description="Keep multiple files open at once"

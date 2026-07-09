@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Files, GitBranch } from 'lucide-react'
 import clsx from 'clsx'
 import { FileTree, type FileNode } from './FileTree'
@@ -8,6 +8,8 @@ import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/
 interface SidebarProps {
   isDark: boolean
   rowPadding: string
+  sidebarView: 'files' | 'git'
+  setSidebarView: (view: 'files' | 'git') => void
   // File tree
   rootNodes: FileNode[]
   selectedPath: string | null
@@ -38,6 +40,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   isDark,
   rowPadding,
+  sidebarView,
+  setSidebarView,
   rootNodes,
   selectedPath,
   revealPath,
@@ -58,8 +62,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onGitPull,
   onGitDiff
 }) => {
-  const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
-
   return (
     <>
       {gitRepos.length > 0 && (

@@ -56,19 +56,34 @@ function parseBranch(headerLine: string): string {
 export async function getRepoStatus(root: string): Promise<GitRepoStatus | null> {
   if (!isGitRepo(root)) return null
   try {
-    const stdout = await runGit(root, ['status', '--porcelain=v1', '-b'])
-    const lines = stdout.split('\n').filter((l) => l.length > 0)
-    const branch = lines.length > 0 ? parseBranch(lines[0]) : ''
+    // `-z` disables git's default quoting of paths with spaces or non-ASCII
+    // bytes (which otherwise come back as e.g. `"my file.md"` or octal-escaped
+    // garbage for Unicode names - literal text that isn't a usable path) and
+    // NUL-terminates each field instead, so it can be split back out exactly.
+    const stdout = await runGit(root, ['status', '--porcelain=v1', '-z', '-b'])
+    const tokens = stdout.split('\0').filter((t) => t.length > 0)
+
+    let branch = ''
+    let i = 0
+    if (tokens[0]?.startsWith('##')) {
+      branch = parseBranch(tokens[0])
+      i = 1
+    }
 
     const staged: GitFileEntry[] = []
     const unstaged: GitFileEntry[] = []
 
-    for (const line of lines.slice(1)) {
-      const x = line[0]
-      const y = line[1]
-      let relPath = line.slice(3)
-      if (relPath.includes(' -> ')) relPath = relPath.split(' -> ')[1]
+    while (i < tokens.length) {
+      const record = tokens[i]
+      i++
+      const x = record[0]
+      const y = record[1]
+      const relPath = record.slice(3)
       const absPath = path.join(root, relPath)
+
+      // Renames/copies carry the original path as a second NUL-terminated
+      // token right after this one - not needed here, just skip past it.
+      if (x === 'R' || x === 'C' || y === 'R' || y === 'C') i++
 
       if (x === '?' && y === '?') {
         unstaged.push({ path: absPath, relPath, state: 'untracked' })
