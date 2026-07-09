@@ -1,0 +1,71 @@
+import { useEffect, useState } from 'react'
+import type { GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
+import { alertDialog } from '../lib/dialogs'
+
+// Owns git status for all open workspace roots: fetches it, subscribes to the
+// watcher-driven push updates, and wraps the mutating IPC calls (stage/
+// unstage/commit/push/pull), surfacing failures via the app's own dialog
+// instead of a native alert.
+export function useGitStatus(enabled: boolean) {
+  const [rawRepos, setRawRepos] = useState<GitRepoStatus[]>([])
+  // Masked rather than cleared via an effect, so disabling the setting can't
+  // race with an in-flight fetch that resolves after the effect already ran.
+  const repos = enabled ? rawRepos : []
+
+  useEffect(() => {
+    if (!enabled) return
+    window.api.getGitStatus().then(setRawRepos)
+    const unsubscribe = window.api.onGitStatusChanged(setRawRepos)
+    return unsubscribe
+  }, [enabled])
+
+  const refresh = async (): Promise<void> => {
+    if (!enabled) return
+    setRawRepos(await window.api.getGitStatus())
+  }
+
+  // Flattened for cheap per-row lookup in FileTree. Unstaged state (if any)
+  // takes priority over "staged", since it reflects the more urgent fact that
+  // there are still unsaved-to-git changes on top of what's already staged.
+  const fileStates: Record<string, GitFileState> = {}
+  for (const repo of repos) {
+    for (const entry of repo.staged) fileStates[entry.path] = 'staged'
+    for (const entry of repo.unstaged) fileStates[entry.path] = entry.state
+  }
+
+  const stage = async (root: string, relPath: string): Promise<void> => {
+    const result = await window.api.gitStage(root, relPath)
+    setRawRepos(result.statuses)
+  }
+
+  const unstage = async (root: string, relPath: string): Promise<void> => {
+    const result = await window.api.gitUnstage(root, relPath)
+    setRawRepos(result.statuses)
+  }
+
+  const commit = async (root: string, message: string): Promise<boolean> => {
+    const result = await window.api.gitCommit(root, message)
+    setRawRepos(result.statuses)
+    if (!result.success) {
+      await alertDialog(result.error || 'Commit failed.')
+      return false
+    }
+    return true
+  }
+
+  const push = async (root: string): Promise<void> => {
+    const result = await window.api.gitPush(root)
+    await alertDialog(result.output || (result.success ? 'Pushed successfully.' : 'Push failed.'))
+  }
+
+  const pull = async (root: string): Promise<void> => {
+    const result = await window.api.gitPull(root)
+    setRawRepos(result.statuses)
+    await alertDialog(result.output || (result.success ? 'Pulled successfully.' : 'Pull failed.'))
+  }
+
+  const diff = (root: string, relPath: string): Promise<{ original: string; modified: string }> =>
+    window.api.getGitDiff(root, relPath)
+
+  return { repos, fileStates, refresh, stage, unstage, commit, push, pull, diff }
+}

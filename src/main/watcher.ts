@@ -2,6 +2,8 @@ import { BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { loadWorkspaces, getWorkspaceTrees, isIgnored } from './workspaces'
+import { getAllRepoStatuses } from './git'
+import { loadSettings } from './settings'
 
 // File watching: react to changes made outside the app (other editors, git,
 // other windows of this app) without reacting to our own writes.
@@ -17,6 +19,23 @@ const recentSelfWrites = new Map<string, number>()
 const structureDebounceTimers = new Map<string, NodeJS.Timeout>()
 const SELF_WRITE_GRACE_MS = 1500
 const STRUCTURE_DEBOUNCE_MS = 300
+const GIT_STATUS_DEBOUNCE_MS = 500
+
+let gitStatusDebounceTimer: NodeJS.Timeout | null = null
+
+// Any file change (ours or external) can change `git status` output - even a
+// self-write, since it can move a file from modified back to unmodified. Kept
+// as its own debounce (rather than piggybacking on the structural-change one
+// above) since it must also fire for plain content edits, not just renames.
+function scheduleGitStatusRefresh(): void {
+  if (!loadSettings().gitEnabled) return
+  if (gitStatusDebounceTimer) clearTimeout(gitStatusDebounceTimer)
+  gitStatusDebounceTimer = setTimeout(async () => {
+    gitStatusDebounceTimer = null
+    const statuses = await getAllRepoStatuses(loadWorkspaces())
+    broadcast('git-status-changed', statuses)
+  }, GIT_STATUS_DEBOUNCE_MS)
+}
 
 export function broadcast(channel: string, ...args: unknown[]): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -32,6 +51,8 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   if (!filename) return
   const base = path.basename(filename)
   if (base === '.git' || base === '.DS_Store' || isIgnored(base)) return
+
+  scheduleGitStatusRefresh()
 
   const fullPath = path.join(rootPath, filename)
 

@@ -20,6 +20,16 @@ import { loadSettings, saveSettings } from './settings'
 import { setupWatchers, closeAllWatchers, broadcast, recordSelfWrite } from './watcher'
 import { registerCreatePtyHandler, killAllPtys } from './terminals'
 import { buildAppMenu } from './menu'
+import {
+  getAllRepoStatuses,
+  getDiff,
+  stagePath,
+  unstagePath,
+  commit as gitCommit,
+  push as gitPush,
+  pull as gitPull
+} from './git'
+import { lintPython, lintEslint } from './lint'
 import type { AppSettings } from '../shared/settings'
 
 function createWindow(): void {
@@ -159,4 +169,49 @@ ipcMain.handle('move-path', async (_, sourcePath: string, targetDirPath: string)
   const result = movePath(sourcePath, targetDirPath)
   if (result.success) setupWatchers()
   return result
+})
+
+// Git IPC Handlers
+ipcMain.handle('git-status', async () => {
+  if (!loadSettings().gitEnabled) return []
+  return getAllRepoStatuses(loadWorkspaces())
+})
+
+ipcMain.handle('git-diff', async (_, root: string, relPath: string) => {
+  return getDiff(root, relPath)
+})
+
+ipcMain.handle('git-stage', async (_, root: string, relPath: string) => {
+  const result = await stagePath(root, relPath)
+  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+})
+
+ipcMain.handle('git-unstage', async (_, root: string, relPath: string) => {
+  const result = await unstagePath(root, relPath)
+  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+})
+
+ipcMain.handle('git-commit', async (_, root: string, message: string) => {
+  const result = await gitCommit(root, message)
+  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+})
+
+ipcMain.handle('git-push', async (_, root: string) => {
+  return gitPush(root)
+})
+
+ipcMain.handle('git-pull', async (_, root: string) => {
+  const result = await gitPull(root)
+  return { ...result, statuses: await getAllRepoStatuses(loadWorkspaces()) }
+})
+
+// Diagnostics IPC Handlers
+ipcMain.handle('lint-python', async (_, absPath: string) => {
+  if (!loadSettings().diagnosticsEnabled) return null
+  return lintPython(absPath)
+})
+
+ipcMain.handle('lint-eslint', async (_, absPath: string, workspaceRoot: string) => {
+  if (!loadSettings().diagnosticsEnabled) return []
+  return lintEslint(absPath, workspaceRoot)
 })

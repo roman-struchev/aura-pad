@@ -8,7 +8,10 @@ export type OpenTab = {
   isSaved: boolean
   externalChangeAvailable: boolean
   showPreview: boolean
+  pinned?: boolean
 }
+
+const CLOSED_STACK_LIMIT = 10
 
 // Manages the set of open files (tab-bar style): opening/closing/saving,
 // autosave, reacting to external changes on disk, and keeping tab paths in
@@ -20,6 +23,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   const editorRef = useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null)
   const tabsRef = useRef<OpenTab[]>([])
   const pendingJumpLine = useRef<number | null>(null)
+  const closedStackRef = useRef<string[]>([])
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null
   const selectedPath = activeTab?.path ?? null
@@ -114,11 +118,40 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       setActiveTabPath(next ? next.path : null)
     }
     pendingJumpLine.current = null
+
+    closedStackRef.current = closedStackRef.current.filter((p) => p !== path)
+    closedStackRef.current.push(path)
+    if (closedStackRef.current.length > CLOSED_STACK_LIMIT) closedStackRef.current.shift()
   }
 
   const handleCloseFile = (): void => {
     if (!activeTabPath) return
     closeTab(activeTabPath)
+  }
+
+  // Cmd+Shift+T: reopen the most recently closed tab, browser-style.
+  const reopenClosedTab = (): void => {
+    const path = closedStackRef.current.pop()
+    if (path) openTab(path)
+  }
+
+  const togglePin = (path: string): void => {
+    const tab = tabs.find((t) => t.path === path)
+    if (tab) updateTab(path, { pinned: !tab.pinned })
+  }
+
+  // Reorders tabs by moving sourcePath to targetPath's index (drag & drop in the tab bar).
+  const reorderTab = (sourcePath: string, targetPath: string): void => {
+    if (sourcePath === targetPath) return
+    setTabs((prev) => {
+      const sourceIdx = prev.findIndex((t) => t.path === sourcePath)
+      const targetIdx = prev.findIndex((t) => t.path === targetPath)
+      if (sourceIdx === -1 || targetIdx === -1) return prev
+      const next = [...prev]
+      const [moved] = next.splice(sourceIdx, 1)
+      next.splice(targetIdx, 0, moved)
+      return next
+    })
   }
 
   const reloadFromDisk = async (): Promise<void> => {
@@ -208,6 +241,9 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     openTab,
     closeTab,
     handleCloseFile,
+    reopenClosedTab,
+    togglePin,
+    reorderTab,
     handleSave,
     handleEditorChange,
     handleEditorDidMount,

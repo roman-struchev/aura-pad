@@ -2,6 +2,8 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../shared/settings'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
+import type { GitRepoStatus } from '../shared/gitStatus'
+import type { LintMarker } from '../shared/lint'
 
 declare global {
   interface Window {
@@ -49,6 +51,31 @@ declare global {
       ptyResize: (termId: string, cols: number, rows: number) => void
       onPtyData: (termId: string, callback: (data: string) => void) => () => void
       onPtyExit: (termId: string, callback: () => void) => () => void
+
+      getGitStatus: () => Promise<GitRepoStatus[]>
+      getGitDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
+      gitStage: (
+        root: string,
+        relPath: string
+      ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
+      gitUnstage: (
+        root: string,
+        relPath: string
+      ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
+      gitCommit: (
+        root: string,
+        message: string
+      ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
+      gitPush: (root: string) => Promise<{ success: boolean; output: string }>
+      gitPull: (
+        root: string
+      ) => Promise<{ success: boolean; output: string; statuses: GitRepoStatus[] }>
+      onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => () => void
+
+      lintPython: (absPath: string) => Promise<LintMarker | null>
+      lintEslint: (absPath: string, workspaceRoot: string) => Promise<LintMarker[]>
+
+      getPathForFile: (file: File) => string
     }
   }
 }

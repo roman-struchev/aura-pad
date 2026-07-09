@@ -1,43 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { File as FileIcon, Search } from 'lucide-react'
+import { File as FileIcon, Folder, Search } from 'lucide-react'
 import type { FileNode } from '../../../shared/fileNode'
 
 interface FileResult {
   name: string
   path: string
+  type: 'file' | 'directory'
 }
 
 interface FileSearchProps {
   onClose: () => void
-  onSelect: (path: string) => void
+  onSelect: (path: string, type: 'file' | 'directory') => void
+  rootNodes: FileNode[]
 }
 
-export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => {
+// Strips the matching workspace root's absolute path off, prefixing the
+// root folder's own name instead - so results read like "myproject/src/App.tsx"
+// rather than a full local filesystem path.
+function toRelativeDisplay(path: string, rootNodes: FileNode[]): string {
+  const root = rootNodes.find((r) => path === r.path || path.startsWith(r.path + '/'))
+  if (!root) return path
+  return root.name + path.slice(root.path.length)
+}
+
+export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect, rootNodes }) => {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FileResult[]>([])
-  const [allFiles, setAllFiles] = useState<FileResult[]>([])
+  const [allEntries, setAllEntries] = useState<FileResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
 
-    // Load all file paths once when search opens. The trees from
+    // Load all file/folder paths once when search opens. The trees from
     // getWorkspaces() are already filtered server-side (.gitignore + the
     // built-in ignore list), so no need to filter again here.
     window.api.getWorkspaces().then((trees) => {
       const flat: FileResult[] = []
       const flatten = (nodes: FileNode[]) => {
         for (const node of nodes) {
-          if (node.type === 'file') {
-            flat.push({ name: node.name, path: node.path })
-          } else if (node.children) {
-            flatten(node.children)
-          }
+          flat.push({ name: node.name, path: node.path, type: node.type })
+          if (node.children) flatten(node.children)
         }
       }
       flatten(trees)
-      setAllFiles(flat)
+      setAllEntries(flat)
     })
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -51,7 +59,7 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
         setSelectedIndex((prev) => Math.max(prev - 1, 0))
       }
       if (e.key === 'Enter' && results[selectedIndex]) {
-        onSelect(results[selectedIndex].path)
+        onSelect(results[selectedIndex].path, results[selectedIndex].type)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -64,12 +72,12 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
       return
     }
     const q = query.toLowerCase()
-    const filtered = allFiles
+    const filtered = allEntries
       .filter((f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
       .slice(0, 20) // Show top 20 matches
     setResults(filtered)
     setSelectedIndex(0)
-  }, [query, allFiles])
+  }, [query, allEntries])
 
   return (
     <div className="fixed inset-0 z-[110] flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm">
@@ -79,7 +87,7 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search files everywhere..."
+            placeholder="Search files and folders everywhere..."
             className="flex-1 bg-transparent border-none outline-none text-fleet-text text-base"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -91,14 +99,20 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
             <div
               key={res.path}
               className={`px-4 py-2 flex flex-col cursor-pointer ${selectedIndex === i ? 'bg-fleet-active' : 'hover:bg-fleet-active/50'}`}
-              onClick={() => onSelect(res.path)}
+              onClick={() => onSelect(res.path, res.type)}
               onMouseEnter={() => setSelectedIndex(i)}
             >
               <div className="flex items-center gap-2 text-sm text-gray-200">
-                <FileIcon size={14} className="text-blue-400" />
+                {res.type === 'directory' ? (
+                  <Folder size={14} className="text-gray-400" />
+                ) : (
+                  <FileIcon size={14} className="text-blue-400" />
+                )}
                 <span className="font-medium">{res.name}</span>
               </div>
-              <div className="text-[10px] text-gray-500 truncate pl-6">{res.path}</div>
+              <div className="text-[10px] text-gray-500 truncate pl-6">
+                {toRelativeDisplay(res.path, rootNodes)}
+              </div>
             </div>
           ))}
           {query && results.length === 0 && (
@@ -112,7 +126,7 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
         </div>
 
         <div className="px-3 py-1.5 bg-fleet-header border-t border-fleet-border text-[9px] text-gray-600 flex justify-between uppercase tracking-wider">
-          <span>{results.length} files found</span>
+          <span>{results.length} results found</span>
           <span>Double-Shift to Close</span>
         </div>
       </div>

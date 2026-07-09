@@ -1,4 +1,5 @@
 import React from 'react'
+import clsx from 'clsx'
 
 interface SettingSelectProps<T extends string> {
   label: string
@@ -6,6 +7,8 @@ interface SettingSelectProps<T extends string> {
   value: T
   options: T[]
   onChange: (value: T) => void
+  labelClassName?: string
+  descriptionClassName?: string
 }
 
 export function SettingSelect<T extends string>({
@@ -13,13 +16,15 @@ export function SettingSelect<T extends string>({
   description,
   value,
   options,
-  onChange
+  onChange,
+  labelClassName = 'text-sm',
+  descriptionClassName = 'text-xs'
 }: SettingSelectProps<T>): React.ReactElement {
   return (
     <label className="flex items-center justify-between gap-4">
       <div className="flex flex-col min-w-0">
-        <span className="text-sm text-fleet-text">{label}</span>
-        <span className="text-xs text-gray-500">{description}</span>
+        <span className={clsx(labelClassName, 'text-fleet-text')}>{label}</span>
+        <span className={clsx(descriptionClassName, 'text-gray-500')}>{description}</span>
       </div>
       <select
         value={value}

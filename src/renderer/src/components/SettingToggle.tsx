@@ -6,18 +6,22 @@ interface SettingToggleProps {
   description: string
   checked: boolean
   onChange: (value: boolean) => void
+  labelClassName?: string
+  descriptionClassName?: string
 }
 
 export const SettingToggle: React.FC<SettingToggleProps> = ({
   label,
   description,
   checked,
-  onChange
+  onChange,
+  labelClassName = 'text-sm',
+  descriptionClassName = 'text-xs'
 }) => (
   <label className="flex items-center justify-between gap-4 cursor-pointer">
     <div className="flex flex-col min-w-0">
-      <span className="text-sm text-fleet-text">{label}</span>
-      <span className="text-xs text-gray-500">{description}</span>
+      <span className={clsx(labelClassName, 'text-fleet-text')}>{label}</span>
+      <span className={clsx(descriptionClassName, 'text-gray-500')}>{description}</span>
     </div>
     <button
       type="button"

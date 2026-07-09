@@ -1,7 +1,8 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../shared/settings'
 import type { FileNode } from '../shared/fileNode'
+import type { GitRepoStatus } from '../shared/gitStatus'
 
 const api = {
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
@@ -61,7 +62,26 @@ const api = {
     const listener = () => callback()
     ipcRenderer.on(channel, listener)
     return () => ipcRenderer.removeListener(channel, listener)
-  }
+  },
+
+  getGitStatus: () => ipcRenderer.invoke('git-status'),
+  getGitDiff: (root: string, relPath: string) => ipcRenderer.invoke('git-diff', root, relPath),
+  gitStage: (root: string, relPath: string) => ipcRenderer.invoke('git-stage', root, relPath),
+  gitUnstage: (root: string, relPath: string) => ipcRenderer.invoke('git-unstage', root, relPath),
+  gitCommit: (root: string, message: string) => ipcRenderer.invoke('git-commit', root, message),
+  gitPush: (root: string) => ipcRenderer.invoke('git-push', root),
+  gitPull: (root: string) => ipcRenderer.invoke('git-pull', root),
+  onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => {
+    const listener = (_, statuses: GitRepoStatus[]) => callback(statuses)
+    ipcRenderer.on('git-status-changed', listener)
+    return () => ipcRenderer.removeListener('git-status-changed', listener)
+  },
+
+  lintPython: (absPath: string) => ipcRenderer.invoke('lint-python', absPath),
+  lintEslint: (absPath: string, workspaceRoot: string) =>
+    ipcRenderer.invoke('lint-eslint', absPath, workspaceRoot),
+
+  getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }
 
 if (process.contextIsolated) {

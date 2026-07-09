@@ -182,6 +182,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   return {
     rootNodes,
     revealPath,
+    setRevealPath,
     contextMenu,
     setContextMenu,
     renameTarget,

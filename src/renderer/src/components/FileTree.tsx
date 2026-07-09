@@ -8,10 +8,13 @@ import {
   FileText,
   File,
   FilePlus,
-  FolderPlus
+  FolderPlus,
+  Play,
+  Eye
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { FileNode } from '../../../shared/fileNode'
+import type { GitFileState } from '../../../shared/gitStatus'
 
 export type { FileNode }
 
@@ -22,10 +25,22 @@ interface FileTreeProps {
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
   onMove: (sourcePath: string, targetDirPath: string) => void
   onFocusNode: (node: FileNode) => void
+  onRunPython: (node: FileNode) => void
+  onPreviewMarkdown: (node: FileNode) => void
   selectedPath: string | null
   revealPath?: string | null
   rowPadding?: string
+  gitStatus?: Record<string, GitFileState>
   level?: number
+}
+
+const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
+  staged: { label: '●', className: 'text-blue-400' },
+  modified: { label: 'M', className: 'text-amber-500' },
+  added: { label: 'A', className: 'text-green-500' },
+  untracked: { label: 'U', className: 'text-green-500' },
+  deleted: { label: 'D', className: 'text-red-500' },
+  renamed: { label: 'R', className: 'text-amber-500' }
 }
 
 export const DRAG_PATH_MIME = 'application/x-aura-path'
@@ -53,9 +68,12 @@ export const FileTree: React.FC<FileTreeProps> = ({
   onCreateNew,
   onMove,
   onFocusNode,
+  onRunPython,
+  onPreviewMarkdown,
   selectedPath,
   revealPath,
   rowPadding = 'py-1',
+  gitStatus,
   level = 0
 }) => {
   const [expanded, setExpanded] = useState<boolean>(level === 0)
@@ -157,6 +175,16 @@ export const FileTree: React.FC<FileTreeProps> = ({
           {getIcon(node.name, node.type, expanded)}
         </span>
         <span className="truncate flex-1">{node.name}</span>
+        {!isDirectory && gitStatus?.[node.path] && (
+          <span
+            className={clsx(
+              'text-[10px] font-bold ml-1 shrink-0 w-3 text-center',
+              GIT_BADGE[gitStatus[node.path]].className
+            )}
+          >
+            {GIT_BADGE[gitStatus[node.path]].label}
+          </span>
+        )}
         {isDirectory && (
           <div className="hidden group-hover:flex items-center gap-1 ml-1 shrink-0">
             <button
@@ -181,6 +209,34 @@ export const FileTree: React.FC<FileTreeProps> = ({
             </button>
           </div>
         )}
+        {!isDirectory && node.name.endsWith('.py') && (
+          <div className="hidden group-hover:flex items-center ml-1 shrink-0">
+            <button
+              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-green-500"
+              title="Run Script"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRunPython(node)
+              }}
+            >
+              <Play size={13} />
+            </button>
+          </div>
+        )}
+        {!isDirectory && node.name.endsWith('.md') && (
+          <div className="hidden group-hover:flex items-center ml-1 shrink-0">
+            <button
+              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-blue-400"
+              title="Preview"
+              onClick={(e) => {
+                e.stopPropagation()
+                onPreviewMarkdown(node)
+              }}
+            >
+              <Eye size={13} />
+            </button>
+          </div>
+        )}
       </div>
 
       {isDirectory && expanded && node.children && (
@@ -194,9 +250,12 @@ export const FileTree: React.FC<FileTreeProps> = ({
               onCreateNew={onCreateNew}
               onMove={onMove}
               onFocusNode={onFocusNode}
+              onRunPython={onRunPython}
+              onPreviewMarkdown={onPreviewMarkdown}
               selectedPath={selectedPath}
               revealPath={revealPath}
               rowPadding={rowPadding}
+              gitStatus={gitStatus}
               level={level + 1}
             />
           ))}
