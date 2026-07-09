@@ -360,7 +360,7 @@ function App() {
                     padding: { top: 16 },
                     scrollBeyondLastLine: false,
                     lineNumbers: settings.lineNumbersEnabled ? 'on' : 'off',
-                    scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 }
+                    scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 }
                   }}
                 />
               )
