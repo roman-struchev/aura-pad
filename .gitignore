@@ -4,3 +4,12 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# IDEs
+.idea
+.vscode
+
+# Local env files
+.env
+.env.local
+.env.*.local

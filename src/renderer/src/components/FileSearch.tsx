@@ -18,6 +18,12 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const isIgnored = (name: string) => {
+    return name.startsWith('.') || [
+      'node_modules', 'dist', 'out', 'build', 'target', 'venv', '.venv', '__pycache__'
+    ].includes(name);
+  };
+
   useEffect(() => {
     inputRef.current?.focus();
     
@@ -26,6 +32,10 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect }) => 
       const flat: FileResult[] = [];
       const flatten = (nodes: any[]) => {
         for (const node of nodes) {
+          // Check if this node or any of its parents should be ignored
+          // (Though buildFileTree already filters some, we double check here)
+          if (isIgnored(node.name)) continue;
+
           if (node.type === 'file') {
             flat.push({ name: node.name, path: node.path });
           } else if (node.children) {

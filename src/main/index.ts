@@ -32,6 +32,23 @@ function saveWorkspaces(paths: string[]) {
   } catch(e) {}
 }
 
+// Helper to check if a directory should be ignored
+function isIgnored(name: string) {
+  // Ignore hidden folders (starting with .) and common system/build folders
+  return name.startsWith('.') || [
+    'node_modules', 
+    'dist', 
+    'out', 
+    'build', 
+    'target', 
+    'venv', 
+    '.venv', 
+    '__pycache__',
+    'package-lock.json',
+    'yarn.lock'
+  ].includes(name);
+}
+
 function buildFileTree(dirPath: string, isRoot = false): any {
   const name = path.basename(dirPath)
   const item: any = { name, path: dirPath, type: 'directory', children: [], isRoot }
@@ -39,7 +56,8 @@ function buildFileTree(dirPath: string, isRoot = false): any {
   try {
     const files = fs.readdirSync(dirPath)
     for (const file of files) {
-      if (['.git', 'node_modules', '.DS_Store', 'dist', 'out'].includes(file)) continue
+      // Still ignore for UI tree
+      if (['.git', 'node_modules', '.DS_Store'].includes(file)) continue
       
       const fullPath = path.join(dirPath, file)
       try {
@@ -86,7 +104,7 @@ async function searchInWorkspaces(query: string) {
       try {
         const files = fs.readdirSync(currentPath)
         for (const file of files) {
-          if (['.git', 'node_modules', '.DS_Store', 'dist', 'out', 'build'].includes(file)) continue
+          if (isIgnored(file)) continue;
           
           const fullPath = path.join(currentPath, file)
           const stat = fs.statSync(fullPath)
@@ -94,7 +112,7 @@ async function searchInWorkspaces(query: string) {
           if (stat.isDirectory()) {
             searchRecursive(fullPath)
           } else {
-            // Only search in text-like files for performance
+            // Only search in text-like files
             if (/\.(py|json|md|txt|ts|tsx|js|jsx|css|html|yml|yaml|xml)$/i.test(file)) {
               const content = fs.readFileSync(fullPath, 'utf-8')
               if (content.toLowerCase().includes(queryLower)) {
