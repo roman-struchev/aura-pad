@@ -14,21 +14,26 @@ export function useSidebarWidth(
 ) {
   const [width, setWidth] = useState(savedWidth)
   const [isResizing, setIsResizing] = useState(false)
-  const widthRef = useRef(width)
-  widthRef.current = width
+  const widthRef = useRef(savedWidth)
 
   // Stay in sync if the persisted value changes elsewhere (e.g. settings
   // arriving async after mount) - but never fight an in-progress drag.
-  useEffect(() => {
-    if (!isResizing) setWidth(savedWidth)
-  }, [savedWidth, isResizing])
+  // Adjusted directly during render (rather than in an effect) so this
+  // doesn't trigger an extra render pass.
+  const [lastSyncedWidth, setLastSyncedWidth] = useState(savedWidth)
+  if (!isResizing && savedWidth !== lastSyncedWidth) {
+    setLastSyncedWidth(savedWidth)
+    setWidth(savedWidth)
+  }
 
   useEffect(() => {
     if (!isResizing) return
 
     const handleMouseMove = (e: MouseEvent): void => {
       const raw = sidebarPosition === 'right' ? window.innerWidth - e.clientX : e.clientX
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, raw)))
+      const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, raw))
+      widthRef.current = clamped
+      setWidth(clamped)
     }
     const handleMouseUp = (): void => {
       setIsResizing(false)
