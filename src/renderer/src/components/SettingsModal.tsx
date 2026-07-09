@@ -47,6 +47,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
+        <SettingSelect
+          label="Mode"
+          description="UI density - editor font size, row height, spacing"
+          value={settings.uiMode}
+          options={UI_MODES}
+          onChange={(v) => updateSetting('uiMode', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingToggle
+          label="Line Numbers"
+          description="Show line numbers in the editor"
+          checked={settings.lineNumbersEnabled}
+          onChange={(v) => updateSetting('lineNumbersEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingSelect
+          label="Sidebar"
+          description="Which side the file tree/git panel sits on"
+          value={settings.sidebarPosition}
+          options={SIDEBAR_POSITIONS}
+          onChange={(v) => updateSetting('sidebarPosition', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
         <SettingToggle
           label="Tabs"
           description="Keep multiple files open at once"
@@ -63,24 +89,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
-        <SettingSelect
-          label="Mode"
-          description="UI density - editor font size, row height, spacing"
-          value={settings.uiMode}
-          options={UI_MODES}
-          onChange={(v) => updateSetting('uiMode', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingSelect
-          label="Sidebar"
-          description="Which side the file tree/git panel sits on"
-          value={settings.sidebarPosition}
-          options={SIDEBAR_POSITIONS}
-          onChange={(v) => updateSetting('sidebarPosition', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
         <SettingToggle
           label="Git"
           description="Show git status badges and the Git panel for repositories"
@@ -94,14 +102,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           description="Inline error checking for TypeScript, JavaScript and Python"
           checked={settings.diagnosticsEnabled}
           onChange={(v) => updateSetting('diagnosticsEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingToggle
-          label="Line Numbers"
-          description="Show line numbers in the editor"
-          checked={settings.lineNumbersEnabled}
-          onChange={(v) => updateSetting('lineNumbersEnabled', v)}
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
