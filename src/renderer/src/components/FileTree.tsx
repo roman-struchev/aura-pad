@@ -82,6 +82,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   const [isDragging, setIsDragging] = useState(false)
   const isSelected = selectedPath === node.path
   const isDirectory = node.type === 'directory'
+  const hasFileAction = !isDirectory && (node.name.endsWith('.py') || node.name.endsWith('.md'))
 
   // Auto-expand (once) if the selected/revealed path is this directory or a
   // descendant of it. Adjusting state directly during render - rather than
@@ -175,15 +176,44 @@ export const FileTree: React.FC<FileTreeProps> = ({
           {getIcon(node.name, node.type, expanded)}
         </span>
         <span className="truncate flex-1">{node.name}</span>
-        {!isDirectory && gitStatus?.[node.path] && (
-          <span
-            className={clsx(
-              'text-[10px] font-bold ml-1 shrink-0 w-3 text-center',
-              GIT_BADGE[gitStatus[node.path]].className
+        {!isDirectory && (
+          <div className="ml-1 shrink-0 flex items-center">
+            {gitStatus?.[node.path] && (
+              <span
+                className={clsx(
+                  'text-[10px] font-bold w-3 text-center',
+                  hasFileAction && 'group-hover:hidden',
+                  GIT_BADGE[gitStatus[node.path]].className
+                )}
+              >
+                {GIT_BADGE[gitStatus[node.path]].label}
+              </span>
             )}
-          >
-            {GIT_BADGE[gitStatus[node.path]].label}
-          </span>
+            {node.name.endsWith('.py') && (
+              <button
+                className="hidden group-hover:block p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-green-500"
+                title="Run Script"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRunPython(node)
+                }}
+              >
+                <Play size={13} />
+              </button>
+            )}
+            {node.name.endsWith('.md') && (
+              <button
+                className="hidden group-hover:block p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-blue-400"
+                title="Preview"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onPreviewMarkdown(node)
+                }}
+              >
+                <Eye size={13} />
+              </button>
+            )}
+          </div>
         )}
         {isDirectory && (
           <div className="hidden group-hover:flex items-center gap-1 ml-1 shrink-0">
@@ -206,34 +236,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
               }}
             >
               <FolderPlus size={13} />
-            </button>
-          </div>
-        )}
-        {!isDirectory && node.name.endsWith('.py') && (
-          <div className="hidden group-hover:flex items-center ml-1 shrink-0">
-            <button
-              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-green-500"
-              title="Run Script"
-              onClick={(e) => {
-                e.stopPropagation()
-                onRunPython(node)
-              }}
-            >
-              <Play size={13} />
-            </button>
-          </div>
-        )}
-        {!isDirectory && node.name.endsWith('.md') && (
-          <div className="hidden group-hover:flex items-center ml-1 shrink-0">
-            <button
-              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-blue-400"
-              title="Preview"
-              onClick={(e) => {
-                e.stopPropagation()
-                onPreviewMarkdown(node)
-              }}
-            >
-              <Eye size={13} />
             </button>
           </div>
         )}

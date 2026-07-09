@@ -53,6 +53,64 @@ function parseBranch(headerLine: string): string {
   return content.split('...')[0].split(' ')[0]
 }
 
+interface LineStats {
+  added: number
+  removed: number
+}
+
+// `git diff --numstat -z`: each record is `<added>\t<removed>\t<path>`, NUL
+// terminated. Binary files report `-` for both counts instead of numbers -
+// skipped entirely rather than showing a misleading 0/0. Renames report an
+// empty inline path followed by two extra NUL-terminated tokens (old path,
+// then new path) instead of one - the new path is what callers key by.
+async function getNumstat(root: string, extraArgs: string[]): Promise<Map<string, LineStats>> {
+  const map = new Map<string, LineStats>()
+  try {
+    const stdout = await runGit(root, ['diff', ...extraArgs, '--numstat', '-z'])
+    const tokens = stdout.split('\0')
+    if (tokens[tokens.length - 1] === '') tokens.pop()
+
+    let i = 0
+    while (i < tokens.length) {
+      const record = tokens[i]
+      i++
+      const match = record.match(/^(\d+|-)\t(\d+|-)\t(.*)$/)
+      if (!match) continue
+      const [, addedStr, removedStr, inlinePath] = match
+
+      let relPath = inlinePath
+      if (relPath === '') {
+        i++ // old path, unused
+        relPath = tokens[i] ?? ''
+        i++
+      }
+
+      if (!relPath || addedStr === '-' || removedStr === '-') continue
+      map.set(relPath, { added: parseInt(addedStr, 10), removed: parseInt(removedStr, 10) })
+    }
+  } catch (e) {}
+  return map
+}
+
+const MAX_UNTRACKED_STAT_BYTES = 1024 * 1024
+
+// Untracked files aren't part of any diff, so there's no numstat for them -
+// approximate with "every line is added" the way most editors' git
+// decorations do. Skipped for binary-looking or oversized files.
+function countUntrackedLines(absPath: string): number | null {
+  try {
+    if (fs.statSync(absPath).size > MAX_UNTRACKED_STAT_BYTES) return null
+    const buffer = fs.readFileSync(absPath)
+    if (buffer.subarray(0, 8000).includes(0)) return null
+    if (buffer.length === 0) return 0
+    const text = buffer.toString('utf-8')
+    const lines = text.split('\n')
+    return lines[lines.length - 1] === '' ? lines.length - 1 : lines.length
+  } catch (e) {
+    return null
+  }
+}
+
 export async function getRepoStatus(root: string): Promise<GitRepoStatus | null> {
   if (!isGitRepo(root)) return null
   try {
@@ -94,6 +152,25 @@ export async function getRepoStatus(root: string): Promise<GitRepoStatus | null>
       }
       if (y !== ' ' && y !== '?') {
         unstaged.push({ path: absPath, relPath, state: stateFromCode(y) })
+      }
+    }
+
+    const [unstagedStats, stagedStats] = await Promise.all([
+      getNumstat(root, []),
+      getNumstat(root, ['--cached'])
+    ])
+
+    for (const entry of staged) {
+      const stats = stagedStats.get(entry.relPath)
+      if (stats) Object.assign(entry, stats)
+    }
+    for (const entry of unstaged) {
+      if (entry.state === 'untracked') {
+        const added = countUntrackedLines(entry.path)
+        if (added !== null) Object.assign(entry, { added, removed: 0 })
+      } else {
+        const stats = unstagedStats.get(entry.relPath)
+        if (stats) Object.assign(entry, stats)
       }
     }
 
