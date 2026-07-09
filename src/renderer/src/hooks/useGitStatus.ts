@@ -36,11 +36,13 @@ export function useGitStatus(enabled: boolean) {
   const stage = async (root: string, relPath: string): Promise<void> => {
     const result = await window.api.gitStage(root, relPath)
     setRawRepos(result.statuses)
+    if (!result.success) await alertDialog(result.error || 'Stage failed.')
   }
 
   const unstage = async (root: string, relPath: string): Promise<void> => {
     const result = await window.api.gitUnstage(root, relPath)
     setRawRepos(result.statuses)
+    if (!result.success) await alertDialog(result.error || 'Unstage failed.')
   }
 
   const commit = async (root: string, message: string): Promise<boolean> => {
