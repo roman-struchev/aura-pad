@@ -8,7 +8,7 @@ import { FolderOpen, X, Terminal as TerminalIcon, Save, Plus, Play, AlignLeft, S
 
 type TerminalTab = { id: string; name: string };
 
-function App(): JSX.Element {
+function App() {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>('');
@@ -201,6 +201,25 @@ function App(): JSX.Element {
     setContextMenu(null);
   };
 
+  const handleRename = async (node: FileNode) => {
+    setContextMenu(null);
+    const newName = window.prompt('Rename to:', node.name);
+    if (!newName || newName === node.name) return;
+
+    const result = await window.api.renamePath(node.path, newName);
+    if (!result.success || !result.newPath) {
+      alert(result.error || 'Failed to rename.');
+      return;
+    }
+    setRootNodes(result.trees || []);
+
+    if (selectedPath === node.path) {
+      setSelectedPath(result.newPath);
+    } else if (node.type === 'directory' && selectedPath?.startsWith(node.path + '/')) {
+      setSelectedPath(result.newPath + selectedPath.slice(node.path.length));
+    }
+  };
+
   const handleFormatJson = () => {
     try {
       const formatted = JSON.stringify(JSON.parse(fileContent), null, 2);
@@ -333,12 +352,13 @@ function App(): JSX.Element {
 
       {contextMenu && (
         <div className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]" style={{ top: contextMenu.y, left: contextMenu.x }}>
-          {contextMenu.node.path.endsWith('.py') && <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => runPython(contextMenu.node)}>Run Python Script</button>}
-          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => openTerminalHere(contextMenu.node)}>Open Terminal Here</button>
+          {contextMenu.node.path.endsWith('.py') && <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => runPython(contextMenu.node)}>Run Script</button>}
+          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => openTerminalHere(contextMenu.node)}>Open Terminal</button>
+          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => handleRename(contextMenu.node)}>Rename</button>
           {(contextMenu.node as any).isRoot && (
             <>
               <div className="h-px bg-fleet-border my-1" />
-              <button className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors" onClick={() => handleRemoveFolder(contextMenu.node.path)}>Remove Folder from Workspace</button>
+              <button className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors" onClick={() => handleRemoveFolder(contextMenu.node.path)}>Remove from Workspace</button>
             </>
           )}
         </div>

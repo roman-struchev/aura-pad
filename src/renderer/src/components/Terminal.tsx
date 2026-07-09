@@ -97,6 +97,7 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive }) 
         clearTimeout(timer2);
       };
     }
+    return undefined;
   }, [isActive, termId]);
 
   return (

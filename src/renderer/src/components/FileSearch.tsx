@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { File as FileIcon, X, Search } from 'lucide-react';
+import { File as FileIcon, Search } from 'lucide-react';
 
 interface FileResult {
   name: string;

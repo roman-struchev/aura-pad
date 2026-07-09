@@ -56,8 +56,7 @@ function buildFileTree(dirPath: string, isRoot = false): any {
   try {
     const files = fs.readdirSync(dirPath)
     for (const file of files) {
-      // Still ignore for UI tree
-      if (['.git', 'node_modules', '.DS_Store'].includes(file)) continue
+      if (file === '.git' || file === '.DS_Store' || isIgnored(file)) continue
       
       const fullPath = path.join(dirPath, file)
       try {
@@ -261,6 +260,28 @@ ipcMain.handle('save-file', async (_, filePath, content) => {
   try {
     fs.writeFileSync(filePath, content, 'utf-8')
     return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e.message }
+  }
+})
+
+ipcMain.handle('rename-path', async (_, oldPath: string, newName: string) => {
+  try {
+    const newPath = path.join(path.dirname(oldPath), newName)
+    if (fs.existsSync(newPath)) {
+      return { success: false, error: 'A file or folder with this name already exists' }
+    }
+    fs.renameSync(oldPath, newPath)
+
+    // Keep workspace roots in sync if a root folder was renamed
+    const workspacePaths = loadWorkspaces()
+    const idx = workspacePaths.indexOf(oldPath)
+    if (idx !== -1) {
+      workspacePaths[idx] = newPath
+      saveWorkspaces(workspacePaths)
+    }
+
+    return { success: true, newPath, trees: getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
