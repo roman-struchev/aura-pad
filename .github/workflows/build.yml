@@ -39,4 +39,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          # Force the release to be a 'release' not a 'draft' to match existing tags
+          # or use 'always' to ensure it tries to upload
+          args: --publish always
           max_attempts: 3
