@@ -7,7 +7,6 @@ interface TreeContextMenuProps {
   node: FileNode
   hasClipboard: boolean
   onClose: () => void
-  onRunPython: (node: FileNode) => void
   onOpenTerminalHere: (node: FileNode) => void
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
   onRename: (node: FileNode) => void
@@ -25,7 +24,6 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
   node,
   hasClipboard,
   onClose,
-  onRunPython,
   onOpenTerminalHere,
   onCreateNew,
   onRename,
@@ -44,14 +42,6 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
       className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]"
       style={{ top: y, left: x }}
     >
-      {node.path.endsWith('.py') && (
-        <button
-          className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-          onClick={() => run(() => onRunPython(node))}
-        >
-          Run Script
-        </button>
-      )}
       <button
         className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
         onClick={() => run(() => onOpenTerminalHere(node))}
