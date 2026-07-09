@@ -29,8 +29,13 @@ function App() {
   // Context Menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileNode } | null>(null);
 
+  // Rename dialog state
+  const [renameTarget, setRenameTarget] = useState<FileNode | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
   const editorRef = useRef<any>(null);
   const lastShiftTime = useRef<number>(0);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Load workspaces on mount
@@ -52,7 +57,7 @@ function App() {
 
   const handleFileSelect = async (path: string, line?: number) => {
     if (line) setJumpToLine(line);
-    
+
     if (selectedPath === path && line) {
       scrollToLine(line);
       setShowSearch(false);
@@ -160,6 +165,13 @@ function App() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (renameTarget) {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }
+  }, [renameTarget]);
+
   const openNewTerminal = async (cwd?: string, runCommand?: string) => {
     setShowTerminal(true);
     const termId = await window.api.createPty(cwd);
@@ -201,6 +213,33 @@ function App() {
     setContextMenu(null);
   };
 
+  const startRename = (node: FileNode) => {
+    setContextMenu(null);
+    setRenameValue(node.name);
+    setRenameTarget(node);
+  };
+
+  const confirmRename = async () => {
+    const node = renameTarget;
+    if (!node) return;
+    const newName = renameValue.trim();
+    setRenameTarget(null);
+    if (!newName || newName === node.name) return;
+
+    const result = await window.api.renamePath(node.path, newName);
+    if (!result.success || !result.newPath) {
+      alert(result.error || 'Failed to rename.');
+      return;
+    }
+    setRootNodes(result.trees || []);
+
+    if (selectedPath === node.path) {
+      setSelectedPath(result.newPath);
+    } else if (node.type === 'directory' && selectedPath?.startsWith(node.path + '/')) {
+      setSelectedPath(result.newPath + selectedPath.slice(node.path.length));
+    }
+  };
+
   const handleFormatJson = () => {
     try {
       const formatted = JSON.stringify(JSON.parse(fileContent), null, 2);
@@ -231,7 +270,7 @@ function App() {
 
   return (
     <div className="flex h-screen bg-fleet-bg text-fleet-text flex-col relative overflow-hidden">
-      <div className="h-10 border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
+      <div className="h-[52px] border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
         <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 truncate max-w-[50%]">
           {selectedPath ? selectedPath.split('/').pop() : 'Light Editor'}
           {!isSaved && selectedPath && <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>}
@@ -257,9 +296,9 @@ function App() {
           <button onClick={handleSave} disabled={isSaved || !selectedPath} className={`p-1.5 rounded hover:bg-fleet-active transition-colors ${!isSaved ? 'text-blue-400' : 'text-gray-500'}`} title="Save (Cmd+S)">
             <Save size={16} />
           </button>
-          <button 
-            onClick={() => { if (!showTerminal && terminals.length === 0) openNewTerminal(); else setShowTerminal(!showTerminal); }} 
-            className={`p-1.5 rounded hover:bg-fleet-active transition-colors ${showTerminal ? 'text-white bg-fleet-active' : 'text-gray-400'}`} 
+          <button
+            onClick={() => { if (!showTerminal && terminals.length === 0) openNewTerminal(); else setShowTerminal(!showTerminal); }}
+            className={`p-1.5 rounded hover:bg-fleet-active transition-colors ${showTerminal ? 'text-white bg-fleet-active' : 'text-gray-400'}`}
             title="Toggle Terminal"
           >
             <TerminalIcon size={16} />
@@ -335,12 +374,35 @@ function App() {
         <div className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]" style={{ top: contextMenu.y, left: contextMenu.x }}>
           {contextMenu.node.path.endsWith('.py') && <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => runPython(contextMenu.node)}>Run Script</button>}
           <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => openTerminalHere(contextMenu.node)}>Open Terminal</button>
+          <button className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white" onClick={() => startRename(contextMenu.node)}>Rename</button>
           {(contextMenu.node as any).isRoot && (
             <>
               <div className="h-px bg-fleet-border my-1" />
               <button className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors" onClick={() => handleRemoveFolder(contextMenu.node.path)}>Remove from Workspace</button>
             </>
           )}
+        </div>
+      )}
+
+      {renameTarget && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40" onClick={() => setRenameTarget(null)}>
+          <div className="bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl p-4 w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="text-xs text-gray-400 mb-2 truncate">Rename &quot;{renameTarget.name}&quot;</div>
+            <input
+              ref={renameInputRef}
+              className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-sm text-fleet-text outline-none focus:border-blue-500"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmRename();
+                if (e.key === 'Escape') setRenameTarget(null);
+              }}
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400" onClick={() => setRenameTarget(null)}>Cancel</button>
+              <button className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white" onClick={confirmRename}>Rename</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

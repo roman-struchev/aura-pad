@@ -169,7 +169,8 @@ function createWindow(): void {
   ipcMain.handle('create-pty', (_event, cwd?: string) => {
     const termId = `term-${ptyIdCounter++}`
     
-    const ptyProcess = pty.spawn(shellExec, [], {
+    const shellArgs = process.platform === 'win32' ? [] : ['-l']
+    const ptyProcess = pty.spawn(shellExec, shellArgs, {
       name: 'xterm-color',
       cols: 80,
       rows: 30,
