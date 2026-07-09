@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import clsx from 'clsx'
+import { ChevronRight, ChevronDown } from 'lucide-react'
 import type { AppSettings } from '../../../shared/settings'
 import { SIDEBAR_POSITIONS, THEME_MODES } from '../../../shared/settings'
 import { UI_MODES, type DensityPreset } from '../density'
@@ -31,98 +32,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   updateSetting,
   density,
   onClose
-}) => (
-  <Modal onClose={onClose} width="w-[30rem]">
-    <div className={clsx(density.settingsLabelClass, 'font-medium text-fleet-textHover mb-3')}>
-      Settings
-    </div>
-    <div className="flex flex-col gap-4">
-      <SettingSelect
-        label="Theme"
-        description="Dark, light, or follow the OS"
-        value={settings.theme}
-        options={THEME_MODES}
-        onChange={(v) => updateSetting('theme', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-      <SettingToggle
-        label="Tabs"
-        description="Keep multiple files open at once"
-        checked={settings.tabsEnabled}
-        onChange={(v) => updateSetting('tabsEnabled', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-      <SettingToggle
-        label="Autosave"
-        description="Save automatically a moment after you stop typing"
-        checked={settings.autosaveEnabled}
-        onChange={(v) => updateSetting('autosaveEnabled', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-      <SettingSelect
-        label="Mode"
-        description="UI density - editor font size, row height, spacing"
-        value={settings.uiMode}
-        options={UI_MODES}
-        onChange={(v) => updateSetting('uiMode', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-      <SettingSelect
-        label="Sidebar"
-        description="Which side the file tree/git panel sits on"
-        value={settings.sidebarPosition}
-        options={SIDEBAR_POSITIONS}
-        onChange={(v) => updateSetting('sidebarPosition', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-      <SettingToggle
-        label="Git"
-        description="Show git status badges and the Git panel for repositories"
-        checked={settings.gitEnabled}
-        onChange={(v) => updateSetting('gitEnabled', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-      <SettingToggle
-        label="Diagnostics"
-        description="Inline error checking for TypeScript, JavaScript and Python"
-        checked={settings.diagnosticsEnabled}
-        onChange={(v) => updateSetting('diagnosticsEnabled', v)}
-        labelClassName={density.settingsLabelClass}
-        descriptionClassName={density.settingsDescriptionClass}
-      />
-    </div>
+}) => {
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
-    <div className="border-t border-fleet-border mt-4 pt-3">
-      <div className={clsx(density.settingsLabelClass, 'font-medium text-fleet-textHover mb-2')}>
-        Shortcuts
+  return (
+    <Modal onClose={onClose} width="w-[30rem]">
+      <div className="flex flex-col gap-4">
+        <SettingSelect
+          label="Theme"
+          description="Dark, light, or follow the OS"
+          value={settings.theme}
+          options={THEME_MODES}
+          onChange={(v) => updateSetting('theme', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingToggle
+          label="Tabs"
+          description="Keep multiple files open at once"
+          checked={settings.tabsEnabled}
+          onChange={(v) => updateSetting('tabsEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingToggle
+          label="Autosave"
+          description="Save automatically a moment after you stop typing"
+          checked={settings.autosaveEnabled}
+          onChange={(v) => updateSetting('autosaveEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingSelect
+          label="Mode"
+          description="UI density - editor font size, row height, spacing"
+          value={settings.uiMode}
+          options={UI_MODES}
+          onChange={(v) => updateSetting('uiMode', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingSelect
+          label="Sidebar"
+          description="Which side the file tree/git panel sits on"
+          value={settings.sidebarPosition}
+          options={SIDEBAR_POSITIONS}
+          onChange={(v) => updateSetting('sidebarPosition', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingToggle
+          label="Git"
+          description="Show git status badges and the Git panel for repositories"
+          checked={settings.gitEnabled}
+          onChange={(v) => updateSetting('gitEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingToggle
+          label="Diagnostics"
+          description="Inline error checking for TypeScript, JavaScript and Python"
+          checked={settings.diagnosticsEnabled}
+          onChange={(v) => updateSetting('diagnosticsEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
       </div>
-      <div className="flex flex-col gap-1.5">
-        {SHORTCUTS.map((s) => (
-          <div key={s.description} className="flex items-center justify-between gap-3">
-            <span className={clsx(density.settingsDescriptionClass, 'text-gray-400')}>
-              {s.description}
-            </span>
-            <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-gray-300 font-mono shrink-0">
-              {s.keys}
-            </kbd>
+
+      <div className="border-t border-fleet-border mt-4 pt-3">
+        <button
+          className={clsx(
+            density.settingsLabelClass,
+            'font-medium text-fleet-textHover flex items-center gap-1 w-full'
+          )}
+          onClick={() => setShowShortcuts((v) => !v)}
+        >
+          {showShortcuts ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          Shortcuts
+        </button>
+        {showShortcuts && (
+          <div className="flex flex-col gap-1.5 mt-2">
+            {SHORTCUTS.map((s) => (
+              <div key={s.description} className="flex items-center justify-between gap-3">
+                <span className={clsx(density.settingsDescriptionClass, 'text-gray-400')}>
+                  {s.description}
+                </span>
+                <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-gray-300 font-mono shrink-0">
+                  {s.keys}
+                </kbd>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
-    </div>
 
-    <div className="flex justify-end mt-4">
-      <button
-        className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
-        onClick={onClose}
-      >
-        Done
-      </button>
-    </div>
-  </Modal>
-)
+      <div className="flex justify-end mt-4">
+        <button
+          className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
+          onClick={onClose}
+        >
+          Done
+        </button>
+      </div>
+    </Modal>
+  )
+}
