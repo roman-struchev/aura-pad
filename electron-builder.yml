@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: Light Editor
+appId: com.struchev.aura
+productName: Aura Editor
 directories:
   buildResources: build
 files:
@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: light-editor
+  executableName: aura-editor
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

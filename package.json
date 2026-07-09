@@ -1,7 +1,8 @@
 {
-  "name": "light-editor",
+  "name": "aura-editor",
   "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "Aura Editor — a lightweight code editor built with Electron and React",
+  "author": "Roman Struchev",
   "main": "./out/main/index.js",
   "scripts": {
     "format": "prettier --write .",

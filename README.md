@@ -1,4 +1,4 @@
-# fleet-editor
+# Aura Editor
 
 An Electron application with React and TypeScript
 

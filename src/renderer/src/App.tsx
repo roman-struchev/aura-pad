@@ -272,7 +272,7 @@ function App() {
     <div className="flex h-screen bg-fleet-bg text-fleet-text flex-col relative overflow-hidden">
       <div className="h-10 border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
         <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 truncate max-w-[50%]">
-          {selectedPath ? selectedPath.split('/').pop() : 'Light Editor'}
+          {selectedPath ? selectedPath.split('/').pop() : 'Aura Editor'}
           {!isSaved && selectedPath && <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>}
         </div>
         <div className="flex items-center gap-1 no-drag-region">
@@ -321,7 +321,7 @@ function App() {
               />
             ) : (
               <div className="flex-1 h-full flex items-center justify-center text-gray-500 flex-col gap-4">
-                <span className="text-4xl text-gray-700">Light Editor</span>
+                <span className="text-4xl text-gray-700">Aura Editor</span>
                 <span>Double-Shift to search files</span>
               </div>
             )}
