@@ -13,6 +13,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out git repository
+        uses: actions/checkout@v4
+
       - name: Create Draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,6 +69,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out git repository
+        uses: actions/checkout@v4
+
       - name: Publish Draft Release
         run: gh release edit ${{ github.ref_name }} --draft=false
         env:
