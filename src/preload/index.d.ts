@@ -5,6 +5,7 @@ import type { SearchResult } from '../shared/searchResult'
 import type { GitRepoStatus } from '../shared/gitStatus'
 import type { LintMarker } from '../shared/lint'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
+import type { PathListingResult } from '../shared/pathMatch'
 
 declare global {
   interface Window {
@@ -18,6 +19,7 @@ declare global {
       getRecentExternalFiles: () => Promise<RecentExternalFile[]>
       touchRecentExternalFile: (filePath: string) => Promise<RecentExternalFile[]>
       removeRecentExternalFile: (filePath: string) => Promise<RecentExternalFile[]>
+      listPathMatches: (rawInput: string) => Promise<PathListingResult>
 
       readFile: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
       saveFile: (path: string, content: string) => Promise<{ success: boolean; error?: string }>

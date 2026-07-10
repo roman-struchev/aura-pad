@@ -23,6 +23,7 @@ import {
   touchRecentExternalFile,
   removeRecentExternalFile
 } from './recentExternalFiles'
+import { listPathMatches } from './pathBrowse'
 import { setupWatchers, closeAllWatchers, broadcast, recordSelfWrite } from './watcher'
 import { registerCreatePtyHandler, killAllPtys } from './terminals'
 import { buildAppMenu } from './menu'
@@ -198,6 +199,8 @@ ipcMain.handle('get-recent-external-files', () => loadRecentExternalFiles())
 ipcMain.handle('touch-recent-external-file', (_, filePath) => touchRecentExternalFile(filePath))
 
 ipcMain.handle('remove-recent-external-file', (_, filePath) => removeRecentExternalFile(filePath))
+
+ipcMain.handle('list-path-matches', (_, rawInput) => listPathMatches(rawInput))
 
 ipcMain.handle('read-file', async (_, filePath) => {
   return readFileContent(filePath)

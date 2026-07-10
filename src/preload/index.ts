@@ -4,6 +4,7 @@ import type { AppSettings } from '../shared/settings'
 import type { FileNode } from '../shared/fileNode'
 import type { GitRepoStatus } from '../shared/gitStatus'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
+import type { PathListingResult } from '../shared/pathMatch'
 
 const api = {
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
@@ -17,6 +18,8 @@ const api = {
     ipcRenderer.invoke('touch-recent-external-file', filePath),
   removeRecentExternalFile: (filePath: string): Promise<RecentExternalFile[]> =>
     ipcRenderer.invoke('remove-recent-external-file', filePath),
+  listPathMatches: (rawInput: string): Promise<PathListingResult> =>
+    ipcRenderer.invoke('list-path-matches', rawInput),
 
   readFile: (path: string) => ipcRenderer.invoke('read-file', path),
   saveFile: (path: string, content: string) => ipcRenderer.invoke('save-file', path, content),
