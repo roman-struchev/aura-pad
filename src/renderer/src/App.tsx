@@ -396,9 +396,13 @@ function App() {
                     minimap: { enabled: false },
                     fontSize: density.editorFontSize,
                     wordWrap: 'on',
-                    padding: { top: 16 },
+                    padding: { top: 6 },
                     scrollBeyondLastLine: false,
                     lineNumbers: settings.lineNumbersEnabled ? 'on' : 'off',
+                    // Tighter gutter than Monaco's defaults; 0 when line
+                    // numbers are off so text isn't indented for no reason.
+                    lineNumbersMinChars: settings.lineNumbersEnabled ? 4 : 0,
+                    lineDecorationsWidth: settings.lineNumbersEnabled ? 4 : 0,
                     scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 }
                   }}
                 />
