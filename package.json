@@ -1,6 +1,6 @@
 {
   "name": "aurapad",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "AuraPad — a lightweight code editor built with Electron and React",
   "author": "Roman Struchev",
   "main": "./out/main/index.js",
@@ -20,7 +20,6 @@
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "release": "bash scripts/release.sh"
-
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
