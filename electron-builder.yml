@@ -1,5 +1,5 @@
-appId: com.struchev.aura
-productName: Aura Editor
+appId: com.struchev.aurapad
+productName: AuraPad
 directories:
   buildResources: build
 files:
@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: aura-editor
+  executableName: aurapad
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

@@ -144,8 +144,13 @@ function App() {
       }
 
       // Copy/paste/delete for the file tree - only when a tree row actually
-      // has focus, so this never steals Cmd+C/V from the editor or terminal.
-      const isTreeFocused = !!sidebarRef.current?.contains(document.activeElement)
+      // has focus, so this never steals Cmd+C/V from the editor or terminal,
+      // and never fires while typing in an input/textarea inside the sidebar
+      // (e.g. the Git panel's commit message box).
+      const isTreeFocused =
+        !!sidebarRef.current?.contains(document.activeElement) &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
       if (isTreeFocused && tree.focusedNode) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
           e.preventDefault()
@@ -221,10 +226,7 @@ function App() {
     >
       <div className="h-10 border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
         <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 truncate max-w-[50%]">
-          {tabs.selectedPath ? tabs.selectedPath.split('/').pop() : 'Aura Editor'}
-          {!tabs.isSaved && tabs.selectedPath && (
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-          )}
+          AuraPad
         </div>
         <div className="flex items-center gap-1 no-drag-region">
           <ToolbarButton
@@ -366,7 +368,7 @@ function App() {
               )
             ) : (
               <div className="flex-1 h-full flex items-center justify-center text-gray-500 flex-col gap-4">
-                <span className="text-4xl text-gray-700">Aura Editor</span>
+                <span className="text-4xl text-gray-700">AuraPad</span>
                 <span>Double-Shift to search files</span>
               </div>
             )}

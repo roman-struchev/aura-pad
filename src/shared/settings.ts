@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiMode: 'compact',
   gitEnabled: true,
   diagnosticsEnabled: true,
-  sidebarPosition: 'right',
+  sidebarPosition: 'left',
   sidebarWidth: 256,
   lineNumbersEnabled: true
 }

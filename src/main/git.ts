@@ -202,55 +202,47 @@ export async function getDiff(
   return { original, modified }
 }
 
-export async function stagePath(
+async function runGitSimple(
   root: string,
-  relPath: string
+  args: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await runGit(root, ['add', '--', relPath])
+    await runGit(root, args)
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
 }
 
-export async function unstagePath(
+export function stagePath(
   root: string,
   relPath: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    await runGit(root, ['reset', '--', relPath])
-    return { success: true }
-  } catch (e: any) {
-    return { success: false, error: e.message }
-  }
+  return runGitSimple(root, ['add', '--', relPath])
+}
+
+export function unstagePath(
+  root: string,
+  relPath: string
+): Promise<{ success: boolean; error?: string }> {
+  return runGitSimple(root, ['reset', '--', relPath])
 }
 
 // Resets both the index and working tree for one path back to HEAD, discarding
 // staged and unstaged changes alike. Only meaningful for tracked files - the
 // caller handles untracked ones (there's nothing to check out) by deleting instead.
-export async function discardPath(
+export function discardPath(
   root: string,
   relPath: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    await runGit(root, ['checkout', 'HEAD', '--', relPath])
-    return { success: true }
-  } catch (e: any) {
-    return { success: false, error: e.message }
-  }
+  return runGitSimple(root, ['checkout', 'HEAD', '--', relPath])
 }
 
-export async function commit(
+export function commit(
   root: string,
   message: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    await runGit(root, ['commit', '-m', message])
-    return { success: true }
-  } catch (e: any) {
-    return { success: false, error: e.message }
-  }
+  return runGitSimple(root, ['commit', '-m', message])
 }
 
 export function push(root: string): Promise<{ success: boolean; output: string }> {

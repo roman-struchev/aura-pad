@@ -137,10 +137,11 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* Custom Scrollbar for a sleek look */
+/* Custom Scrollbar for a sleek look - matches the Monaco editor's own
+   narrowed scrollbar (see the `scrollbar` option on <Editor> in App.tsx) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
