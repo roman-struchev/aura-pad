@@ -1,8 +1,9 @@
 import React from 'react'
-import { Files, GitBranch } from 'lucide-react'
+import { Files, GitBranch, X } from 'lucide-react'
 import clsx from 'clsx'
 import { FileTree, type FileNode } from './FileTree'
 import { GitPanel } from './GitPanel'
+import { getFileIcon } from '../lib/fileIcon'
 import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
 
 interface SidebarProps {
@@ -12,6 +13,8 @@ interface SidebarProps {
   setSidebarView: (view: 'files' | 'git') => void
   // File tree
   rootNodes: FileNode[]
+  recentExternalFiles: string[]
+  onRemoveRecentExternalFile: (path: string) => void
   selectedPath: string | null
   revealPath: string | null
   onSelect: (path: string) => void
@@ -43,6 +46,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sidebarView,
   setSidebarView,
   rootNodes,
+  recentExternalFiles,
+  onRemoveRecentExternalFile,
   selectedPath,
   revealPath,
   onSelect,
@@ -105,28 +110,67 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onPull={onGitPull}
             onDiff={onGitDiff}
           />
-        ) : rootNodes.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {rootNodes.map((rootNode) => (
-              <FileTree
-                key={rootNode.path}
-                node={rootNode}
-                onSelect={onSelect}
-                onContextMenu={onContextMenu}
-                onCreateNew={onCreateNew}
-                onMove={onMove}
-                onFocusNode={onFocusNode}
-                onRunPython={onRunPython}
-                onPreviewMarkdown={onPreviewMarkdown}
-                selectedPath={selectedPath}
-                revealPath={revealPath}
-                rowPadding={rowPadding}
-                gitStatus={gitFileStates}
-              />
-            ))}
-          </div>
         ) : (
-          <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
+          <>
+            {rootNodes.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {rootNodes.map((rootNode) => (
+                  <FileTree
+                    key={rootNode.path}
+                    node={rootNode}
+                    onSelect={onSelect}
+                    onContextMenu={onContextMenu}
+                    onCreateNew={onCreateNew}
+                    onMove={onMove}
+                    onFocusNode={onFocusNode}
+                    onRunPython={onRunPython}
+                    onPreviewMarkdown={onPreviewMarkdown}
+                    selectedPath={selectedPath}
+                    revealPath={revealPath}
+                    rowPadding={rowPadding}
+                    gitStatus={gitFileStates}
+                  />
+                ))}
+              </div>
+            ) : recentExternalFiles.length === 0 ? (
+              <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
+            ) : null}
+
+            {recentExternalFiles.length > 0 && (
+              <div className={rootNodes.length > 0 ? 'mt-3' : ''}>
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
+                  Recently Opened (Outside)
+                </div>
+                {recentExternalFiles.map((path) => (
+                  <div
+                    key={path}
+                    className={clsx(
+                      'group flex items-center px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
+                      rowPadding,
+                      selectedPath === path && 'bg-fleet-active text-fleet-textHover'
+                    )}
+                    title={path}
+                    onClick={() => onSelect(path)}
+                  >
+                    <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
+                      {getFileIcon(path.split('/').pop() || path, 'file', false)}
+                    </span>
+                    <span className="truncate flex-1">{path.split('/').pop()}</span>
+                    <button
+                      className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
+                      title="Remove from list"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRemoveRecentExternalFile(path)
+                      }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </>

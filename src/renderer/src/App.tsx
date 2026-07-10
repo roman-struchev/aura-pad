@@ -17,13 +17,14 @@ import { useWorkspaceTree } from './hooks/useWorkspaceTree'
 import { useGitStatus } from './hooks/useGitStatus'
 import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
+import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
 import { alertDialog } from './lib/dialogs'
 import { getLanguage } from './lib/language'
 import { getMonacoTheme } from './lib/editorTheme'
-import { dirname } from './lib/path'
+import { dirname, isUnderAnyRoot } from './lib/path'
 import Editor from '@monaco-editor/react'
 import clsx from 'clsx'
 import {
@@ -59,9 +60,31 @@ function App() {
   })
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
+  const recentExternalFiles = useRecentExternalFiles()
+
+  // Record every open tab that falls outside all workspace roots, so it
+  // shows up in the sidebar's "Recently Opened" list even after the tab
+  // closes. Keyed on the path lists (not the object references) so this
+  // only re-runs when a tab or workspace root actually changes.
+  const openTabPathsKey = tabs.tabs.map((t) => t.path).join('\n')
+  const rootPathsKey = tree.rootNodes.map((r) => r.path).join('\n')
+  useEffect(() => {
+    const rootPaths = tree.rootNodes.map((r) => r.path)
+    for (const tabPath of tabs.tabs.map((t) => t.path)) {
+      if (!isUnderAnyRoot(tabPath, rootPaths)) recentExternalFiles.touch(tabPath)
+    }
+  }, [openTabPathsKey, rootPathsKey])
   const sidebarWidth = useSidebarWidth(settings.sidebarWidth, settings.sidebarPosition, (w) =>
     updateSetting('sidebarWidth', w)
   )
+
+  // Removing an entry from the "Recently Opened" list also closes its tab,
+  // if it's still open - otherwise the tab would keep dangling with no way
+  // to get back to it from the sidebar.
+  const handleRemoveRecentExternalFile = async (path: string): Promise<void> => {
+    if (tabs.tabs.some((t) => t.path === path)) await tabs.closeTab(path)
+    recentExternalFiles.remove(path)
+  }
 
   // Search / settings overlay state
   const [showSearch, setShowSearch] = useState(false)
@@ -477,6 +500,8 @@ function App() {
             sidebarView={sidebarView}
             setSidebarView={setSidebarView}
             rootNodes={tree.rootNodes}
+            recentExternalFiles={recentExternalFiles.entries.map((e) => e.path)}
+            onRemoveRecentExternalFile={handleRemoveRecentExternalFile}
             selectedPath={tabs.selectedPath}
             revealPath={tree.revealPath}
             onSelect={tabs.openTab}

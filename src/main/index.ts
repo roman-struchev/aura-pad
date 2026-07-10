@@ -18,6 +18,11 @@ import {
   movePath
 } from './workspaces'
 import { loadSettings, saveSettings } from './settings'
+import {
+  loadRecentExternalFiles,
+  touchRecentExternalFile,
+  removeRecentExternalFile
+} from './recentExternalFiles'
 import { setupWatchers, closeAllWatchers, broadcast, recordSelfWrite } from './watcher'
 import { registerCreatePtyHandler, killAllPtys } from './terminals'
 import { buildAppMenu } from './menu'
@@ -187,6 +192,12 @@ ipcMain.handle('remove-workspace', (_, pathToRemove) => {
 ipcMain.handle('search-projects', async (_, query) => {
   return await searchInWorkspaces(query)
 })
+
+ipcMain.handle('get-recent-external-files', () => loadRecentExternalFiles())
+
+ipcMain.handle('touch-recent-external-file', (_, filePath) => touchRecentExternalFile(filePath))
+
+ipcMain.handle('remove-recent-external-file', (_, filePath) => removeRecentExternalFile(filePath))
 
 ipcMain.handle('read-file', async (_, filePath) => {
   return readFileContent(filePath)

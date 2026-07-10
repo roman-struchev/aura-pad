@@ -36,6 +36,33 @@ fileAssociations:
   - ext: yaml
     name: YAML
     role: Editor
+  - ext: conf
+    name: Config File
+    role: Editor
+  - ext: ini
+    name: INI Config
+    role: Editor
+  - ext: cfg
+    name: Config File
+    role: Editor
+  - ext: toml
+    name: TOML
+    role: Editor
+  - ext: env
+    name: Env File
+    role: Editor
+  - ext: properties
+    name: Properties File
+    role: Editor
+  - ext: xml
+    name: XML
+    role: Editor
+  - ext: csv
+    name: CSV
+    role: Editor
+  - ext: sh
+    name: Shell Script
+    role: Editor
 win:
   executableName: aurapad
 nsis:

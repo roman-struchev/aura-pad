@@ -16,6 +16,12 @@ Build for your platform:
 npm run build:mac    # or build:win / build:linux
 ```
 
+Install the freshly built app into `/Applications`, replacing any existing copy:
+
+```bash
+rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applications/
+```
+
 ## What it does
 
 **Editing**

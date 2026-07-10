@@ -3,12 +3,20 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../shared/settings'
 import type { FileNode } from '../shared/fileNode'
 import type { GitRepoStatus } from '../shared/gitStatus'
+import type { RecentExternalFile } from '../shared/recentExternalFile'
 
 const api = {
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
   addWorkspace: () => ipcRenderer.invoke('add-workspace'),
   removeWorkspace: (path: string) => ipcRenderer.invoke('remove-workspace', path),
   searchProjects: (query: string) => ipcRenderer.invoke('search-projects', query),
+
+  getRecentExternalFiles: (): Promise<RecentExternalFile[]> =>
+    ipcRenderer.invoke('get-recent-external-files'),
+  touchRecentExternalFile: (filePath: string): Promise<RecentExternalFile[]> =>
+    ipcRenderer.invoke('touch-recent-external-file', filePath),
+  removeRecentExternalFile: (filePath: string): Promise<RecentExternalFile[]> =>
+    ipcRenderer.invoke('remove-recent-external-file', filePath),
 
   readFile: (path: string) => ipcRenderer.invoke('read-file', path),
   saveFile: (path: string, content: string) => ipcRenderer.invoke('save-file', path, content),

@@ -4,6 +4,7 @@ import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
 import type { GitRepoStatus } from '../shared/gitStatus'
 import type { LintMarker } from '../shared/lint'
+import type { RecentExternalFile } from '../shared/recentExternalFile'
 
 declare global {
   interface Window {
@@ -13,6 +14,10 @@ declare global {
       addWorkspace: () => Promise<FileNode[]>
       removeWorkspace: (path: string) => Promise<FileNode[]>
       searchProjects: (query: string) => Promise<SearchResult[]>
+
+      getRecentExternalFiles: () => Promise<RecentExternalFile[]>
+      touchRecentExternalFile: (filePath: string) => Promise<RecentExternalFile[]>
+      removeRecentExternalFile: (filePath: string) => Promise<RecentExternalFile[]>
 
       readFile: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
       saveFile: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
