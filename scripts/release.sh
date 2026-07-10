@@ -15,7 +15,7 @@ VERSION="$(npm version minor --no-git-tag-version | tr -d 'v')"
 TAG="v$VERSION"
 
 git add package.json package-lock.json
-git commit -m "chore: release $TAG"
+git commit -m "release $TAG"
 git tag "$TAG"
 git push origin HEAD "$TAG"
 
