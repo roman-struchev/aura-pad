@@ -25,6 +25,7 @@ import { alertDialog } from './lib/dialogs'
 import { getLanguage } from './lib/language'
 import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
+import { prettyPrintMarkup } from './lib/formatMarkup'
 import Editor from '@monaco-editor/react'
 import clsx from 'clsx'
 import {
@@ -38,6 +39,7 @@ import {
   Search,
   Eye,
   Code2,
+  GitBranch,
   Settings as SettingsIcon
 } from 'lucide-react'
 
@@ -237,6 +239,14 @@ function App() {
     }
   }
 
+  const handleFormatMarkup = (): void => {
+    if (!tabs.activeTabPath) return
+    tabs.updateTab(tabs.activeTabPath, {
+      content: prettyPrintMarkup(tabs.fileContent),
+      isSaved: false
+    })
+  }
+
   const handleWindowDragOver = (e: DragEvent): void => {
     e.preventDefault()
   }
@@ -253,17 +263,100 @@ function App() {
     }
   }
 
+  // Show just the workspace the active file belongs to, not every open
+  // workspace - the breadcrumb should say where you are, not list everything
+  // that happens to be open.
+  const activeRoot = tabs.selectedPath
+    ? tree.rootNodes.find(
+        (r) => tabs.selectedPath === r.path || tabs.selectedPath!.startsWith(r.path + '/')
+      )
+    : null
+  // A file open from outside every workspace (the "Recently Opened" list)
+  // isn't part of any of them, so it should show neither - not fall back to
+  // listing every open workspace, which was just as misleading.
+  const projectLabel = tabs.selectedPath
+    ? (activeRoot?.name ?? 'AuraPad')
+    : tree.rootNodes.length > 0
+      ? tree.rootNodes.map((r) => r.name).join(', ')
+      : 'AuraPad'
+  const branchLabel = tabs.selectedPath
+    ? activeRoot &&
+      git.repos.find((r) => activeRoot.path === r.root || r.root.startsWith(activeRoot.path + '/'))
+        ?.branch
+    : git.repos[0]?.branch
+  const hasFileActions = !!tabs.selectedPath
+
   return (
     <div
       className="flex h-screen bg-fleet-bg text-fleet-text flex-col relative overflow-hidden"
       onDragOver={handleWindowDragOver}
       onDrop={handleWindowDrop}
     >
-      <div className="h-10 border-b border-fleet-border flex items-center justify-between px-4 bg-fleet-header select-none drag-region shrink-0">
-        <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 truncate max-w-[50%]">
-          AuraPad
+      <div className="h-9 border-b border-fleet-border flex items-center justify-between px-3 bg-fleet-header select-none drag-region shrink-0">
+        <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 min-w-0">
+          <span className="truncate max-w-[40vw]">{projectLabel}</span>
+          {branchLabel && (
+            <span className="flex items-center gap-1 text-gray-500 shrink-0">
+              <GitBranch size={12} />
+              {branchLabel}
+            </span>
+          )}
+          {hasFileActions && (
+            <div className="flex items-center gap-1 no-drag-region shrink-0">
+              <div className="w-px h-4 bg-fleet-border mx-1" />
+              <ToolbarButton
+                onClick={tabs.handleSave}
+                disabled={tabs.isSaved}
+                colorClassName={!tabs.isSaved ? 'text-blue-400' : 'text-gray-500'}
+                title="Save (Cmd+S)"
+              >
+                <Save size={16} />
+              </ToolbarButton>
+              {tabs.selectedPath?.endsWith('.py') && (
+                <ToolbarButton
+                  onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+                  title="Run Python"
+                  colorClassName="text-green-500"
+                >
+                  <Play size={16} />
+                </ToolbarButton>
+              )}
+              {tabs.selectedPath?.endsWith('.json') && (
+                <ToolbarButton
+                  onClick={handleFormatJson}
+                  title="Format JSON"
+                  colorClassName="text-yellow-500"
+                >
+                  <AlignLeft size={16} />
+                </ToolbarButton>
+              )}
+              {(tabs.selectedPath?.endsWith('.html') ||
+                tabs.selectedPath?.endsWith('.htm') ||
+                tabs.selectedPath?.endsWith('.xml')) && (
+                <ToolbarButton
+                  onClick={handleFormatMarkup}
+                  title="Format Document"
+                  colorClassName="text-yellow-500"
+                >
+                  <AlignLeft size={16} />
+                </ToolbarButton>
+              )}
+              {tabs.selectedPath?.endsWith('.md') && (
+                <ToolbarButton
+                  onClick={() =>
+                    tabs.activeTabPath &&
+                    tabs.updateTab(tabs.activeTabPath, { showPreview: !tabs.showMarkdownPreview })
+                  }
+                  active={tabs.showMarkdownPreview}
+                  title={tabs.showMarkdownPreview ? 'Show Source' : 'Show Preview'}
+                >
+                  {tabs.showMarkdownPreview ? <Code2 size={16} /> : <Eye size={16} />}
+                </ToolbarButton>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1 no-drag-region">
+        <div className="flex items-center gap-1 no-drag-region shrink-0">
           <ToolbarButton
             onClick={() => setShowSearch(true)}
             ariaLabel="Global Search (Shift+Cmd+F)"
@@ -279,44 +372,6 @@ function App() {
             <FolderOpen size={16} />
           </ToolbarButton>
           <div className="w-px h-4 bg-fleet-border mx-1" />
-          {tabs.selectedPath?.endsWith('.py') && (
-            <ToolbarButton
-              onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
-              title="Run Python"
-              colorClassName="text-green-500"
-            >
-              <Play size={16} />
-            </ToolbarButton>
-          )}
-          {tabs.selectedPath?.endsWith('.json') && (
-            <ToolbarButton
-              onClick={handleFormatJson}
-              title="Format JSON"
-              colorClassName="text-yellow-500"
-            >
-              <AlignLeft size={16} />
-            </ToolbarButton>
-          )}
-          {tabs.selectedPath?.endsWith('.md') && (
-            <ToolbarButton
-              onClick={() =>
-                tabs.activeTabPath &&
-                tabs.updateTab(tabs.activeTabPath, { showPreview: !tabs.showMarkdownPreview })
-              }
-              active={tabs.showMarkdownPreview}
-              title={tabs.showMarkdownPreview ? 'Show Source' : 'Show Preview'}
-            >
-              {tabs.showMarkdownPreview ? <Code2 size={16} /> : <Eye size={16} />}
-            </ToolbarButton>
-          )}
-          <ToolbarButton
-            onClick={tabs.handleSave}
-            disabled={tabs.isSaved || !tabs.selectedPath}
-            colorClassName={!tabs.isSaved ? 'text-blue-400' : 'text-gray-500'}
-            title="Save (Cmd+S)"
-          >
-            <Save size={16} />
-          </ToolbarButton>
           <ToolbarButton
             onClick={() => {
               if (!terminal.showTerminal && terminal.terminals.length === 0)
