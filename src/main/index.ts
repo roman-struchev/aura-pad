@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
+import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
@@ -33,6 +34,57 @@ import {
 import { lintPython, lintEslint } from './lint'
 import type { AppSettings } from '../shared/settings'
 
+// Opening a file via "Open With" (or dropping one on the dock icon on macOS)
+// only reaches this process, not the renderer directly - forward it over
+// IPC so App.tsx can just call tabs.openTab() with it, the same as opening
+// a file from the tree. Queued if the window doesn't exist yet (macOS can
+// fire 'open-file' before the app is ready; Windows/Linux pass the path as
+// a plain CLI arg on the very first launch, before any window exists).
+let mainWindowRef: BrowserWindow | null = null
+const pendingFileOpens: string[] = []
+
+function openFileInApp(filePath: string): void {
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    if (mainWindowRef.isMinimized()) mainWindowRef.restore()
+    mainWindowRef.focus()
+    mainWindowRef.webContents.send('open-file-request', filePath)
+  } else {
+    pendingFileOpens.push(filePath)
+  }
+}
+
+// Only a real, existing file counts - guards against dev-mode args
+// (electron-vite's own flags/paths) being mistaken for a file to open.
+function getFilePathFromArgv(argv: string[]): string | null {
+  const candidate = argv[argv.length - 1]
+  if (!candidate || candidate.startsWith('-')) return null
+  try {
+    return fs.statSync(candidate).isFile() ? candidate : null
+  } catch (e) {
+    return null
+  }
+}
+
+// macOS-only: must be registered before whenReady, since launching the app
+// fresh by double-clicking/opening-with a file fires this before it's ready.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  openFileInApp(filePath)
+})
+
+// Opening a file while AuraPad is already running (Windows/Linux file
+// associations, or a second macOS open-file) should reuse this window
+// rather than spawn another instance.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const filePath = getFilePathFromArgv(argv)
+    if (filePath) openFileInApp(filePath)
+  })
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1000,
@@ -46,8 +98,17 @@ function createWindow(): void {
       sandbox: false
     }
   })
+  mainWindowRef = mainWindow
+  mainWindow.on('closed', () => {
+    if (mainWindowRef === mainWindow) mainWindowRef = null
+  })
 
-  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+    while (pendingFileOpens.length > 0) {
+      mainWindow.webContents.send('open-file-request', pendingFileOpens.shift())
+    }
+  })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -73,6 +134,9 @@ app.whenReady().then(() => {
 
   createWindow()
   setupWatchers()
+
+  const initialFilePath = getFilePathFromArgv(process.argv)
+  if (initialFilePath) openFileInApp(initialFilePath)
 
   nativeTheme.on('updated', () => {
     broadcast('theme-updated', nativeTheme.shouldUseDarkColors)

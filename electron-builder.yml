@@ -11,6 +11,31 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# Registers AuraPad as an "Open With..." option for plain text-ish files
+# (macOS, Windows, and Linux all read this same list). `role: Editor` marks
+# it as an editor rather than the sole viewer, so it shows up alongside
+# whatever else can already open these files instead of trying to take over
+# as the default. Only takes effect in a packaged build - `npm run dev`
+# doesn't register anything with the OS.
+fileAssociations:
+  - ext: txt
+    name: Plain Text
+    role: Editor
+  - ext: md
+    name: Markdown
+    role: Editor
+  - ext: json
+    name: JSON
+    role: Editor
+  - ext: log
+    name: Log File
+    role: Editor
+  - ext: yml
+    name: YAML
+    role: Editor
+  - ext: yaml
+    name: YAML
+    role: Editor
 win:
   executableName: aurapad
 nsis:

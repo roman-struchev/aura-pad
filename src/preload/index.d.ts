@@ -44,6 +44,7 @@ declare global {
       saveSettings: (settings: AppSettings) => Promise<AppSettings>
       onWorkspacesChanged: (callback: (trees: FileNode[]) => void) => () => void
       onFileChangedExternally: (callback: (path: string) => void) => () => void
+      onOpenFileRequest: (callback: (path: string) => void) => () => void
 
       createPty: (cwd?: string) => Promise<string>
       destroyPty: (termId: string) => void

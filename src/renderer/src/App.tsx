@@ -176,6 +176,16 @@ function App() {
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
+  // Opening a file via the OS ("Open With AuraPad", double-click once
+  // registered as a handler, or a second launch attempt while already
+  // running) arrives here as a plain path - just open it like any other file.
+  useEffect(() => {
+    const unsubscribe = window.api.onOpenFileRequest((filePath) => {
+      tabs.openTab(filePath)
+    })
+    return unsubscribe
+  }, [tabs])
+
   const runPythonFile = (path: string): void => {
     terminal.openNewTerminal(dirname(path), `python3 "${path}"`)
   }

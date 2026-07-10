@@ -44,6 +44,12 @@ const api = {
     return () => ipcRenderer.removeListener('file-changed-externally', listener)
   },
 
+  onOpenFileRequest: (callback: (path: string) => void) => {
+    const listener = (_, path: string) => callback(path)
+    ipcRenderer.on('open-file-request', listener)
+    return () => ipcRenderer.removeListener('open-file-request', listener)
+  },
+
   createPty: (cwd?: string) => ipcRenderer.invoke('create-pty', cwd),
   destroyPty: (termId: string) => ipcRenderer.send('destroy-pty', termId),
   ptyWrite: (termId: string, data: string) => ipcRenderer.send('pty-write', termId, data),
