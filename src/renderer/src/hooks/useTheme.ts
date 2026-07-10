@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { ThemeMode } from '../../../shared/settings'
+import type { ResolvedTheme, ThemeMode } from '../../../shared/settings'
 
-export function useTheme(themeMode: ThemeMode): boolean {
+export function useTheme(themeMode: ThemeMode): ResolvedTheme {
   const [systemIsDark, setSystemIsDark] = useState(true)
 
   useEffect(() => {
@@ -10,11 +10,12 @@ export function useTheme(themeMode: ThemeMode): boolean {
     return unsubscribe
   }, [])
 
-  const isDark = themeMode === 'system' ? systemIsDark : themeMode === 'dark'
+  const resolved: ResolvedTheme =
+    themeMode === 'system' ? (systemIsDark ? 'dark' : 'light') : themeMode
 
   useEffect(() => {
-    document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
-  }, [isDark])
+    document.documentElement.dataset.theme = resolved
+  }, [resolved])
 
-  return isDark
+  return resolved
 }

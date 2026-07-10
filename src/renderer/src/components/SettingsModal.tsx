@@ -40,7 +40,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <div className="flex flex-col gap-4">
         <SettingSelect
           label="Theme"
-          description="Dark, light, or follow the OS"
+          description="Dark, light, follow the OS, or a full color scheme"
           value={settings.theme}
           options={THEME_MODES}
           onChange={(v) => updateSetting('theme', v)}

@@ -103,31 +103,68 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     if (result.success) updateTab(activeTab.path, { isSaved: true })
   }
 
-  const closeTab = async (path: string): Promise<void> => {
-    const tab = tabs.find((t) => t.path === path)
-    if (!tab) return
-    if (tab.pinned && !(await confirmDialog('This tab is pinned. Close anyway?'))) return
+  // Shared pinned/unsaved confirmation for any close path (single or bulk).
+  const confirmCanClose = async (tab: OpenTab): Promise<boolean> => {
+    if (tab.pinned && !(await confirmDialog('This tab is pinned. Close anyway?'))) return false
     if (!tab.isSaved && !(await confirmDialog('You have unsaved changes. Close without saving?')))
-      return
+      return false
+    return true
+  }
 
-    const idx = tabs.findIndex((t) => t.path === path)
-    const filtered = tabs.filter((t) => t.path !== path)
-    setTabs(filtered)
-
-    if (activeTabPath === path) {
-      const next = filtered[idx] ?? filtered[idx - 1] ?? null
-      setActiveTabPath(next ? next.path : null)
-    }
-    pendingJumpLine.current = null
-
+  // Always a functional update, so bulk closes (which call this in a loop,
+  // each iteration awaiting a possible confirm dialog first) can't clobber
+  // each other by acting on a stale `tabs` snapshot from render time.
+  const removeTabFromState = (path: string): void => {
+    setTabs((prev) => prev.filter((t) => t.path !== path))
     closedStackRef.current = closedStackRef.current.filter((p) => p !== path)
     closedStackRef.current.push(path)
     if (closedStackRef.current.length > CLOSED_STACK_LIMIT) closedStackRef.current.shift()
   }
 
+  const closeTab = async (path: string): Promise<void> => {
+    const tab = tabsRef.current.find((t) => t.path === path)
+    if (!tab) return
+    if (!(await confirmCanClose(tab))) return
+
+    const currentTabs = tabsRef.current
+    const idx = currentTabs.findIndex((t) => t.path === path)
+    removeTabFromState(path)
+
+    if (activeTabPath === path) {
+      const filtered = currentTabs.filter((t) => t.path !== path)
+      const next = filtered[idx] ?? filtered[idx - 1] ?? null
+      setActiveTabPath(next ? next.path : null)
+    }
+    pendingJumpLine.current = null
+  }
+
   const handleCloseFile = (): void => {
     if (!activeTabPath) return
     closeTab(activeTabPath)
+  }
+
+  // Closes every open tab except keepPath, activating keepPath once done.
+  // Respects each tab's own pinned/unsaved confirmation, same as closeTab.
+  const closeOtherTabs = async (keepPath: string): Promise<void> => {
+    for (const tab of tabsRef.current.filter((t) => t.path !== keepPath)) {
+      if (await confirmCanClose(tab)) removeTabFromState(tab.path)
+    }
+    setActiveTabPath(keepPath)
+    pendingJumpLine.current = null
+  }
+
+  const closeAllTabs = async (): Promise<void> => {
+    // Tracks declined-to-close tabs directly, rather than re-checking
+    // tabsRef afterwards - the ref only catches up with removals once React
+    // has re-rendered and the sync effect below has run, which isn't
+    // guaranteed yet at this point if nothing needed a confirm dialog.
+    const survivors: string[] = []
+    for (const tab of tabsRef.current) {
+      if (await confirmCanClose(tab)) removeTabFromState(tab.path)
+      else survivors.push(tab.path)
+    }
+    setActiveTabPath(survivors.length > 0 ? survivors[survivors.length - 1] : null)
+    pendingJumpLine.current = null
   }
 
   // Cmd+Shift+T: reopen the most recently closed tab, browser-style.
@@ -241,6 +278,8 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     updateTab,
     openTab,
     closeTab,
+    closeOtherTabs,
+    closeAllTabs,
     handleCloseFile,
     reopenClosedTab,
     togglePin,

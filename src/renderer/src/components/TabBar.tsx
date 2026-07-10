@@ -1,32 +1,48 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { X, Pin, PinOff } from 'lucide-react'
 import type { OpenTab } from '../hooks/useTabs'
+import { TabContextMenu } from './TabContextMenu'
 
 interface TabBarProps {
   tabs: OpenTab[]
   activeTabPath: string | null
   setActiveTabPath: (path: string) => void
   closeTab: (path: string) => void
+  closeOtherTabs: (keepPath: string) => void
+  closeAllTabs: () => void
   togglePin: (path: string) => void
   reorderTab: (sourcePath: string, targetPath: string) => void
   heightClassName: string
 }
 
 // The tab strip: click to switch, drag to reorder, hover for a pin toggle and
-// close button. Pinned-tab close confirmation lives in closeTab itself (so
-// Cmd+W respects it too, not just this button).
+// close button, right-click for Close/Close Others/Close All. Pinned-tab
+// close confirmation lives in closeTab itself (so Cmd+W respects it too, not
+// just this button).
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabPath,
   setActiveTabPath,
   closeTab,
+  closeOtherTabs,
+  closeAllTabs,
   togglePin,
   reorderTab,
   heightClassName
 }) => {
   const [draggedTab, setDraggedTab] = useState<string | null>(null)
   const [dragOverTab, setDragOverTab] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(
+    null
+  )
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleClick = (): void => setContextMenu(null)
+    window.addEventListener('click', handleClick)
+    return () => window.removeEventListener('click', handleClick)
+  }, [contextMenu])
 
   // A single open file is already obvious from the window title bar - no
   // need for a tab strip until there's actually something to switch between.
@@ -44,6 +60,11 @@ export const TabBar: React.FC<TabBarProps> = ({
           key={tab.path}
           draggable
           onClick={() => setActiveTabPath(tab.path)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setContextMenu({ x: e.pageX, y: e.pageY, path: tab.path })
+          }}
           onDragStart={() => setDraggedTab(tab.path)}
           onDragEnd={() => {
             setDraggedTab(null)
@@ -99,6 +120,18 @@ export const TabBar: React.FC<TabBarProps> = ({
           />
         </div>
       ))}
+
+      {contextMenu && (
+        <TabContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          hasOtherTabs={tabs.length > 1}
+          onDismiss={() => setContextMenu(null)}
+          onCloseTab={() => closeTab(contextMenu.path)}
+          onCloseOthers={() => closeOtherTabs(contextMenu.path)}
+          onCloseAll={closeAllTabs}
+        />
+      )}
     </div>
   )
 }

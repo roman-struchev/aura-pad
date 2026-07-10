@@ -6,7 +6,7 @@ import { GitPanel } from './GitPanel'
 import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
 
 interface SidebarProps {
-  isDark: boolean
+  monacoTheme: string
   rowPadding: string
   sidebarView: 'files' | 'git'
   setSidebarView: (view: 'files' | 'git') => void
@@ -38,7 +38,7 @@ interface SidebarProps {
 // the file tree and the git panel; the switcher itself only shows up once a
 // git repo is actually open, so non-git workspaces look exactly as before.
 export const Sidebar: React.FC<SidebarProps> = ({
-  isDark,
+  monacoTheme,
   rowPadding,
   sidebarView,
   setSidebarView,
@@ -96,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {sidebarView === 'git' && gitRepos.length > 0 ? (
           <GitPanel
             repos={gitRepos}
-            isDark={isDark}
+            monacoTheme={monacoTheme}
             onStage={onGitStage}
             onUnstage={onGitUnstage}
             onDiscard={onGitDiscard}

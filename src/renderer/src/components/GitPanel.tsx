@@ -8,7 +8,7 @@ import { getLanguage } from '../lib/language'
 
 interface GitPanelProps {
   repos: GitRepoStatus[]
-  isDark: boolean
+  monacoTheme: string
   onStage: (root: string, relPath: string) => void
   onUnstage: (root: string, relPath: string) => void
   onDiscard: (root: string, entry: GitFileEntry) => void
@@ -67,7 +67,7 @@ const FileRow: React.FC<FileRowProps> = ({ entry, onClick, actions }) => (
 // handles multiple roots, but a commit box per repo doesn't scale the same way).
 export const GitPanel: React.FC<GitPanelProps> = ({
   repos,
-  isDark,
+  monacoTheme,
   onStage,
   onUnstage,
   onDiscard,
@@ -225,7 +225,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
             <DiffEditor
               height="100%"
               language={getLanguage(diffTarget.relPath)}
-              theme={isDark ? 'vs-dark' : 'vs'}
+              theme={monacoTheme}
               original={diffTarget.original}
               modified={diffTarget.modified}
               options={{ readOnly: true, minimap: { enabled: false } }}

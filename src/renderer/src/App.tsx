@@ -22,6 +22,7 @@ import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
 import { alertDialog } from './lib/dialogs'
 import { getLanguage } from './lib/language'
+import { getMonacoTheme } from './lib/editorTheme'
 import { dirname } from './lib/path'
 import Editor from '@monaco-editor/react'
 import clsx from 'clsx'
@@ -41,7 +42,8 @@ import {
 
 function App() {
   const { settings, updateSetting } = useSettings()
-  const isDark = useTheme(settings.theme)
+  const resolvedTheme = useTheme(settings.theme)
+  const monacoTheme = getMonacoTheme(resolvedTheme)
   const density = DENSITY[settings.uiMode]
 
   const terminal = useTerminals()
@@ -316,6 +318,8 @@ function App() {
               activeTabPath={tabs.activeTabPath}
               setActiveTabPath={tabs.setActiveTabPath}
               closeTab={tabs.closeTab}
+              closeOtherTabs={tabs.closeOtherTabs}
+              closeAllTabs={tabs.closeAllTabs}
               togglePin={tabs.togglePin}
               reorderTab={tabs.reorderTab}
               heightClassName={density.tabBarHeight}
@@ -351,7 +355,7 @@ function App() {
                   height="100%"
                   path={tabs.selectedPath}
                   language={getLanguage(tabs.selectedPath)}
-                  theme={isDark ? 'vs-dark' : 'vs'}
+                  theme={monacoTheme}
                   value={tabs.fileContent}
                   onChange={tabs.handleEditorChange}
                   onMount={tabs.handleEditorDidMount}
@@ -458,7 +462,7 @@ function App() {
             }}
           />
           <Sidebar
-            isDark={isDark}
+            monacoTheme={monacoTheme}
             rowPadding={density.treeRowPadding}
             sidebarView={sidebarView}
             setSidebarView={setSidebarView}

@@ -23,6 +23,29 @@
   --fleet-header: #f3f3f3;
 }
 
+/* Full app-wide themes (not just the editor) - matches the Monokai/Solarized
+   Monaco themes registered in monaco-setup.ts, so the whole window reads as
+   one consistent color scheme rather than just the code area. */
+[data-theme='monokai'] {
+  --fleet-bg: #272822;
+  --fleet-sidebar: #2d2e27;
+  --fleet-border: #49483e;
+  --fleet-text: #cfcfc2;
+  --fleet-textHover: #f8f8f2;
+  --fleet-active: #3e3d32;
+  --fleet-header: #2d2e27;
+}
+
+[data-theme='solarized'] {
+  --fleet-bg: #fdf6e3;
+  --fleet-sidebar: #eee8d5;
+  --fleet-border: #d3cbb7;
+  --fleet-text: #657b83;
+  --fleet-textHover: #073642;
+  --fleet-active: #e3dcc6;
+  --fleet-header: #eee8d5;
+}
+
 /* The terminal panel is always dark, independent of the app's light/dark
    theme (a light terminal would clash with most shell color schemes). */
 :root {

@@ -19,6 +19,66 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco })
 
+// A couple of well-known color schemes on top of Monaco's own built-in
+// vs/vs-dark, selectable via the "Editor Theme" setting (see lib/editorTheme.ts
+// for how a setting value maps to one of these names). Defined with Monaco's
+// own `defineTheme` API - no CSS overrides involved.
+monaco.editor.defineTheme('monokai', {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '75715e', fontStyle: 'italic' },
+    { token: 'keyword', foreground: 'f92672' },
+    { token: 'string', foreground: 'e6db74' },
+    { token: 'number', foreground: 'ae81ff' },
+    { token: 'type', foreground: '66d9ef', fontStyle: 'italic' },
+    { token: 'type.identifier', foreground: '66d9ef', fontStyle: 'italic' },
+    { token: 'function', foreground: 'a6e22e' },
+    { token: 'variable', foreground: 'f8f8f2' },
+    { token: 'identifier', foreground: 'f8f8f2' },
+    { token: 'delimiter', foreground: 'f8f8f2' },
+    { token: 'tag', foreground: 'f92672' },
+    { token: 'attribute.name', foreground: 'a6e22e' },
+    { token: 'attribute.value', foreground: 'e6db74' }
+  ],
+  colors: {
+    'editor.background': '#272822',
+    'editor.foreground': '#f8f8f2',
+    'editorCursor.foreground': '#f8f8f0',
+    'editor.lineHighlightBackground': '#3e3d32',
+    'editorLineNumber.foreground': '#90908a',
+    'editor.selectionBackground': '#49483e',
+    'editorIndentGuide.background': '#3b3a32'
+  }
+})
+
+monaco.editor.defineTheme('solarized', {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '93a1a1', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '859900' },
+    { token: 'string', foreground: '2aa198' },
+    { token: 'number', foreground: 'd33682' },
+    { token: 'type', foreground: 'b58900' },
+    { token: 'type.identifier', foreground: 'b58900' },
+    { token: 'function', foreground: '268bd2' },
+    { token: 'variable', foreground: '657b83' },
+    { token: 'identifier', foreground: '657b83' },
+    { token: 'tag', foreground: '268bd2' },
+    { token: 'attribute.name', foreground: '859900' },
+    { token: 'attribute.value', foreground: '2aa198' }
+  ],
+  colors: {
+    'editor.background': '#fdf6e3',
+    'editor.foreground': '#657b83',
+    'editorCursor.foreground': '#657b83',
+    'editor.lineHighlightBackground': '#eee8d5',
+    'editorLineNumber.foreground': '#93a1a1',
+    'editor.selectionBackground': '#eee8d5'
+  }
+})
+
 // Monaco's core bundle has no folding support for markdown (that's a separate
 // VS Code extension upstream, not part of monaco-editor): no headings, no
 // fenced code blocks, no frontmatter. Registering *any* explicit folding
