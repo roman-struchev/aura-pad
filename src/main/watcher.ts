@@ -8,14 +8,20 @@ import { loadSettings } from './settings'
 // File watching: react to changes made outside the app (other editors, git,
 // other windows of this app) without reacting to our own writes.
 //
-// - recordSelfWrite() is called right after we write a file ourselves.
+// - recordSelfWrite() is called right after we write a file ourselves, and
+//   remembers what we wrote alongside the timestamp.
 // - When the watcher reports a 'change' for that same path shortly after,
 //   we treat it as self-triggered and stay quiet (the renderer already has
 //   that content, since it's the one that wrote it).
+// - If the event arrives after the grace window - plausible with recursive
+//   fs.watch/FSEvents, which can batch or delay notifications well past a
+//   fixed cutoff - we fall back to comparing on-disk content against what we
+//   wrote. A match means it's still our own (late) write, not a real
+//   external change, so a slow filesystem can't produce a false positive.
 // - A structural change ('rename': create/delete/move) always triggers a
 //   debounced tree rebuild, since other files may be affected.
 const activeWatchers = new Map<string, fs.FSWatcher>()
-const recentSelfWrites = new Map<string, number>()
+const recentSelfWrites = new Map<string, { time: number; content: string }>()
 const structureDebounceTimers = new Map<string, NodeJS.Timeout>()
 const SELF_WRITE_GRACE_MS = 1500
 const STRUCTURE_DEBOUNCE_MS = 300
@@ -43,8 +49,8 @@ export function broadcast(channel: string, ...args: unknown[]): void {
   }
 }
 
-export function recordSelfWrite(filePath: string): void {
-  recentSelfWrites.set(filePath, Date.now())
+export function recordSelfWrite(filePath: string, content: string): void {
+  recentSelfWrites.set(filePath, { time: Date.now(), content })
 }
 
 function handleFsWatchEvent(rootPath: string, eventType: string, filename: string | null): void {
@@ -57,8 +63,17 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   const fullPath = path.join(rootPath, filename)
 
   if (eventType === 'change') {
-    const lastSelfWrite = recentSelfWrites.get(fullPath)
-    if (lastSelfWrite && Date.now() - lastSelfWrite < SELF_WRITE_GRACE_MS) return
+    const selfWrite = recentSelfWrites.get(fullPath)
+    if (selfWrite) {
+      if (Date.now() - selfWrite.time < SELF_WRITE_GRACE_MS) return
+      try {
+        if (fs.readFileSync(fullPath, 'utf-8') === selfWrite.content) return
+      } catch {
+        // Unreadable (deleted/permissions/binary decode) - fall through and
+        // let the rename-watcher or a later change event sort it out.
+      }
+      recentSelfWrites.delete(fullPath)
+    }
     broadcast('file-changed-externally', fullPath)
     return
   }

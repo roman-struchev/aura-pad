@@ -208,7 +208,7 @@ ipcMain.handle('read-file', async (_, filePath) => {
 
 ipcMain.handle('save-file', async (_, filePath, content) => {
   const result = writeFileContent(filePath, content)
-  if (result.success) recordSelfWrite(filePath)
+  if (result.success) recordSelfWrite(filePath, content)
   return result
 })
 
