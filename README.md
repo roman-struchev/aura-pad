@@ -26,8 +26,8 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
 
 **Editing**
 
-- Monaco under the hood, so you get real syntax highlighting, multi-cursor editing, and
-  `Cmd+F` find/replace for free.
+- Monaco under the hood, so you get real syntax highlighting (~30 languages), multi-cursor
+  editing, and `Cmd+F` find/replace for free.
 - Tabs, with pinning (asks for confirmation before closing a pinned tab), reopening the last
   closed tab (`Cmd+Shift+T`), and drag-to-reorder. Turn tabs off in Settings to go back to one
   file at a time.
@@ -49,11 +49,14 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
 - Watches the filesystem so the tree and open files stay in sync with changes made outside the
   app (another editor, git, another window) — with a banner instead of silently clobbering
   unsaved edits if there's a conflict.
-- Quick open (double-tap `Shift`) searches files and folders and shows workspace-relative
-  paths instead of full system paths.
+- Quick open (double-tap `Shift`) searches files and folders. Typing `~/` or `/` browses the
+  real filesystem instead (`Tab` completes) to open a file outside every workspace.
+- Files opened from outside every workspace get a "Recently Opened" section below the tree,
+  surviving tab close (expires after a week); the hover × removes it and closes the tab.
 - Global full-text search across every open workspace (`Shift+Cmd+F`).
 - The sidebar can sit on either side, and its width is draggable and remembered between
   launches.
+- Registered as an "Open With…" option (packaged builds only) for common text/config formats.
 
 **Git**
 
