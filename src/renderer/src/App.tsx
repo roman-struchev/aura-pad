@@ -71,6 +71,10 @@ function App() {
     renameInputRef,
     createInputRef
   })
+  const treeRef = useRef(tree)
+  useEffect(() => {
+    treeRef.current = tree
+  })
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
   const recentExternalFiles = useRecentExternalFiles()
@@ -158,28 +162,6 @@ function App() {
         keyPressedSinceShift.current = true
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        tabsRef.current.handleSave()
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
-        e.preventDefault()
-        tabsRef.current.handleCloseFile()
-      }
-      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
-        e.preventDefault()
-        tabsRef.current.reopenClosedTab()
-      }
-      if (!e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
-      }
-      // Standard IDEs use Shift+Cmd+F for global search.
-      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault()
-        setShowSearch(true)
-      }
-
       // Copy/paste/delete for the file tree - only when a tree row actually
       // has focus, so this never steals Cmd+C/V from the editor or terminal,
       // and never fires while typing in an input/textarea inside the sidebar
@@ -217,6 +199,41 @@ function App() {
   useEffect(() => {
     const unsubscribe = window.api.onOpenFileRequest((filePath) => {
       tabsRef.current.openTab(filePath)
+    })
+    return unsubscribe
+  }, [])
+
+  // The native macOS/Windows/Linux menu owns these accelerators (Cmd+S,
+  // Cmd+W, etc.) instead of a renderer-side keydown handler, so each key
+  // press only ever triggers one handler - see menu.ts.
+  useEffect(() => {
+    const unsubscribe = window.api.onMenuAction((action) => {
+      switch (action) {
+        case 'open-folder':
+          treeRef.current.handleAddFolder()
+          break
+        case 'save':
+          tabsRef.current.handleSave()
+          break
+        case 'close-tab':
+          tabsRef.current.handleCloseFile()
+          break
+        case 'reopen-tab':
+          tabsRef.current.reopenClosedTab()
+          break
+        case 'go-to-file':
+          setShowFileSearch((prev) => !prev)
+          break
+        case 'find-in-files':
+          setShowSearch(true)
+          break
+        case 'toggle-git-panel':
+          setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
+          break
+        case 'preferences':
+          setShowSettings(true)
+          break
+      }
     })
     return unsubscribe
   }, [])

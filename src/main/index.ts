@@ -189,7 +189,12 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  Menu.setApplicationMenu(buildAppMenu())
+  Menu.setApplicationMenu(
+    buildAppMenu((action) => {
+      const win = BrowserWindow.getFocusedWindow() ?? mainWindowRef
+      win?.webContents.send('menu-action', action)
+    })
+  )
 
   // Registered once for the app's lifetime - always resolves to whatever
   // window is current, so it keeps working across a macOS close-then-reopen

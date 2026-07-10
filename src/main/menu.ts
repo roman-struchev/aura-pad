@@ -1,17 +1,30 @@
-import { app, Menu } from 'electron'
+import { Menu } from 'electron'
+import type { MenuAction } from '../shared/menuAction'
+
+const APP_NAME = 'AuraPad'
 
 // Custom menu without a "Close Window" accelerator, so Cmd/Ctrl+W is free
 // for the renderer to use for closing the active file instead of the window.
-export function buildAppMenu(): Menu {
+// Every command below owns its accelerator here (not in the renderer's own
+// keydown handler) so a key press only ever triggers one handler.
+export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
   const isMac = process.platform === 'darwin'
+
+  const preferencesItem: Electron.MenuItemConstructorOptions = {
+    label: 'Preferences…',
+    accelerator: 'CmdOrCtrl+,',
+    click: () => sendAction('preferences')
+  }
 
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac
       ? [
           {
-            label: app.name,
+            label: APP_NAME,
             submenu: [
               { role: 'about' },
+              { type: 'separator' },
+              preferencesItem,
               { type: 'separator' },
               { role: 'hide' },
               { role: 'hideOthers' },
@@ -22,6 +35,25 @@ export function buildAppMenu(): Menu {
           } as Electron.MenuItemConstructorOptions
         ]
       : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open Folder…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => sendAction('open-folder')
+        },
+        { type: 'separator' },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendAction('save') },
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => sendAction('close-tab') },
+        {
+          label: 'Reopen Closed Tab',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => sendAction('reopen-tab')
+        },
+        ...(!isMac ? [{ type: 'separator' } as Electron.MenuItemConstructorOptions, preferencesItem] : [])
+      ]
+    },
     {
       label: 'Edit',
       submenu: [
@@ -37,6 +69,18 @@ export function buildAppMenu(): Menu {
     {
       label: 'View',
       submenu: [
+        { label: 'Go to File…', click: () => sendAction('go-to-file') },
+        {
+          label: 'Find in Files',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => sendAction('find-in-files')
+        },
+        {
+          label: 'Toggle Git Panel',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => sendAction('toggle-git-panel')
+        },
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },

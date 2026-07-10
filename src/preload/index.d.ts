@@ -6,6 +6,7 @@ import type { GitRepoStatus } from '../shared/gitStatus'
 import type { LintMarker } from '../shared/lint'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
+import type { MenuAction } from '../shared/menuAction'
 
 declare global {
   interface Window {
@@ -55,6 +56,7 @@ declare global {
       onRequestClose: (callback: () => void) => () => void
       confirmClose: () => void
       notifyRendererReady: () => void
+      onMenuAction: (callback: (action: MenuAction) => void) => () => void
 
       createPty: (cwd?: string) => Promise<string>
       destroyPty: (termId: string) => void

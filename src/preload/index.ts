@@ -5,6 +5,7 @@ import type { FileNode } from '../shared/fileNode'
 import type { GitRepoStatus } from '../shared/gitStatus'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
+import type { MenuAction } from '../shared/menuAction'
 
 const api = {
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
@@ -68,6 +69,12 @@ const api = {
   },
   confirmClose: () => ipcRenderer.send('confirm-close'),
   notifyRendererReady: () => ipcRenderer.send('renderer-ready'),
+
+  onMenuAction: (callback: (action: MenuAction) => void) => {
+    const listener = (_, action: MenuAction) => callback(action)
+    ipcRenderer.on('menu-action', listener)
+    return () => ipcRenderer.removeListener('menu-action', listener)
+  },
 
   createPty: (cwd?: string) => ipcRenderer.invoke('create-pty', cwd),
   destroyPty: (termId: string) => ipcRenderer.send('destroy-pty', termId),
