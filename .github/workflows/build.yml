@@ -7,7 +7,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  create-draft:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Create Draft Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} --draft --title "${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
+
+  build:
+    needs: create-draft
+    if: always() && (needs.create-draft.result == 'success' || needs.create-draft.result == 'skipped')
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -45,8 +59,14 @@ jobs:
           release: ${{ startsWith(github.ref, 'refs/tags/v') }}
           max_attempts: 3
 
+  publish:
+    needs: [create-draft, build]
+    if: always() && needs.create-draft.result == 'success' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
       - name: Publish Draft Release
-        if: startsWith(github.ref, 'refs/tags/v')
         run: gh release edit ${{ github.ref_name }} --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
