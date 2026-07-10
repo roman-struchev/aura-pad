@@ -17,6 +17,7 @@ TAG="v$VERSION"
 git add package.json package-lock.json
 git commit -m "chore: release $TAG"
 git tag "$TAG"
+git push "$TAG"
 git push --follow-tags
 
 echo "Pushed commit and tag $TAG. Watch the Actions tab for the build."
