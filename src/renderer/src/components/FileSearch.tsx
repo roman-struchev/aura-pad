@@ -49,12 +49,16 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect, rootN
     onSelect(res.path, res.type)
   }
 
+  // Mount-only: focus the input and load the workspace file list once. This
+  // must NOT depend on results/selectedIndex/query - it used to, which meant
+  // every arrow-key press or keystroke re-ran this fetch, and the async
+  // response landing afterward reset selectedIndex back to 0 (via the effect
+  // below), so Arrow keys and mouse hover never visibly moved the selection.
   useEffect(() => {
     inputRef.current?.focus()
 
-    // Load all file/folder paths once when search opens. The trees from
-    // getWorkspaces() are already filtered server-side (.gitignore + the
-    // built-in ignore list), so no need to filter again here.
+    // The trees from getWorkspaces() are already filtered server-side
+    // (.gitignore + the built-in ignore list), so no need to filter again.
     window.api.getWorkspaces().then((trees) => {
       const flat: FileResult[] = []
       const flatten = (nodes: FileNode[]) => {
@@ -66,7 +70,9 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect, rootN
       flatten(trees)
       setAllEntries(flat)
     })
+  }, [])
 
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowDown') {
