@@ -61,6 +61,14 @@ const api = {
     return () => ipcRenderer.removeListener('open-file-request', listener)
   },
 
+  onRequestClose: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('request-close', listener)
+    return () => ipcRenderer.removeListener('request-close', listener)
+  },
+  confirmClose: () => ipcRenderer.send('confirm-close'),
+  notifyRendererReady: () => ipcRenderer.send('renderer-ready'),
+
   createPty: (cwd?: string) => ipcRenderer.invoke('create-pty', cwd),
   destroyPty: (termId: string) => ipcRenderer.send('destroy-pty', termId),
   ptyWrite: (termId: string, data: string) => ipcRenderer.send('pty-write', termId, data),

@@ -88,7 +88,9 @@ async function getNumstat(root: string, extraArgs: string[]): Promise<Map<string
       if (!relPath || addedStr === '-' || removedStr === '-') continue
       map.set(relPath, { added: parseInt(addedStr, 10), removed: parseInt(removedStr, 10) })
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to get git numstat diff:', e)
+  }
   return map
 }
 
@@ -197,7 +199,9 @@ export async function getDiff(
   let modified = ''
   try {
     modified = fs.readFileSync(path.join(root, relPath), 'utf-8')
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to read working copy for diff:', e)
+  }
 
   return { original, modified }
 }

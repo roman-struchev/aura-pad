@@ -2,8 +2,6 @@ import type { UiMode } from '../../shared/settings'
 
 export type { UiMode }
 
-export const UI_MODES: UiMode[] = ['micro', 'compact', 'normal', 'large']
-
 export interface DensityPreset {
   editorFontSize: number
   treeRowPadding: string

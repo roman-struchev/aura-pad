@@ -48,9 +48,27 @@ import type { AppSettings } from '../shared/settings'
 // a plain CLI arg on the very first launch, before any window exists).
 let mainWindowRef: BrowserWindow | null = null
 const pendingFileOpens: string[] = []
+// Windows that the renderer has confirmed are safe to close (no unsaved
+// tabs, or the user chose to discard them) - see the 'close' handler below.
+const windowsAllowedToClose = new WeakSet<BrowserWindow>()
+// True once App.tsx has mounted and subscribed to 'open-file-request' (see
+// the 'renderer-ready' handler below). 'ready-to-show' fires as soon as the
+// page has painted a first frame, which isn't guaranteed to be after React
+// has mounted and run its effects - sending straight to 'ready-to-show' could
+// fire before anything is listening, silently dropping the very file the
+// user tried to open. Queuing until the renderer actively asks for pending
+// opens removes that race entirely.
+let rendererReady = false
+
+function flushPendingFileOpens(): void {
+  if (!mainWindowRef || mainWindowRef.isDestroyed()) return
+  while (pendingFileOpens.length > 0) {
+    mainWindowRef.webContents.send('open-file-request', pendingFileOpens.shift())
+  }
+}
 
 function openFileInApp(filePath: string): void {
-  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+  if (mainWindowRef && !mainWindowRef.isDestroyed() && rendererReady) {
     if (mainWindowRef.isMinimized()) mainWindowRef.restore()
     mainWindowRef.focus()
     mainWindowRef.webContents.send('open-file-request', filePath)
@@ -105,15 +123,25 @@ function createWindow(): void {
     }
   })
   mainWindowRef = mainWindow
+  rendererReady = false
   mainWindow.on('closed', () => {
-    if (mainWindowRef === mainWindow) mainWindowRef = null
+    if (mainWindowRef === mainWindow) {
+      mainWindowRef = null
+      rendererReady = false
+    }
+  })
+
+  // Ask the renderer whether it's safe to close (unsaved tabs) instead of
+  // discarding work silently - it responds via 'confirm-close' below, either
+  // immediately (nothing unsaved) or after the user confirms a prompt.
+  mainWindow.on('close', (event) => {
+    if (windowsAllowedToClose.has(mainWindow)) return
+    event.preventDefault()
+    mainWindow.webContents.send('request-close')
   })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
-    while (pendingFileOpens.length > 0) {
-      mainWindow.webContents.send('open-file-request', pendingFileOpens.shift())
-    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -121,14 +149,39 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // A plain in-page navigation (e.g. clicking a link in the Markdown preview,
+  // which isn't a new-window open and so never reaches setWindowOpenHandler
+  // above) would otherwise replace the whole app with the target site. Electron
+  // never fires this for the app's own initial loadURL/loadFile call below -
+  // only for content-triggered navigations - so any occurrence here is a link
+  // that should open in the OS browser instead, with the app's own window
+  // left in place.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault()
+    shell.openExternal(url)
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
-
-  registerCreatePtyHandler(mainWindow)
 }
+
+ipcMain.on('confirm-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return
+  windowsAllowedToClose.add(win)
+  win.close()
+})
+
+// App.tsx sends this right after mounting and subscribing to
+// 'open-file-request' - only from this point on is it safe to deliver a file
+// open directly instead of queuing it.
+ipcMain.on('renderer-ready', () => {
+  rendererReady = true
+  flushPendingFileOpens()
+})
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.struchev.aurapad')
@@ -137,6 +190,11 @@ app.whenReady().then(() => {
   })
 
   Menu.setApplicationMenu(buildAppMenu())
+
+  // Registered once for the app's lifetime - always resolves to whatever
+  // window is current, so it keeps working across a macOS close-then-reopen
+  // (dock activate) cycle instead of staying bound to a destroyed window.
+  registerCreatePtyHandler(() => mainWindowRef)
 
   createWindow()
   setupWatchers()
@@ -149,7 +207,15 @@ app.whenReady().then(() => {
   })
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // On macOS, closing the last window doesn't quit the app - it tears down
+    // watchers below (window-all-closed) since nothing was around to receive
+    // their events. Reopening one (dock click) needs them re-armed, or the
+    // file tree/git status/external-change detection in the new window would
+    // just silently never update again.
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+      setupWatchers()
+    }
   })
 })
 

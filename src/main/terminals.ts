@@ -1,13 +1,28 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import os from 'os'
 import * as pty from 'node-pty'
 
-const shellExec = process.env[process.platform === 'win32' ? 'COMSPEC' : 'SHELL'] || '/bin/zsh'
+const shellExec =
+  process.env[process.platform === 'win32' ? 'COMSPEC' : 'SHELL'] ||
+  (process.platform === 'win32' ? 'cmd.exe' : '/bin/bash')
 
 const ptys = new Map<string, pty.IPty>()
 let ptyIdCounter = 0
 
-// Bound to a specific window since PTY output needs to be sent back to it.
-export function registerCreatePtyHandler(mainWindow: BrowserWindow): void {
+// Resolves to whichever window is currently "the" main window at the time a
+// PTY event fires - not fixed at creation time. On macOS the app (and its
+// PTYs/terminals) outlives any single window: closing the window and
+// reopening one (dock click) must keep delivering output to the new window,
+// not the destroyed one a handler was originally bound to.
+let getMainWindow: () => BrowserWindow | null = () => null
+
+// Registered once for the app's lifetime (not per-window) - re-registering
+// ipcMain.handle for the same channel throws, and rebinding it to whatever
+// window existed at the time would silently orphan PTYs across a
+// close-then-reopen cycle on macOS.
+export function registerCreatePtyHandler(windowProvider: () => BrowserWindow | null): void {
+  getMainWindow = windowProvider
+
   ipcMain.handle('create-pty', (_event, cwd?: string) => {
     const termId = `term-${ptyIdCounter++}`
 
@@ -16,19 +31,21 @@ export function registerCreatePtyHandler(mainWindow: BrowserWindow): void {
       name: 'xterm-color',
       cols: 80,
       rows: 30,
-      cwd: cwd || process.env.HOME,
+      cwd: cwd || os.homedir(),
       env: process.env as Record<string, string>
     })
 
     ptyProcess.onData((data) => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`pty-data-${termId}`, data)
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(`pty-data-${termId}`, data)
       }
     })
 
     ptyProcess.onExit(() => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(`pty-exit-${termId}`)
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(`pty-exit-${termId}`)
       }
       ptys.delete(termId)
     })

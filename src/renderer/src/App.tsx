@@ -21,11 +21,12 @@ import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
-import { alertDialog } from './lib/dialogs'
+import { alertDialog, confirmDialog } from './lib/dialogs'
 import { getLanguage } from './lib/language'
 import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
 import { prettyPrintMarkup } from './lib/formatMarkup'
+import { quoteForShell } from './lib/shellQuote'
 import Editor from '@monaco-editor/react'
 import clsx from 'clsx'
 import {
@@ -51,6 +52,16 @@ function App() {
 
   const terminal = useTerminals()
   const tabs = useTabs(settings.tabsEnabled, settings.autosaveEnabled)
+  // useTabs (like most of this file's hooks) returns a fresh object literal
+  // every render, so effects that only need to *call* something on it (not
+  // react to one of its values changing) read it through this ref instead of
+  // depending on `tabs` itself - otherwise they'd tear down and re-attach
+  // their listener on every single render. Written from an effect (not
+  // inline during render) since refs aren't safe to mutate while rendering.
+  const tabsRef = useRef(tabs)
+  useEffect(() => {
+    tabsRef.current = tabs
+  })
   const renameInputRef = useRef<HTMLInputElement>(null)
   const createInputRef = useRef<HTMLInputElement>(null)
   const tree = useWorkspaceTree({
@@ -95,6 +106,12 @@ function App() {
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
 
   const lastShiftTime = useRef<number>(0)
+  // Tracks whether some other key fired between the last lone Shift press and
+  // now, so two Shift keydowns close together only count as "double-Shift"
+  // when nothing happened in between - not e.g. two Shift+<letter> presses
+  // from fast CamelCase typing, each of which also fires its own Shift
+  // keydown right before the letter.
+  const keyPressedSinceShift = useRef<boolean>(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
   // Monaco's built-in widgets (e.g. the Find/Replace bar's icon buttons) use
@@ -126,48 +143,41 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Double Shift detection
+      // Double-Shift quick open, JetBrains-style - toggles rather than just
+      // opening, so pressing it again closes the dialog too.
       if (e.key === 'Shift') {
         const now = Date.now()
-        if (now - lastShiftTime.current < 300) {
-          setShowFileSearch(true)
+        if (now - lastShiftTime.current < 300 && !keyPressedSinceShift.current) {
+          setShowFileSearch((prev) => !prev)
           lastShiftTime.current = 0
         } else {
           lastShiftTime.current = now
         }
+        keyPressedSinceShift.current = false
+      } else {
+        keyPressedSinceShift.current = true
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
-        tabs.handleSave()
+        tabsRef.current.handleSave()
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
         e.preventDefault()
-        tabs.handleCloseFile()
+        tabsRef.current.handleCloseFile()
       }
       if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
         e.preventDefault()
-        tabs.reopenClosedTab()
+        tabsRef.current.reopenClosedTab()
       }
       if (!e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
       }
-      if (
-        (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') ||
-        (e.shiftKey &&
-          e.key === 'F' &&
-          !e.metaKey &&
-          !e.ctrlKey &&
-          document.activeElement?.tagName !== 'INPUT' &&
-          document.activeElement?.tagName !== 'TEXTAREA')
-      ) {
-        // Only trigger Shift+F if not in an input field (to avoid interference with typing)
-        // Standard IDEs use Shift+Cmd+F for global search.
-        if (e.shiftKey && (e.metaKey || e.ctrlKey)) {
-          e.preventDefault()
-          setShowSearch(true)
-        }
+      // Standard IDEs use Shift+Cmd+F for global search.
+      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setShowSearch(true)
       }
 
       // Copy/paste/delete for the file tree - only when a tree row actually
@@ -193,7 +203,7 @@ function App() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [tabs, tree.focusedNode, tree.clipboard])
+  }, [tree.focusedNode, tree.clipboard])
 
   useEffect(() => {
     const handleClickOutside = () => tree.setContextMenu(null)
@@ -206,13 +216,44 @@ function App() {
   // running) arrives here as a plain path - just open it like any other file.
   useEffect(() => {
     const unsubscribe = window.api.onOpenFileRequest((filePath) => {
-      tabs.openTab(filePath)
+      tabsRef.current.openTab(filePath)
     })
     return unsubscribe
-  }, [tabs])
+  }, [])
+
+  // Tells main it's now safe to deliver a file-open request directly instead
+  // of queuing it - must run only once, after the subscription above is in
+  // place, so a file open that raced the app's startup (macOS "Open With",
+  // or a plain CLI arg on first launch) never fires before anything is
+  // listening for it.
+  useEffect(() => {
+    window.api.notifyRendererReady()
+  }, [])
+
+  // The window is about to close (titlebar close button, Cmd+Q, or the app
+  // quitting) - main paused the close and is waiting for this to either let
+  // it through immediately (nothing unsaved) or confirm after asking the
+  // user, so unsaved edits are never silently discarded.
+  useEffect(() => {
+    const unsubscribe = window.api.onRequestClose(async () => {
+      const unsavedCount = tabsRef.current.getUnsavedCount()
+      if (
+        unsavedCount === 0 ||
+        (await confirmDialog(
+          unsavedCount === 1
+            ? 'You have unsaved changes in 1 tab. Quit without saving?'
+            : `You have unsaved changes in ${unsavedCount} tabs. Quit without saving?`
+        ))
+      ) {
+        window.api.confirmClose()
+      }
+    })
+    return unsubscribe
+  }, [])
 
   const runPythonFile = (path: string): void => {
-    terminal.openNewTerminal(dirname(path), `python3 "${path}"`)
+    const quotedPath = quoteForShell(path, window.electron.process.platform)
+    terminal.openNewTerminal(dirname(path), `python3 ${quotedPath}`)
   }
 
   // Toggles: clicking the hover icon again on an already-previewing tab flips
@@ -525,6 +566,7 @@ function App() {
                       termId={term.id}
                       isActive={terminal.activeTermId === term.id}
                       fontSize={density.terminalFontSize}
+                      onExit={() => terminal.handleTerminalExit(term.id)}
                     />
                   </div>
                 ))}

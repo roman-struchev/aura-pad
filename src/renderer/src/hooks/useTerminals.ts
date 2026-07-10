@@ -1,13 +1,29 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 export type TerminalTab = { id: string; name: string }
 
 export function useTerminals() {
-  const [showTerminal, setShowTerminal] = useState(false)
+  const [rawShowTerminal, setShowTerminal] = useState(false)
   const [terminalHeight, setTerminalHeight] = useState(256)
   const [isResizing, setIsResizing] = useState(false)
   const [terminals, setTerminals] = useState<TerminalTab[]>([])
-  const [activeTermId, setActiveTermId] = useState<string | null>(null)
+  const [rawActiveTermId, setActiveTermId] = useState<string | null>(null)
+  // Monotonic, never reused even as tabs close - `prev.length + 1` would
+  // rename the next new tab "Terminal 2" after closing the *first* of three
+  // open terminals, colliding with the "Terminal 2" that's still open.
+  const terminalCounterRef = useRef(0)
+
+  // Derived rather than synced back into state via an effect: if the
+  // terminal that was active got closed (by the user, or because its shell
+  // exited on its own) fall back to the last remaining one, and hide the
+  // panel once nothing's left - computed straight from the current
+  // `terminals`/`activeTermId` values instead of a separate render pass
+  // that exists solely to "fix up" state after the fact.
+  const activeTermId =
+    rawActiveTermId && terminals.some((t) => t.id === rawActiveTermId)
+      ? rawActiveTermId
+      : (terminals[terminals.length - 1]?.id ?? null)
+  const showTerminal = rawShowTerminal && terminals.length > 0
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -34,7 +50,9 @@ export function useTerminals() {
   const openNewTerminal = async (cwd?: string, runCommand?: string): Promise<void> => {
     setShowTerminal(true)
     const termId = await window.api.createPty(cwd)
-    setTerminals((prev) => [...prev, { id: termId, name: `Terminal ${prev.length + 1}` }])
+    terminalCounterRef.current += 1
+    const name = `Terminal ${terminalCounterRef.current}`
+    setTerminals((prev) => [...prev, { id: termId, name }])
     setActiveTermId(termId)
     if (runCommand) {
       setTimeout(() => {
@@ -43,17 +61,21 @@ export function useTerminals() {
     }
   }
 
+  const removeTerminal = (termId: string): void => {
+    setTerminals((prev) => prev.filter((t) => t.id !== termId))
+  }
+
   const closeTerminal = (termId: string, e: React.MouseEvent): void => {
     e.stopPropagation()
     window.api.destroyPty(termId)
-    setTerminals((prev) => {
-      const filtered = prev.filter((t) => t.id !== termId)
-      if (activeTermId === termId) {
-        setActiveTermId(filtered.length > 0 ? filtered[filtered.length - 1].id : null)
-      }
-      if (filtered.length === 0) setShowTerminal(false)
-      return filtered
-    })
+    removeTerminal(termId)
+  }
+
+  // The shell process behind this tab exited on its own (typed `exit`, `^D`,
+  // crashed, ...) - there's nothing left to destroy, just drop the now-dead
+  // tab so it doesn't linger accepting input that goes nowhere.
+  const handleTerminalExit = (termId: string): void => {
+    removeTerminal(termId)
   }
 
   return {
@@ -65,6 +87,7 @@ export function useTerminals() {
     activeTermId,
     setActiveTermId,
     openNewTerminal,
-    closeTerminal
+    closeTerminal,
+    handleTerminalExit
   }
 }

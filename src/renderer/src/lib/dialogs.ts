@@ -10,13 +10,33 @@ type Listener = (request: DialogRequest | null) => void
 
 let listener: Listener | null = null
 
+// A second request while one is already showing (e.g. an app-close prompt
+// arriving while a delete confirmation is still up) queues behind it instead
+// of replacing it - replacing used to silently dismiss the first dialog and
+// leave its Promise unresolved forever, hanging whatever awaited it.
+const queue: DialogRequest[] = []
+
+function showFront(): void {
+  listener?.(queue[0] ?? null)
+}
+
+function enqueue(request: DialogRequest): void {
+  queue.push(request)
+  if (queue.length === 1) showFront()
+}
+
+function advance(): void {
+  queue.shift()
+  showFront()
+}
+
 export function confirmDialog(message: string): Promise<boolean> {
   return new Promise((resolve) => {
-    listener?.({
+    enqueue({
       kind: 'confirm',
       message,
       resolve: (value: boolean) => {
-        listener?.(null)
+        advance()
         resolve(value)
       }
     })
@@ -25,11 +45,11 @@ export function confirmDialog(message: string): Promise<boolean> {
 
 export function alertDialog(message: string): Promise<void> {
   return new Promise((resolve) => {
-    listener?.({
+    enqueue({
       kind: 'alert',
       message,
       resolve: () => {
-        listener?.(null)
+        advance()
         resolve()
       }
     })
@@ -38,6 +58,7 @@ export function alertDialog(message: string): Promise<void> {
 
 export function subscribeDialogRequests(cb: Listener): () => void {
   listener = cb
+  showFront()
   return () => {
     if (listener === cb) listener = null
   }

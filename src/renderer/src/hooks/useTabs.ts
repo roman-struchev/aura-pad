@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type * as monacoEditor from 'monaco-editor'
-import { confirmDialog } from '../lib/dialogs'
+import * as monaco from 'monaco-editor'
+import { alertDialog, confirmDialog } from '../lib/dialogs'
 
 export type OpenTab = {
   path: string
@@ -20,7 +20,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
 
-  const editorRef = useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null)
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const tabsRef = useRef<OpenTab[]>([])
   const pendingJumpLine = useRef<number | null>(null)
   const closedStackRef = useRef<string[]>([])
@@ -60,9 +60,11 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   }, [fileContent])
 
   const openTab = async (filePath: string, line?: number): Promise<void> => {
-    const existing = tabs.find((t) => t.path === filePath)
-
-    if (existing) {
+    // Checked against the ref (not the `tabs` state closure) so a second
+    // concurrent call - e.g. dropping several files from Finder at once, or
+    // two open-file requests arriving back to back - sees any tab the first
+    // call has already committed, not a stale snapshot from render time.
+    if (tabsRef.current.some((t) => t.path === filePath)) {
       setActiveTabPath(filePath)
       if (line) pendingJumpLine.current = line
       return
@@ -70,7 +72,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
 
     const result = await window.api.readFile(filePath)
     if (!result.success) {
-      console.error(result.error)
+      await alertDialog(result.error || 'Failed to open file.')
       return
     }
 
@@ -82,12 +84,19 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       showPreview: false
     }
 
-    setTabs((prev) => (tabsEnabled ? [...prev, newTab] : [newTab]))
+    // Final dedup inside the functional update itself: two concurrent calls
+    // can both pass the check above before either's readFile resolves, so
+    // whichever's setTabs runs second must still see the first one's tab and
+    // back off, rather than adding a second tab for the same path.
+    setTabs((prev) => {
+      if (prev.some((t) => t.path === filePath)) return prev
+      return tabsEnabled ? [...prev, newTab] : [newTab]
+    })
     setActiveTabPath(filePath)
     if (line) pendingJumpLine.current = line
   }
 
-  const handleEditorDidMount = (editor: monacoEditor.editor.IStandaloneCodeEditor): void => {
+  const handleEditorDidMount = (editor: monaco.editor.IStandaloneCodeEditor): void => {
     editorRef.current = editor
   }
 
@@ -119,6 +128,15 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     closedStackRef.current = closedStackRef.current.filter((p) => p !== path)
     closedStackRef.current.push(path)
     if (closedStackRef.current.length > CLOSED_STACK_LIMIT) closedStackRef.current.shift()
+
+    // Monaco keeps every path's model alive for the life of the app (so
+    // switching back to a still-open tab preserves its undo history) - once
+    // a tab is actually closed there's no way back to it except reopening
+    // fresh from disk, so free the model rather than leaking its full text
+    // and edit history for the rest of the session. `Uri.parse` (not
+    // `Uri.file`) to match the URI @monaco-editor/react itself builds from
+    // the `path` prop internally.
+    monaco.editor.getModel(monaco.Uri.parse(path))?.dispose()
   }
 
   const closeTab = async (path: string): Promise<void> => {
@@ -173,6 +191,11 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     if (path) openTab(path)
   }
 
+  // Reads from the ref (not `tabs` state) so callers registered once (e.g. an
+  // effect with empty deps) always see the current tab list, not a stale
+  // closure from whenever they subscribed.
+  const getUnsavedCount = (): number => tabsRef.current.filter((t) => !t.isSaved).length
+
   const togglePin = (path: string): void => {
     const tab = tabs.find((t) => t.path === path)
     if (tab) updateTab(path, { pinned: !tab.pinned })
@@ -209,6 +232,15 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   // Keep open tab paths in sync when a file/folder is renamed or moved in
   // the tree - otherwise the tab would keep pointing at the old path.
   const remapTabPaths = (oldPath: string, newPath: string): void => {
+    // Read before the state update (not computed inside setTabs' updater,
+    // which must stay side-effect free) so the old paths' now-orphaned
+    // Monaco models - nothing points at them anymore once the tab's path
+    // changes below - can be freed instead of leaking for the rest of the
+    // session, same as closing a tab outright does.
+    const affectedOldPaths = tabsRef.current
+      .filter((t) => t.path === oldPath || t.path.startsWith(oldPath + '/'))
+      .map((t) => t.path)
+
     setTabs((prev) =>
       prev.map((t) => {
         if (t.path === oldPath) return { ...t, path: newPath }
@@ -217,6 +249,9 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
         return t
       })
     )
+    for (const oldTabPath of affectedOldPaths) {
+      monaco.editor.getModel(monaco.Uri.parse(oldTabPath))?.dispose()
+    }
     setActiveTabPath((prev) => {
       if (!prev) return prev
       if (prev === oldPath) return newPath
@@ -282,6 +317,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     closeAllTabs,
     handleCloseFile,
     reopenClosedTab,
+    getUnsavedCount,
     togglePin,
     reorderTab,
     handleSave,

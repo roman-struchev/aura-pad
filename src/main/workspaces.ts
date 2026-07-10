@@ -12,14 +12,18 @@ export function loadWorkspaces(): string[] {
     if (fs.existsSync(workspacesConfigPath)) {
       return JSON.parse(fs.readFileSync(workspacesConfigPath, 'utf-8'))
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to load workspaces.json:', e)
+  }
   return []
 }
 
 export function saveWorkspaces(paths: string[]): void {
   try {
     fs.writeFileSync(workspacesConfigPath, JSON.stringify(paths))
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to save workspaces.json:', e)
+  }
 }
 
 // Ignore hidden files/folders (starting with .) and common system/build folders
@@ -43,14 +47,16 @@ export function isIgnored(name: string): boolean {
 
 // Load .gitignore rules (if any) at the root of a workspace, on top of the
 // hardcoded isIgnored() rules above.
-function loadGitignore(rootPath: string): Ignore {
+export function loadGitignore(rootPath: string): Ignore {
   const ig = ignore()
   try {
     const gitignorePath = path.join(rootPath, '.gitignore')
     if (fs.existsSync(gitignorePath)) {
       ig.add(fs.readFileSync(gitignorePath, 'utf-8'))
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to read .gitignore:', e)
+  }
   return ig
 }
 
@@ -80,7 +86,9 @@ function buildFileTree(dirPath: string, rootPath: string, ig: Ignore, isRoot = f
       if (a.type === b.type) return a.name.localeCompare(b.name)
       return a.type === 'directory' ? -1 : 1
     })
-  } catch (e) {}
+  } catch (e) {
+    console.warn(`Failed to read directory "${dirPath}":`, e)
+  }
 
   return item
 }
@@ -96,6 +104,21 @@ export function getWorkspaceTrees(): FileNode[] {
   return trees
 }
 
+const SEARCHABLE_EXTENSION_RE = /\.(py|json|md|txt|ts|tsx|js|jsx|css|html|yml|yaml|xml)$/i
+const MAX_TOTAL_SEARCH_RESULTS = 500
+// Bounds how much a single file (e.g. a huge generated/minified one that
+// slipped past the extension filter) can contribute, so it can't alone
+// dominate the result cap above at the expense of every other match.
+const MAX_RESULTS_PER_FILE = 50
+// Skip absurdly large text-like files rather than reading them fully into
+// memory - a search result from a multi-megabyte log isn't very actionable
+// anyway.
+const MAX_SEARCHABLE_FILE_BYTES = 2 * 1024 * 1024
+
+// Signals "stop, the global cap was hit" up through the recursive walk -
+// lighter than threading a mutable "stop" flag through every call and check.
+class SearchCapReached extends Error {}
+
 export async function searchInWorkspaces(query: string): Promise<SearchResult[]> {
   const workspacePaths = loadWorkspaces()
   const results: SearchResult[] = []
@@ -103,49 +126,67 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
 
   const queryLower = query.toLowerCase()
 
+  // Walks with fs.promises (not the *Sync variants the rest of this module
+  // uses) so each readdir/stat/readFile call yields to the event loop -
+  // otherwise a large workspace would freeze every other IPC call (saves,
+  // git status, terminal I/O) for as long as the whole recursive scan takes.
+  async function searchDir(rootPath: string, ig: Ignore, currentPath: string): Promise<void> {
+    let files: string[]
+    try {
+      files = await fs.promises.readdir(currentPath)
+    } catch (e) {
+      return
+    }
+
+    for (const file of files) {
+      if (isIgnored(file)) continue
+
+      const fullPath = path.join(currentPath, file)
+      const relPath = path.relative(rootPath, fullPath)
+      if (relPath && ig.ignores(relPath)) continue
+
+      let stat: fs.Stats
+      try {
+        stat = await fs.promises.stat(fullPath)
+      } catch (e) {
+        continue
+      }
+
+      if (stat.isDirectory()) {
+        await searchDir(rootPath, ig, fullPath)
+      } else if (SEARCHABLE_EXTENSION_RE.test(file) && stat.size <= MAX_SEARCHABLE_FILE_BYTES) {
+        let content: string
+        try {
+          content = await fs.promises.readFile(fullPath, 'utf-8')
+        } catch (e) {
+          continue
+        }
+        if (!content.toLowerCase().includes(queryLower)) continue
+
+        const lines = content.split('\n')
+        let matchesInFile = 0
+        for (let index = 0; index < lines.length; index++) {
+          if (!lines[index].toLowerCase().includes(queryLower)) continue
+          results.push({ file, path: fullPath, line: index + 1, content: lines[index].trim() })
+          matchesInFile++
+          if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
+          if (matchesInFile >= MAX_RESULTS_PER_FILE) break
+        }
+      }
+
+      if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
+    }
+  }
+
   for (const rootPath of workspacePaths) {
     if (!fs.existsSync(rootPath)) continue
-
-    const ig = loadGitignore(rootPath)
-    const searchRecursive = (currentPath: string) => {
-      try {
-        const files = fs.readdirSync(currentPath)
-        for (const file of files) {
-          if (isIgnored(file)) continue
-
-          const fullPath = path.join(currentPath, file)
-          const relPath = path.relative(rootPath, fullPath)
-          if (relPath && ig.ignores(relPath)) continue
-
-          const stat = fs.statSync(fullPath)
-
-          if (stat.isDirectory()) {
-            searchRecursive(fullPath)
-          } else {
-            // Only search in text-like files
-            if (/\.(py|json|md|txt|ts|tsx|js|jsx|css|html|yml|yaml|xml)$/i.test(file)) {
-              const content = fs.readFileSync(fullPath, 'utf-8')
-              if (content.toLowerCase().includes(queryLower)) {
-                const lines = content.split('\n')
-                lines.forEach((line, index) => {
-                  if (line.toLowerCase().includes(queryLower)) {
-                    results.push({
-                      file: file,
-                      path: fullPath,
-                      line: index + 1,
-                      content: line.trim()
-                    })
-                  }
-                })
-              }
-            }
-          }
-          if (results.length > 500) return // Cap results
-        }
-      } catch (e) {}
+    try {
+      await searchDir(rootPath, loadGitignore(rootPath), rootPath)
+    } catch (e) {
+      if (e instanceof SearchCapReached) break
     }
-    searchRecursive(rootPath)
   }
+
   return results
 }
 
@@ -156,12 +197,50 @@ interface PathOpResult {
   error?: string
 }
 
+// A new/renamed entry's name must stay within its parent directory - reject
+// anything containing a path separator (or "." / "..") so it can't be used
+// to create/move a file outside the folder the user actually picked.
+function isValidEntryName(name: string): boolean {
+  return !!name && name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\\')
+}
+
+const MAX_READABLE_FILE_BYTES = 10 * 1024 * 1024
+
+// Sniffs just the first few KB (not the whole file) for a NUL byte, the same
+// heuristic git.ts uses for untracked-file stats - cheap way to tell "binary"
+// from "text" without a full content read.
+function looksBinary(filePath: string): boolean {
+  let fd: number | null = null
+  try {
+    fd = fs.openSync(filePath, 'r')
+    const buffer = Buffer.alloc(8000)
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0)
+    return buffer.subarray(0, bytesRead).includes(0)
+  } catch (e) {
+    return false
+  } finally {
+    if (fd !== null) fs.closeSync(fd)
+  }
+}
+
 export function readFileContent(filePath: string): {
   success: boolean
   content?: string
   error?: string
 } {
   try {
+    const stat = fs.statSync(filePath)
+    if (stat.size > MAX_READABLE_FILE_BYTES) {
+      const limitMb = MAX_READABLE_FILE_BYTES / (1024 * 1024)
+      const sizeMb = (stat.size / (1024 * 1024)).toFixed(1)
+      return {
+        success: false,
+        error: `File is too large to open (${sizeMb} MB, limit is ${limitMb} MB).`
+      }
+    }
+    if (looksBinary(filePath)) {
+      return { success: false, error: 'This looks like a binary file and cannot be opened.' }
+    }
     const content = fs.readFileSync(filePath, 'utf-8')
     return { success: true, content }
   } catch (e: any) {
@@ -182,6 +261,9 @@ export function writeFileContent(
 }
 
 export function renamePath(oldPath: string, newName: string): PathOpResult {
+  if (!isValidEntryName(newName)) {
+    return { success: false, error: 'Invalid name.' }
+  }
   try {
     const newPath = path.join(path.dirname(oldPath), newName)
     if (fs.existsSync(newPath)) {
@@ -208,6 +290,9 @@ export function createPath(
   name: string,
   type: 'file' | 'directory'
 ): PathOpResult {
+  if (!isValidEntryName(name)) {
+    return { success: false, error: 'Invalid name.' }
+  }
   try {
     const newPath = path.join(parentPath, name)
     if (fs.existsSync(newPath)) {

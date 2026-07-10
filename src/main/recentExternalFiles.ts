@@ -9,7 +9,9 @@ const recentFilesConfigPath = path.join(app.getPath('userData'), 'recentExternal
 function saveRecentExternalFiles(entries: RecentExternalFile[]): void {
   try {
     fs.writeFileSync(recentFilesConfigPath, JSON.stringify(entries))
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to save recentExternalFiles.json:', e)
+  }
 }
 
 // Entries older than the retention window are dropped on every read, so
@@ -21,7 +23,9 @@ export function loadRecentExternalFiles(): RecentExternalFile[] {
       const cutoff = Date.now() - RETENTION_MS
       return entries.filter((e) => e.openedAt >= cutoff)
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to load recentExternalFiles.json:', e)
+  }
   return []
 }
 
