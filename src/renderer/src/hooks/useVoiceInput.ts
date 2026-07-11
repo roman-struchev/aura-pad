@@ -6,16 +6,22 @@ import { alertDialog } from '../lib/dialogs'
 import type { VoiceLanguage, VoiceModel } from '../../../shared/settings'
 
 // 'consent' = waiting in the download dialog; 'downloading' = fetching model
-// weights after the user confirmed; 'loading' = model already on disk, just
-// initializing the session before recording starts.
-export type VoiceStatus =
-  'idle' | 'consent' | 'downloading' | 'loading' | 'recording' | 'transcribing'
+// weights after the user confirmed. There's deliberately no 'loading' state:
+// when the model is on disk but not in memory yet, recording starts
+// immediately and the load runs in parallel (the worker queues the
+// transcribe behind it), so the user never waits for session init.
+export type VoiceStatus = 'idle' | 'consent' | 'downloading' | 'recording' | 'transcribing'
 
 // Hard cap so a forgotten hot mic doesn't record (and then transcribe)
 // indefinitely.
 const MAX_RECORDING_MS = 5 * 60 * 1000
 // Anything shorter is an accidental tap - not worth a transcription pass.
 const MIN_RECORDING_SECONDS = 0.35
+// A loaded model holds hundreds of MB of RAM/VRAM; after this long without
+// dictation the worker is torn down. Cheap to come back from: recording
+// starts immediately anyway (the reload runs in parallel with it), the first
+// take just transcribes a few seconds longer.
+const MODEL_IDLE_UNLOAD_MS = 30 * 60 * 1000
 
 // Push-to-talk voice dictation: toggle() starts the microphone, a second
 // toggle() stops it and runs the recording through Whisper in a worker, and
@@ -35,17 +41,35 @@ export function useVoiceInput(
 
   const workerRef = useRef<Worker | null>(null)
   const readyModelRef = useRef<VoiceModel | null>(null)
-  // What to do once the worker reports the model is ready: recording follows
-  // a normal mic press; after a consent-dialog download we deliberately stop
-  // at 'idle' instead, so the mic never turns itself on at the end of a long
-  // download the user may have walked away from.
-  const afterLoadRef = useRef<'record' | 'idle'>('idle')
+  // What 'ready' from the worker should do to the UI: 'idle' closes the
+  // consent-download dialog; 'none' leaves the status alone - that's the
+  // parallel load-while-recording case, where recording (or transcribing)
+  // is already in progress and owns the status.
+  const afterLoadRef = useRef<'idle' | 'none'>('none')
   const recorderRef = useRef<MediaRecorder | null>(null)
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const levelCtxRef = useRef<AudioContext | null>(null)
   // Set by cancelRecording (Escape): the recorder's onstop then throws the
   // take away instead of transcribing it.
   const discardRef = useRef(false)
+  const idleUnloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const statusRef = useRef<VoiceStatus>('idle')
+  useEffect(() => {
+    statusRef.current = status
+  })
+
+  // (Re)armed every time the worker finishes something; if half an hour
+  // passes with no dictation, drop the worker and its loaded model.
+  const scheduleIdleUnload = (): void => {
+    if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
+    idleUnloadRef.current = setTimeout(() => {
+      if (statusRef.current === 'idle' && workerRef.current) {
+        workerRef.current.terminate()
+        workerRef.current = null
+        readyModelRef.current = null
+      }
+    }, MODEL_IDLE_UNLOAD_MS)
+  }
   const progressPerFileRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
 
   // Read through refs by the worker's message handler (attached once per
@@ -79,15 +103,21 @@ export function useVoiceInput(
       case 'ready':
         markModelDownloaded(msg.model)
         readyModelRef.current = msg.model
-        if (afterLoadRef.current === 'record') startRecording()
-        else setStatus('idle')
+        if (afterLoadRef.current === 'idle') setStatus('idle')
+        scheduleIdleUnload()
         break
       case 'result':
         if (msg.text) onTextRef.current(msg.text)
         setStatus('idle')
+        scheduleIdleUnload()
         break
       case 'error':
+        // If the model failed to load while a parallel recording was running,
+        // the take has nowhere to go - discard it rather than queueing a
+        // transcribe that would just fail again.
+        if (msg.context === 'load') cancelRecording()
         setStatus('idle')
+        scheduleIdleUnload()
         alertDialog(
           msg.context === 'load'
             ? `Failed to load the speech model: ${msg.message}`
@@ -115,7 +145,7 @@ export function useVoiceInput(
     return workerRef.current
   }
 
-  const loadModel = (target: VoiceModel, then: 'record' | 'idle'): void => {
+  const loadModel = (target: VoiceModel, then: 'idle' | 'none'): void => {
     afterLoadRef.current = then
     progressPerFileRef.current = new Map()
     setProgress(0)
@@ -144,6 +174,7 @@ export function useVoiceInput(
       if (discardRef.current) {
         discardRef.current = false
         setStatus('idle')
+        scheduleIdleUnload()
         return
       }
       transcribeBlob(new Blob(chunks, { type: recorder.mimeType }))
@@ -217,8 +248,13 @@ export function useVoiceInput(
     if (readyModelRef.current === target) {
       startRecording()
     } else if (isModelDownloaded(target)) {
-      setStatus('loading')
-      loadModel(target, 'record')
+      // Model on disk but not in memory yet: record right away and load in
+      // parallel. The worker runs its messages strictly in order, so the
+      // transcribe posted when the user stops simply queues behind the load -
+      // no visible waiting, at most a longer "transcribing" spinner on the
+      // very first take of a session.
+      loadModel(target, 'none')
+      startRecording()
     } else {
       setStatus('consent')
     }
@@ -254,6 +290,7 @@ export function useVoiceInput(
     return () => {
       workerRef.current?.terminate()
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
+      if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
       levelCtxRef.current?.close()
     }
   }, [])

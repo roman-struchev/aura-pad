@@ -422,8 +422,7 @@ function App() {
         ?.branch
     : git.repos[0]?.branch
   const hasFileActions = !!tabs.selectedPath
-  const voiceBusy =
-    voice.status === 'loading' || voice.status === 'downloading' || voice.status === 'transcribing'
+  const voiceBusy = voice.status === 'downloading' || voice.status === 'transcribing'
 
   return (
     <div
@@ -511,7 +510,7 @@ function App() {
                         : voice.status === 'transcribing'
                           ? 'Transcribing…'
                           : voiceBusy
-                            ? 'Loading speech model…'
+                            ? 'Downloading speech model…'
                             : 'Voice Dictation (Cmd+D)'
                     }
                     colorClassName={
