@@ -31,6 +31,11 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
 }) => (
   <button
     onClick={onClick}
+    // Don't take focus on click: the editor keeps its cursor/selection, and
+    // no lingering focus ring appears on the button afterwards (e.g. the mic
+    // button after Escape cancels a recording). Tab focus still works and
+    // still shows the focus-visible ring for keyboard users.
+    onMouseDown={(e) => e.preventDefault()}
     disabled={disabled}
     aria-label={ariaLabel ?? title}
     className={clsx(

@@ -19,6 +19,16 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco })
 
+// Cmd+D belongs to voice dictation (a native menu accelerator, see menu.ts).
+// Monaco binds it to "add selection to next find match" and preventDefaults
+// it, and on macOS focused web content sees the key before the menu does -
+// so with the editor focused the accelerator would never fire. Unbinding it
+// here lets the key bubble through to the menu no matter what has focus.
+monaco.editor.addKeybindingRule({
+  keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD,
+  command: null
+})
+
 // A couple of well-known color schemes on top of Monaco's own built-in
 // vs/vs-dark, selectable via the "Editor Theme" setting (see lib/editorTheme.ts
 // for how a setting value maps to one of these names). Defined with Monaco's

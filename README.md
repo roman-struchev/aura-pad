@@ -96,7 +96,7 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
 | `Cmd/Ctrl + C`          | Copy the selected file/folder (when the file tree has focus)            |
 | `Cmd/Ctrl + V`          | Paste/duplicate into the selected folder (when the file tree has focus) |
 | `Delete` / `Backspace`  | Move the selected file/folder to Trash (when the file tree has focus)   |
-| `Esc`                   | Close a dialog                                                          |
+| `Esc`                   | Close a dialog / discard an active dictation recording                  |
 
 Files and folders can also be dragged and dropped between folders in the tree (or in from
 Finder/Explorer to open them), tabs can be dragged to reorder, and most tree actions are also

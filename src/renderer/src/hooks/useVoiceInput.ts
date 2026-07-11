@@ -43,6 +43,9 @@ export function useVoiceInput(
   const recorderRef = useRef<MediaRecorder | null>(null)
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const levelCtxRef = useRef<AudioContext | null>(null)
+  // Set by cancelRecording (Escape): the recorder's onstop then throws the
+  // take away instead of transcribing it.
+  const discardRef = useRef(false)
   const progressPerFileRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
 
   // Read through refs by the worker's message handler (attached once per
@@ -138,6 +141,11 @@ export function useVoiceInput(
       levelCtxRef.current = null
       setAnalyser(null)
       recorderRef.current = null
+      if (discardRef.current) {
+        discardRef.current = false
+        setStatus('idle')
+        return
+      }
       transcribeBlob(new Blob(chunks, { type: recorder.mimeType }))
     }
     recorderRef.current = recorder
@@ -216,6 +224,14 @@ export function useVoiceInput(
     }
   }
 
+  // Escape: stop an active recording and throw it away (no transcription).
+  const cancelRecording = (): void => {
+    if (recorderRef.current?.state === 'recording') {
+      discardRef.current = true
+      recorderRef.current.stop()
+    }
+  }
+
   // Consent dialog confirmed - start the actual download.
   const confirmDownload = (target: VoiceModel): void => {
     setStatus('downloading')
@@ -247,6 +263,7 @@ export function useVoiceInput(
     progress,
     analyser,
     toggle,
+    cancelRecording,
     confirmDownload,
     cancelDownload,
     dismissConsent

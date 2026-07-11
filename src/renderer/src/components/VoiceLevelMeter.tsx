@@ -1,49 +1,66 @@
 import React, { useEffect, useRef } from 'react'
 
-// Five equalizer bars driven by the live mic spectrum while dictating -
-// instant feedback that the mic is actually picking the voice up (flat bars
-// = wrong input device / muted mic). Bar heights are written straight to the
-// DOM from a requestAnimationFrame loop; going through React state at ~60fps
-// would re-render the whole app for a cosmetic animation.
-const BAR_COUNT = 5
-// Analyser bins to sample, low to high. With fftSize 64 at the default 48kHz
-// context rate each bin is ~750Hz wide, so these cover the voice range while
-// skipping bin 0 (DC offset/rumble, which would pin the first bar).
-const BINS = [1, 2, 3, 5, 7]
-const MIN_HEIGHT = 3
-const MAX_HEIGHT = 14
+// Scrolling waveform of the live mic level while dictating (Voice Memos
+// style): a mirrored envelope around a center line, new audio entering on the
+// right. Doubles as diagnostics - a flat line means the mic isn't picking
+// anything up. Drawn on a small canvas from a requestAnimationFrame loop;
+// going through React state at ~60fps would re-render the whole app for a
+// cosmetic animation. Inherits its color from CSS `color` on the canvas, so
+// the parent's text-* class picks the accent.
+const WIDTH = 56
+const HEIGHT = 16
+const STEP = 2 // px per history sample
+const POINTS = WIDTH / STEP
 
 export const VoiceLevelMeter: React.FC<{ analyser: AnalyserNode }> = ({ analyser }) => {
-  const barsRef = useRef<(HTMLSpanElement | null)[]>([])
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    const data = new Uint8Array(analyser.frequencyBinCount)
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = WIDTH * dpr
+    canvas.height = HEIGHT * dpr
+    ctx.scale(dpr, dpr)
+    ctx.fillStyle = getComputedStyle(canvas).color
+
+    const samples = new Uint8Array(analyser.fftSize)
+    const history = new Float32Array(POINTS)
+    let smoothed = 0
+    let frame = 0
     let raf: number
+
     const tick = (): void => {
-      analyser.getByteFrequencyData(data)
-      barsRef.current.forEach((bar, i) => {
-        if (!bar) return
-        const level = data[BINS[i]] / 255
-        bar.style.height = `${MIN_HEIGHT + level * (MAX_HEIGHT - MIN_HEIGHT)}px`
-      })
+      // RMS of the time-domain signal = perceived loudness of this frame,
+      // manually smoothed (smoothingTimeConstant only affects frequency data).
+      analyser.getByteTimeDomainData(samples)
+      let sum = 0
+      for (let i = 0; i < samples.length; i++) {
+        const v = (samples[i] - 128) / 128
+        sum += v * v
+      }
+      smoothed = smoothed * 0.6 + Math.sqrt(sum / samples.length) * 0.4
+      // Scroll every 4th frame (~15 samples/s, so the visible window covers
+      // ~2s of audio) - at full 60fps the wave rushed by distractingly fast.
+      // The current rightmost sample still updates every frame, so the wave
+      // reacts to the voice with no perceptible lag.
+      if (frame++ % 4 === 0) history.copyWithin(0, 1)
+      history[POINTS - 1] = Math.min(1, smoothed * 4.5)
+
+      const mid = HEIGHT / 2
+      const amp = (i: number): number => Math.max(0.8, history[i] * (mid - 1))
+      ctx.clearRect(0, 0, WIDTH, HEIGHT)
+      ctx.beginPath()
+      for (let i = 0; i < POINTS; i++) ctx.lineTo(i * STEP, mid - amp(i))
+      for (let i = POINTS - 1; i >= 0; i--) ctx.lineTo(i * STEP, mid + amp(i))
+      ctx.closePath()
+      ctx.fill()
       raf = requestAnimationFrame(tick)
     }
     tick()
     return () => cancelAnimationFrame(raf)
   }, [analyser])
 
-  return (
-    <span className="flex items-center gap-[2px] h-4">
-      {Array.from({ length: BAR_COUNT }, (_, i) => (
-        <span
-          key={i}
-          ref={(el) => {
-            barsRef.current[i] = el
-          }}
-          className="w-[2px] rounded-full bg-red-500 transition-[height] duration-75"
-          style={{ height: `${MIN_HEIGHT}px` }}
-        />
-      ))}
-    </span>
-  )
+  return <canvas ref={canvasRef} style={{ width: WIDTH, height: HEIGHT }} className="block" />
 }

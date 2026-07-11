@@ -103,13 +103,24 @@ function App() {
   useEffect(() => {
     voiceRef.current = voice
   })
-  // Dictation inserts at the editor cursor, so it needs a mounted editor -
-  // i.e. an open file that isn't showing the Markdown preview instead.
-  const canDictate = !!tabs.selectedPath && !tabs.showMarkdownPreview
-  const canDictateRef = useRef(canDictate)
-  useEffect(() => {
-    canDictateRef.current = canDictate
-  })
+  // Dictation needs an open file to insert into. If that file is showing the
+  // Markdown/HTML preview, starting dictation flips it back to source first -
+  // the text lands in the editor, which must be mounted. Everything reads
+  // through refs so the menu accelerator (subscribed once) stays correct.
+  const toggleDictation = (): void => {
+    const t = tabsRef.current
+    const v = voiceRef.current
+    if (v.status !== 'idle') {
+      // Stop/ignore paths don't care about the editor.
+      v.toggle()
+      return
+    }
+    if (!t.selectedPath) return
+    if (t.showMarkdownPreview && t.activeTabPath)
+      t.updateTab(t.activeTabPath, { showPreview: false })
+    v.toggle()
+  }
+  const canDictate = !!tabs.selectedPath
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
   const recentExternalFiles = useRecentExternalFiles()
@@ -182,6 +193,13 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape during dictation: stop recording and throw the take away
+      // (nothing gets transcribed or inserted).
+      if (e.key === 'Escape' && voiceRef.current.status === 'recording') {
+        voiceRef.current.cancelRecording()
+        return
+      }
+
       // Double-Shift quick open, JetBrains-style - toggles rather than just
       // opening, so pressing it again closes the dialog too.
       if (e.key === 'Shift') {
@@ -266,10 +284,7 @@ function App() {
           setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
           break
         case 'toggle-dictation':
-          // Stopping an active recording is always allowed; starting one
-          // requires a mounted editor to insert into.
-          if (canDictateRef.current || voiceRef.current.status === 'recording')
-            voiceRef.current.toggle()
+          toggleDictation()
           break
         case 'format-document':
           formatActiveDocument()
@@ -489,7 +504,7 @@ function App() {
               {canDictate && (
                 <>
                   <ToolbarButton
-                    onClick={voice.toggle}
+                    onClick={toggleDictation}
                     title={
                       voice.status === 'recording'
                         ? 'Stop Dictation (Cmd+D)'
@@ -501,7 +516,7 @@ function App() {
                     }
                     colorClassName={
                       voice.status === 'recording'
-                        ? 'text-red-400 bg-red-500/15'
+                        ? 'text-blue-400 bg-fleet-active'
                         : 'text-gray-400 hover:text-white'
                     }
                   >
@@ -514,11 +529,11 @@ function App() {
                     )}
                   </ToolbarButton>
                   {voice.status === 'recording' && (
-                    <span className="flex items-center px-2 py-0.5 rounded-full bg-red-500/15 select-none">
+                    <span className="flex items-center px-2 py-0.5 rounded-full bg-fleet-active text-blue-400 select-none">
                       {voice.analyser ? (
                         <VoiceLevelMeter analyser={voice.analyser} />
                       ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                       )}
                     </span>
                   )}

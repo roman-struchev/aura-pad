@@ -34,7 +34,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: 'Shift Shift', description: 'Quick open a file or folder' },
   { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
   { keys: 'Delete', description: 'Delete in the file tree (row focused)' },
-  { keys: 'Esc', description: 'Close a dialog' }
+  { keys: 'Esc', description: 'Close a dialog / discard an active dictation recording' }
 ]
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
