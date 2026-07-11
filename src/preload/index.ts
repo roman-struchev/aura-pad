@@ -102,10 +102,13 @@ const api = {
 
   getGitStatus: () => ipcRenderer.invoke('git-status'),
   getGitDiff: (root: string, relPath: string) => ipcRenderer.invoke('git-diff', root, relPath),
-  gitStage: (root: string, relPath: string) => ipcRenderer.invoke('git-stage', root, relPath),
-  gitUnstage: (root: string, relPath: string) => ipcRenderer.invoke('git-unstage', root, relPath),
+  gitStage: (root: string, relPaths: string[]) => ipcRenderer.invoke('git-stage', root, relPaths),
+  gitUnstage: (root: string, relPaths: string[]) =>
+    ipcRenderer.invoke('git-unstage', root, relPaths),
   gitDiscard: (root: string, relPath: string) => ipcRenderer.invoke('git-discard', root, relPath),
-  gitCommit: (root: string, message: string) => ipcRenderer.invoke('git-commit', root, message),
+  gitCommit: (root: string, message: string, relPaths: string[], amend: boolean) =>
+    ipcRenderer.invoke('git-commit', root, message, relPaths, amend),
+  gitLastCommitMessage: (root: string) => ipcRenderer.invoke('git-last-commit-message', root),
   gitPush: (root: string) => ipcRenderer.invoke('git-push', root),
   gitPull: (root: string) => ipcRenderer.invoke('git-pull', root),
   onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => {

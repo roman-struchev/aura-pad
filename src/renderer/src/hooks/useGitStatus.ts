@@ -33,20 +33,25 @@ export function useGitStatus(enabled: boolean) {
     for (const entry of repo.unstaged) fileStates[entry.path] = entry.state
   }
 
-  const stage = async (root: string, relPath: string): Promise<void> => {
-    const result = await window.api.gitStage(root, relPath)
+  const stage = async (root: string, relPaths: string[]): Promise<void> => {
+    const result = await window.api.gitStage(root, relPaths)
     setRawRepos(result.statuses)
     if (!result.success) await alertDialog(result.error || 'Stage failed.')
   }
 
-  const unstage = async (root: string, relPath: string): Promise<void> => {
-    const result = await window.api.gitUnstage(root, relPath)
+  const unstage = async (root: string, relPaths: string[]): Promise<void> => {
+    const result = await window.api.gitUnstage(root, relPaths)
     setRawRepos(result.statuses)
     if (!result.success) await alertDialog(result.error || 'Unstage failed.')
   }
 
-  const commit = async (root: string, message: string): Promise<boolean> => {
-    const result = await window.api.gitCommit(root, message)
+  const commit = async (
+    root: string,
+    message: string,
+    relPaths: string[],
+    amend: boolean
+  ): Promise<boolean> => {
+    const result = await window.api.gitCommit(root, message, relPaths, amend)
     setRawRepos(result.statuses)
     if (!result.success) {
       await alertDialog(result.error || 'Commit failed.')
@@ -54,6 +59,19 @@ export function useGitStatus(enabled: boolean) {
     }
     return true
   }
+
+  const commitAndPush = async (
+    root: string,
+    message: string,
+    relPaths: string[],
+    amend: boolean
+  ): Promise<boolean> => {
+    const ok = await commit(root, message, relPaths, amend)
+    if (ok) await push(root)
+    return ok
+  }
+
+  const lastCommitMessage = (root: string): Promise<string> => window.api.gitLastCommitMessage(root)
 
   // Untracked files have nothing in git to check out, so "discard" for them
   // means deleting the file (to Trash, via the same IPC the file tree uses)
@@ -85,5 +103,18 @@ export function useGitStatus(enabled: boolean) {
   const diff = (root: string, relPath: string): Promise<{ original: string; modified: string }> =>
     window.api.getGitDiff(root, relPath)
 
-  return { repos, fileStates, refresh, stage, unstage, discard, commit, push, pull, diff }
+  return {
+    repos,
+    fileStates,
+    refresh,
+    stage,
+    unstage,
+    discard,
+    commit,
+    commitAndPush,
+    lastCommitMessage,
+    push,
+    pull,
+    diff
+  }
 }

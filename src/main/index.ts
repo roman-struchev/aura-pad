@@ -34,10 +34,11 @@ import { buildAppMenu } from './menu'
 import {
   getAllRepoStatuses,
   getDiff,
-  stagePath,
-  unstagePath,
+  stagePaths,
+  unstagePaths,
   discardPath,
   commit as gitCommit,
+  lastCommitMessage,
   push as gitPush,
   pull as gitPull
 } from './git'
@@ -345,13 +346,13 @@ ipcMain.handle('git-diff', async (_, root: string, relPath: string) => {
   return getDiff(root, relPath)
 })
 
-ipcMain.handle('git-stage', async (_, root: string, relPath: string) => {
-  const result = await stagePath(root, relPath)
+ipcMain.handle('git-stage', async (_, root: string, relPaths: string[]) => {
+  const result = await stagePaths(root, relPaths)
   return { ...result, statuses: await refreshedStatuses() }
 })
 
-ipcMain.handle('git-unstage', async (_, root: string, relPath: string) => {
-  const result = await unstagePath(root, relPath)
+ipcMain.handle('git-unstage', async (_, root: string, relPaths: string[]) => {
+  const result = await unstagePaths(root, relPaths)
   return { ...result, statuses: await refreshedStatuses() }
 })
 
@@ -360,9 +361,16 @@ ipcMain.handle('git-discard', async (_, root: string, relPath: string) => {
   return { ...result, statuses: await refreshedStatuses() }
 })
 
-ipcMain.handle('git-commit', async (_, root: string, message: string) => {
-  const result = await gitCommit(root, message)
-  return { ...result, statuses: await refreshedStatuses() }
+ipcMain.handle(
+  'git-commit',
+  async (_, root: string, message: string, relPaths: string[], amend: boolean) => {
+    const result = await gitCommit(root, message, relPaths, amend)
+    return { ...result, statuses: await refreshedStatuses() }
+  }
+)
+
+ipcMain.handle('git-last-commit-message', async (_, root: string) => {
+  return lastCommitMessage(root)
 })
 
 ipcMain.handle('git-push', async (_, root: string) => {

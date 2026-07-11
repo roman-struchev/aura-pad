@@ -45,12 +45,29 @@ function stateFromCode(code: string): GitFileState {
   }
 }
 
-function parseBranch(headerLine: string): string {
+interface BranchHeader {
+  branch: string
+  ahead: number
+  behind: number
+}
+
+// Parses a `git status -b` header line, e.g. `## main...origin/main [ahead 2, behind 1]`.
+// The bracketed ahead/behind suffix (also seen as just `[ahead 2]`, `[behind 3]`,
+// or `[gone]`) is absent when the branch has no upstream or is up to date.
+function parseBranchHeader(headerLine: string): BranchHeader {
   const content = headerLine.replace(/^##\s*/, '')
   const noCommitsMatch = content.match(/^No commits yet on (\S+)/)
-  if (noCommitsMatch) return noCommitsMatch[1]
-  if (content.startsWith('HEAD (no branch)')) return 'detached'
-  return content.split('...')[0].split(' ')[0]
+  if (noCommitsMatch) return { branch: noCommitsMatch[1], ahead: 0, behind: 0 }
+  if (content.startsWith('HEAD (no branch)')) return { branch: 'detached', ahead: 0, behind: 0 }
+
+  const branch = content.split('...')[0].split(' ')[0]
+  const aheadMatch = content.match(/ahead (\d+)/)
+  const behindMatch = content.match(/behind (\d+)/)
+  return {
+    branch,
+    ahead: aheadMatch ? parseInt(aheadMatch[1], 10) : 0,
+    behind: behindMatch ? parseInt(behindMatch[1], 10) : 0
+  }
 }
 
 interface LineStats {
@@ -124,9 +141,11 @@ export async function getRepoStatus(root: string): Promise<GitRepoStatus | null>
     const tokens = stdout.split('\0').filter((t) => t.length > 0)
 
     let branch = ''
+    let ahead = 0
+    let behind = 0
     let i = 0
     if (tokens[0]?.startsWith('##')) {
-      branch = parseBranch(tokens[0])
+      ;({ branch, ahead, behind } = parseBranchHeader(tokens[0]))
       i = 1
     }
 
@@ -176,7 +195,7 @@ export async function getRepoStatus(root: string): Promise<GitRepoStatus | null>
       }
     }
 
-    return { root, branch, staged, unstaged }
+    return { root, branch, ahead, behind, staged, unstaged }
   } catch (e) {
     return null
   }
@@ -218,35 +237,62 @@ async function runGitSimple(
   }
 }
 
-export function stagePath(
+export function stagePaths(
   root: string,
-  relPath: string
+  relPaths: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  return runGitSimple(root, ['add', '--', relPath])
+  return runGitSimple(root, ['add', '--', ...relPaths])
 }
 
-export function unstagePath(
+export function unstagePaths(
   root: string,
-  relPath: string
+  relPaths: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  return runGitSimple(root, ['reset', '--', relPath])
+  return runGitSimple(root, ['reset', '--', ...relPaths])
 }
 
 // Resets both the index and working tree for one path back to HEAD, discarding
 // staged and unstaged changes alike. Only meaningful for tracked files - the
 // caller handles untracked ones (there's nothing to check out) by deleting instead.
-export function discardPath(
+export async function discardPath(
   root: string,
   relPath: string
 ): Promise<{ success: boolean; error?: string }> {
-  return runGitSimple(root, ['checkout', 'HEAD', '--', relPath])
+  const fromHead = await runGitSimple(root, ['checkout', 'HEAD', '--', relPath])
+  if (fromHead.success) return fromHead
+  // A path staged as a new addition (never committed) has no HEAD version to
+  // reset to, so the above fails with a pathspec error - but it does exist in
+  // the index, so restore the working tree from there instead. This is the
+  // only case that reaches here: any tracked-in-HEAD path would have
+  // succeeded above.
+  return runGitSimple(root, ['checkout', '--', relPath])
 }
 
-export function commit(
+// Re-adds the checked paths (so unstaged-on-top edits of an already-staged
+// file are swept in too, matching IDEA's "checked = will be committed"
+// model) before committing. `relPaths` may be empty only for a message-only
+// amend, where there's nothing left to add.
+export async function commit(
   root: string,
-  message: string
+  message: string,
+  relPaths: string[],
+  amend: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  return runGitSimple(root, ['commit', '-m', message])
+  if (relPaths.length > 0) {
+    const addResult = await runGitSimple(root, ['add', '--', ...relPaths])
+    if (!addResult.success) return addResult
+  }
+  const args = ['commit', '-m', message]
+  if (amend) args.push('--amend')
+  return runGitSimple(root, args)
+}
+
+export async function lastCommitMessage(root: string): Promise<string> {
+  try {
+    return (await runGit(root, ['log', '-1', '--pretty=%B'])).trim()
+  } catch {
+    return ''
+  }
 }
 
 export function push(root: string): Promise<{ success: boolean; output: string }> {

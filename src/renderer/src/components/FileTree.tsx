@@ -25,11 +25,11 @@ interface FileTreeProps {
 
 const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
   staged: { label: '●', className: 'text-blue-400' },
-  modified: { label: 'M', className: 'text-amber-500' },
+  modified: { label: 'M', className: 'text-blue-400' },
   added: { label: 'A', className: 'text-green-500' },
-  untracked: { label: 'U', className: 'text-green-500' },
-  deleted: { label: 'D', className: 'text-red-500' },
-  renamed: { label: 'R', className: 'text-amber-500' }
+  untracked: { label: 'U', className: 'text-red-400' },
+  deleted: { label: 'D', className: 'text-gray-500' },
+  renamed: { label: 'R', className: 'text-blue-400' }
 }
 
 export const DRAG_PATH_MIME = 'application/x-aura-path'

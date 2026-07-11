@@ -13,6 +13,8 @@ export interface GitFileEntry {
 export interface GitRepoStatus {
   root: string
   branch: string
+  ahead: number
+  behind: number
   staged: GitFileEntry[]
   unstaged: GitFileEntry[]
 }

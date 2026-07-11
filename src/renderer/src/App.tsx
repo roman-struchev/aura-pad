@@ -880,9 +880,11 @@ function App() {
             onGitUnstage={git.unstage}
             onGitDiscard={git.discard}
             onGitCommit={git.commit}
+            onGitCommitAndPush={git.commitAndPush}
             onGitPush={git.push}
             onGitPull={git.pull}
             onGitDiff={git.diff}
+            onGitLastCommitMessage={git.lastCommitMessage}
           />
         </div>
       </div>

@@ -27,13 +27,25 @@ interface SidebarProps {
   gitFileStates: Record<string, GitFileState>
   // Git panel
   gitRepos: GitRepoStatus[]
-  onGitStage: (root: string, relPath: string) => void
-  onGitUnstage: (root: string, relPath: string) => void
+  onGitStage: (root: string, relPaths: string[]) => void
+  onGitUnstage: (root: string, relPaths: string[]) => void
   onGitDiscard: (root: string, entry: GitFileEntry) => void
-  onGitCommit: (root: string, message: string) => Promise<boolean>
+  onGitCommit: (
+    root: string,
+    message: string,
+    relPaths: string[],
+    amend: boolean
+  ) => Promise<boolean>
+  onGitCommitAndPush: (
+    root: string,
+    message: string,
+    relPaths: string[],
+    amend: boolean
+  ) => Promise<boolean>
   onGitPush: (root: string) => void
   onGitPull: (root: string) => void
   onGitDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
+  onGitLastCommitMessage: (root: string) => Promise<string>
 }
 
 // The sidebar's own content (the outer w-64/border chrome stays in App.tsx,
@@ -63,9 +75,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onGitUnstage,
   onGitDiscard,
   onGitCommit,
+  onGitCommitAndPush,
   onGitPush,
   onGitPull,
-  onGitDiff
+  onGitDiff,
+  onGitLastCommitMessage
 }) => {
   return (
     <>
@@ -97,8 +111,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       )}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-3">
-        {sidebarView === 'git' && gitRepos.length > 0 ? (
+      {sidebarView === 'git' && gitRepos.length > 0 ? (
+        <div className="flex-1 flex flex-col min-h-0 p-2 pt-3">
           <GitPanel
             repos={gitRepos}
             monacoTheme={monacoTheme}
@@ -106,73 +120,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onUnstage={onGitUnstage}
             onDiscard={onGitDiscard}
             onCommit={onGitCommit}
+            onCommitAndPush={onGitCommitAndPush}
             onPush={onGitPush}
             onPull={onGitPull}
             onDiff={onGitDiff}
+            onLastCommitMessage={onGitLastCommitMessage}
           />
-        ) : (
-          <>
-            {rootNodes.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {rootNodes.map((rootNode) => (
-                  <FileTree
-                    key={rootNode.path}
-                    node={rootNode}
-                    onSelect={onSelect}
-                    onContextMenu={onContextMenu}
-                    onCreateNew={onCreateNew}
-                    onMove={onMove}
-                    onFocusNode={onFocusNode}
-                    onRunPython={onRunPython}
-                    onPreviewMarkdown={onPreviewMarkdown}
-                    selectedPath={selectedPath}
-                    revealPath={revealPath}
-                    rowPadding={rowPadding}
-                    gitStatus={gitFileStates}
-                  />
-                ))}
-              </div>
-            ) : recentExternalFiles.length === 0 ? (
-              <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
-            ) : null}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-3">
+          {rootNodes.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {rootNodes.map((rootNode) => (
+                <FileTree
+                  key={rootNode.path}
+                  node={rootNode}
+                  onSelect={onSelect}
+                  onContextMenu={onContextMenu}
+                  onCreateNew={onCreateNew}
+                  onMove={onMove}
+                  onFocusNode={onFocusNode}
+                  onRunPython={onRunPython}
+                  onPreviewMarkdown={onPreviewMarkdown}
+                  selectedPath={selectedPath}
+                  revealPath={revealPath}
+                  rowPadding={rowPadding}
+                  gitStatus={gitFileStates}
+                />
+              ))}
+            </div>
+          ) : recentExternalFiles.length === 0 ? (
+            <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
+          ) : null}
 
-            {recentExternalFiles.length > 0 && (
-              <div className={rootNodes.length > 0 ? 'mt-3' : ''}>
-                <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
-                  Recently Opened (Outside)
-                </div>
-                {recentExternalFiles.map((path) => (
-                  <div
-                    key={path}
-                    className={clsx(
-                      'group flex items-center px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
-                      rowPadding,
-                      selectedPath === path && 'bg-fleet-active text-fleet-textHover'
-                    )}
-                    title={path}
-                    onClick={() => onSelect(path)}
-                  >
-                    <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
-                      {getFileIcon(path.split('/').pop() || path, 'file', false)}
-                    </span>
-                    <span className="truncate flex-1">{path.split('/').pop()}</span>
-                    <button
-                      className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
-                      title="Remove from list"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onRemoveRecentExternalFile(path)
-                      }}
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
+          {recentExternalFiles.length > 0 && (
+            <div className={rootNodes.length > 0 ? 'mt-3' : ''}>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
+                Recently Opened (Outside)
               </div>
-            )}
-          </>
-        )}
-      </div>
+              {recentExternalFiles.map((path) => (
+                <div
+                  key={path}
+                  className={clsx(
+                    'group flex items-center px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
+                    rowPadding,
+                    selectedPath === path && 'bg-fleet-active text-fleet-textHover'
+                  )}
+                  title={path}
+                  onClick={() => onSelect(path)}
+                >
+                  <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
+                    {getFileIcon(path.split('/').pop() || path, 'file', false)}
+                  </span>
+                  <span className="truncate flex-1">{path.split('/').pop()}</span>
+                  <button
+                    className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
+                    title="Remove from list"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRemoveRecentExternalFile(path)
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </>
   )
 }

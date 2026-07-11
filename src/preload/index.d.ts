@@ -73,11 +73,11 @@ declare global {
       getGitDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
       gitStage: (
         root: string,
-        relPath: string
+        relPaths: string[]
       ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
       gitUnstage: (
         root: string,
-        relPath: string
+        relPaths: string[]
       ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
       gitDiscard: (
         root: string,
@@ -85,8 +85,11 @@ declare global {
       ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
       gitCommit: (
         root: string,
-        message: string
+        message: string,
+        relPaths: string[],
+        amend: boolean
       ) => Promise<{ success: boolean; error?: string; statuses: GitRepoStatus[] }>
+      gitLastCommitMessage: (root: string) => Promise<string>
       gitPush: (root: string) => Promise<{ success: boolean; output: string }>
       gitPull: (
         root: string
