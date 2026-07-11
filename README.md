@@ -37,8 +37,14 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
   config). Only re-checked on open and after a real save, not on every tab switch, since a
   type-aware ESLint run can take a second or two per file.
 - Markdown preview toggle, plus folding for headings, fenced code blocks, and frontmatter.
+- HTML preview toggle for `.html`/`.htm` files - rendered in a fully sandboxed iframe (no
+  scripts, no network), so it's a markup preview rather than a browser.
 - Line numbers, editor scrollbar width, UI density (micro/compact/normal/large), and a
   dark/light/system theme are all adjustable in Settings.
+- Voice dictation (`Cmd+D` or the mic toolbar button): speak, press again, and the
+  transcribed text lands at the cursor. Runs Whisper locally (WebGPU, wasm fallback) — audio
+  never leaves the machine. The model (pick tiny/base/small/turbo in Settings) is downloaded
+  once from Hugging Face after an explicit confirmation, then cached for offline use.
 
 **Files**
 
@@ -70,23 +76,27 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
 
 - Real shells via `node-pty` + `xterm`, multiple terminal tabs, resizable panel.
 - Run the current Python file, format JSON, or open a terminal at any file/folder from the
-  tree's context menu or the hover icons on `.py`/`.md` files.
+  tree's context menu or the hover icons on `.py`/`.md`/`.html` files.
 
 ## Shortcuts
 
-| Shortcut               | Action                                                                  |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `Cmd/Ctrl + S`         | Save the current file                                                   |
-| `Cmd/Ctrl + W`         | Close the current tab                                                   |
-| `Shift + Cmd/Ctrl + T` | Reopen the last closed tab                                              |
-| `Cmd/Ctrl + K`         | Toggle the Git sidebar tab                                              |
-| `Cmd/Ctrl + F`         | Find (and Replace) in the current file                                  |
-| `Shift + Cmd/Ctrl + F` | Global search across all workspaces                                     |
-| Double-tap `Shift`     | Quick open a file or folder                                             |
-| `Cmd/Ctrl + C`         | Copy the selected file/folder (when the file tree has focus)            |
-| `Cmd/Ctrl + V`         | Paste/duplicate into the selected folder (when the file tree has focus) |
-| `Delete` / `Backspace` | Move the selected file/folder to Trash (when the file tree has focus)   |
-| `Esc`                  | Close a dialog                                                          |
+| Shortcut                | Action                                                                  |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `Cmd/Ctrl + S`          | Save the current file                                                   |
+| `Cmd/Ctrl + W`          | Close the current tab                                                   |
+| `Shift + Cmd/Ctrl + T`  | Reopen the last closed tab                                              |
+| `Cmd/Ctrl + K`          | Toggle the Git sidebar tab                                              |
+| `Cmd/Ctrl + D`          | Start/stop voice dictation                                              |
+| `Option + Cmd/Ctrl + L` | Format the current document (JSON/HTML/XML)                             |
+| `Shift + Cmd/Ctrl + P`  | Toggle Markdown/HTML preview                                            |
+| `` Ctrl + ` ``          | Toggle the terminal                                                     |
+| `Cmd/Ctrl + F`          | Find (and Replace) in the current file                                  |
+| `Shift + Cmd/Ctrl + F`  | Global search across all workspaces                                     |
+| Double-tap `Shift`      | Quick open a file or folder                                             |
+| `Cmd/Ctrl + C`          | Copy the selected file/folder (when the file tree has focus)            |
+| `Cmd/Ctrl + V`          | Paste/duplicate into the selected folder (when the file tree has focus) |
+| `Delete` / `Backspace`  | Move the selected file/folder to Trash (when the file tree has focus)   |
+| `Esc`                   | Close a dialog                                                          |
 
 Files and folders can also be dragged and dropped between folders in the tree (or in from
 Finder/Explorer to open them), tabs can be dragged to reorder, and most tree actions are also

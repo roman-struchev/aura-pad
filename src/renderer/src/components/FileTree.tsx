@@ -55,7 +55,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
   const [isDragging, setIsDragging] = useState(false)
   const isSelected = selectedPath === node.path
   const isDirectory = node.type === 'directory'
-  const hasFileAction = !isDirectory && (node.name.endsWith('.py') || node.name.endsWith('.md'))
+  const isPreviewable =
+    node.name.endsWith('.md') || node.name.endsWith('.html') || node.name.endsWith('.htm')
+  const hasFileAction = !isDirectory && (node.name.endsWith('.py') || isPreviewable)
 
   // Auto-expand (once) if the selected/revealed path is this directory or a
   // descendant of it. Adjusting state directly during render - rather than
@@ -174,7 +176,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 <Play size={13} />
               </button>
             )}
-            {node.name.endsWith('.md') && (
+            {isPreviewable && (
               <button
                 className="hidden group-hover:block p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-blue-400"
                 title="Preview"

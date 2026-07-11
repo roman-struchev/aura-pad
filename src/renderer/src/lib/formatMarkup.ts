@@ -12,7 +12,8 @@ export function prettyPrintMarkup(input: string): string {
   for (const line of lines) {
     const isClosingTag = /^<\//.test(line)
     const isSpecialTag = /^<!--|^<\?|^<!DOCTYPE/i.test(line)
-    const isSelfContained = /^<[^>]+\/>$/.test(line) || /^<([a-zA-Z][\w-]*)[^>]*>.*<\/\1>$/.test(line)
+    const isSelfContained =
+      /^<[^>]+\/>$/.test(line) || /^<([a-zA-Z][\w-]*)[^>]*>.*<\/\1>$/.test(line)
     const isOpeningTag = /^<[^/!?]/.test(line) && !isSelfContained
 
     if (isClosingTag) depth = Math.max(depth - 1, 0)

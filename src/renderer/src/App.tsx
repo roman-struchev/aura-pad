@@ -4,6 +4,7 @@ import { Terminal } from './components/Terminal'
 import { GlobalSearch } from './components/GlobalSearch'
 import { FileSearch } from './components/FileSearch'
 import { MarkdownPreview } from './components/MarkdownPreview'
+import { HtmlPreview } from './components/HtmlPreview'
 import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
@@ -18,6 +19,8 @@ import { useGitStatus } from './hooks/useGitStatus'
 import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
+import { useVoiceInput } from './hooks/useVoiceInput'
+import { VoiceModelModal } from './components/VoiceModelModal'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
@@ -41,8 +44,19 @@ import {
   Eye,
   Code2,
   GitBranch,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Mic,
+  Loader2,
+  Square
 } from 'lucide-react'
+
+// File types with a rendered preview mode (the toolbar's Show Preview toggle
+// and the tree's hover eye icon): Markdown, plus raw HTML in a sandboxed
+// iframe.
+const isHtmlPath = (path: string | null): boolean =>
+  !!path && (path.endsWith('.html') || path.endsWith('.htm'))
+const isPreviewablePath = (path: string | null): boolean =>
+  !!path && (path.endsWith('.md') || isHtmlPath(path))
 
 function App() {
   const { settings, updateSetting } = useSettings()
@@ -62,6 +76,10 @@ function App() {
   useEffect(() => {
     tabsRef.current = tabs
   })
+  const terminalRef = useRef(terminal)
+  useEffect(() => {
+    terminalRef.current = terminal
+  })
   const renameInputRef = useRef<HTMLInputElement>(null)
   const createInputRef = useRef<HTMLInputElement>(null)
   const tree = useWorkspaceTree({
@@ -74,6 +92,22 @@ function App() {
   const treeRef = useRef(tree)
   useEffect(() => {
     treeRef.current = tree
+  })
+  const voice = useVoiceInput(settings.voiceModel, settings.voiceLanguage, (text) =>
+    tabsRef.current.insertTextAtCursor(text)
+  )
+  // Same ref pattern as tabsRef: the menu-action effect below subscribes once
+  // but must always call the current render's toggle (which sees live status).
+  const voiceRef = useRef(voice)
+  useEffect(() => {
+    voiceRef.current = voice
+  })
+  // Dictation inserts at the editor cursor, so it needs a mounted editor -
+  // i.e. an open file that isn't showing the Markdown preview instead.
+  const canDictate = !!tabs.selectedPath && !tabs.showMarkdownPreview
+  const canDictateRef = useRef(canDictate)
+  useEffect(() => {
+    canDictateRef.current = canDictate
   })
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
@@ -230,6 +264,24 @@ function App() {
         case 'toggle-git-panel':
           setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
           break
+        case 'toggle-dictation':
+          // Stopping an active recording is always allowed; starting one
+          // requires a mounted editor to insert into.
+          if (canDictateRef.current || voiceRef.current.status === 'recording')
+            voiceRef.current.toggle()
+          break
+        case 'format-document':
+          formatActiveDocument()
+          break
+        case 'toggle-preview': {
+          const t = tabsRef.current
+          if (t.activeTabPath && isPreviewablePath(t.selectedPath))
+            t.updateTab(t.activeTabPath, { showPreview: !t.showMarkdownPreview })
+          break
+        }
+        case 'toggle-terminal':
+          toggleTerminal()
+          break
         case 'preferences':
           setShowSettings(true)
           break
@@ -287,22 +339,33 @@ function App() {
     terminal.openNewTerminal(cwd)
   }
 
-  const handleFormatJson = () => {
-    try {
-      const formatted = JSON.stringify(JSON.parse(tabs.fileContent), null, 2)
-      if (tabs.activeTabPath)
-        tabs.updateTab(tabs.activeTabPath, { content: formatted, isSaved: false })
-    } catch (e) {
-      alertDialog('Invalid JSON format.')
+  // One entry point for both the toolbar buttons and the Option+Cmd+L menu
+  // accelerator: picks the formatter by the active file's extension. Reads
+  // through tabsRef so the menu handler (subscribed once) never acts on a
+  // stale tab snapshot.
+  const formatActiveDocument = (): void => {
+    const t = tabsRef.current
+    const path = t.activeTabPath
+    if (!path) return
+    if (path.endsWith('.json')) {
+      try {
+        t.updateTab(path, {
+          content: JSON.stringify(JSON.parse(t.fileContent), null, 2),
+          isSaved: false
+        })
+      } catch {
+        alertDialog('Invalid JSON format.')
+      }
+    } else if (path.endsWith('.html') || path.endsWith('.htm') || path.endsWith('.xml')) {
+      t.updateTab(path, { content: prettyPrintMarkup(t.fileContent), isSaved: false })
     }
   }
 
-  const handleFormatMarkup = (): void => {
-    if (!tabs.activeTabPath) return
-    tabs.updateTab(tabs.activeTabPath, {
-      content: prettyPrintMarkup(tabs.fileContent),
-      isSaved: false
-    })
+  // Shared by the toolbar button and the Cmd+T menu accelerator.
+  const toggleTerminal = (): void => {
+    const term = terminalRef.current
+    if (!term.showTerminal && term.terminals.length === 0) term.openNewTerminal()
+    else term.setShowTerminal(!term.showTerminal)
   }
 
   const handleWindowDragOver = (e: DragEvent): void => {
@@ -343,6 +406,8 @@ function App() {
         ?.branch
     : git.repos[0]?.branch
   const hasFileActions = !!tabs.selectedPath
+  const voiceBusy =
+    voice.status === 'loading' || voice.status === 'downloading' || voice.status === 'transcribing'
 
   return (
     <div
@@ -362,14 +427,19 @@ function App() {
           {hasFileActions && (
             <div className="flex items-center gap-1 no-drag-region shrink-0">
               <div className="w-px h-4 bg-fleet-border mx-1" />
-              <ToolbarButton
-                onClick={tabs.handleSave}
-                disabled={tabs.isSaved}
-                colorClassName={!tabs.isSaved ? 'text-blue-400' : 'text-gray-500'}
-                title="Save (Cmd+S)"
-              >
-                <Save size={16} />
-              </ToolbarButton>
+              {/* With autosave on, the file is only ever "dirty" for the ~1.2s
+                  debounce window, so a Save button is dead weight - Cmd+S in
+                  the menu still works for the impatient. */}
+              {!settings.autosaveEnabled && (
+                <ToolbarButton
+                  onClick={tabs.handleSave}
+                  disabled={tabs.isSaved}
+                  colorClassName={!tabs.isSaved ? 'text-blue-400' : 'text-gray-500'}
+                  title="Save (Cmd+S)"
+                >
+                  <Save size={16} />
+                </ToolbarButton>
+              )}
               {tabs.selectedPath?.endsWith('.py') && (
                 <ToolbarButton
                   onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
@@ -381,8 +451,8 @@ function App() {
               )}
               {tabs.selectedPath?.endsWith('.json') && (
                 <ToolbarButton
-                  onClick={handleFormatJson}
-                  title="Format JSON"
+                  onClick={formatActiveDocument}
+                  title="Format JSON (Option+Cmd+L)"
                   colorClassName="text-yellow-500"
                 >
                   <AlignLeft size={16} />
@@ -392,24 +462,64 @@ function App() {
                 tabs.selectedPath?.endsWith('.htm') ||
                 tabs.selectedPath?.endsWith('.xml')) && (
                 <ToolbarButton
-                  onClick={handleFormatMarkup}
-                  title="Format Document"
+                  onClick={formatActiveDocument}
+                  title="Format Document (Option+Cmd+L)"
                   colorClassName="text-yellow-500"
                 >
                   <AlignLeft size={16} />
                 </ToolbarButton>
               )}
-              {tabs.selectedPath?.endsWith('.md') && (
+              {isPreviewablePath(tabs.selectedPath) && (
                 <ToolbarButton
                   onClick={() =>
                     tabs.activeTabPath &&
                     tabs.updateTab(tabs.activeTabPath, { showPreview: !tabs.showMarkdownPreview })
                   }
                   active={tabs.showMarkdownPreview}
-                  title={tabs.showMarkdownPreview ? 'Show Source' : 'Show Preview'}
+                  title={
+                    tabs.showMarkdownPreview
+                      ? 'Show Source (Cmd+Shift+P)'
+                      : 'Show Preview (Cmd+Shift+P)'
+                  }
                 >
                   {tabs.showMarkdownPreview ? <Code2 size={16} /> : <Eye size={16} />}
                 </ToolbarButton>
+              )}
+              {canDictate && (
+                <>
+                  <ToolbarButton
+                    onClick={voice.toggle}
+                    title={
+                      voice.status === 'recording'
+                        ? 'Stop Dictation (Cmd+D)'
+                        : voice.status === 'transcribing'
+                          ? 'Transcribing…'
+                          : voiceBusy
+                            ? 'Loading speech model…'
+                            : 'Voice Dictation (Cmd+D)'
+                    }
+                    colorClassName={
+                      voice.status === 'recording'
+                        ? 'text-red-400 bg-red-500/15'
+                        : 'text-gray-400 hover:text-white'
+                    }
+                  >
+                    {voiceBusy ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : voice.status === 'recording' ? (
+                      <Square size={16} className="fill-current" />
+                    ) : (
+                      <Mic size={16} />
+                    )}
+                  </ToolbarButton>
+                  {voice.status === 'recording' && (
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[11px] font-medium select-none">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      {Math.floor(voice.recordingSeconds / 60)}:
+                      {String(voice.recordingSeconds % 60).padStart(2, '0')}
+                    </span>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -417,7 +527,8 @@ function App() {
         <div className="flex items-center gap-1 no-drag-region shrink-0">
           <ToolbarButton
             onClick={() => setShowSearch(true)}
-            ariaLabel="Global Search (Shift+Cmd+F)"
+            title="Global Search (Cmd+Shift+F)"
+            tooltipAlign="right"
             colorClassName="text-gray-400 hover:text-white"
           >
             <Search size={16} />
@@ -425,25 +536,24 @@ function App() {
           <ToolbarButton
             onClick={tree.handleAddFolder}
             title="Add Folder"
+            tooltipAlign="right"
             colorClassName="text-gray-400 hover:text-white"
           >
             <FolderOpen size={16} />
           </ToolbarButton>
           <div className="w-px h-4 bg-fleet-border mx-1" />
           <ToolbarButton
-            onClick={() => {
-              if (!terminal.showTerminal && terminal.terminals.length === 0)
-                terminal.openNewTerminal()
-              else terminal.setShowTerminal(!terminal.showTerminal)
-            }}
+            onClick={toggleTerminal}
             active={terminal.showTerminal}
-            title="Toggle Terminal"
+            title="Toggle Terminal (Ctrl+`)"
+            tooltipAlign="right"
           >
             <TerminalIcon size={16} />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => setShowSettings(true)}
-            title="Settings"
+            title="Settings (Cmd+,)"
+            tooltipAlign="right"
             colorClassName="text-gray-400 hover:text-white"
           >
             <SettingsIcon size={16} />
@@ -496,6 +606,8 @@ function App() {
             {tabs.selectedPath ? (
               tabs.showMarkdownPreview && tabs.selectedPath.endsWith('.md') ? (
                 <MarkdownPreview content={tabs.fileContent} />
+              ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
+                <HtmlPreview content={tabs.fileContent} />
               ) : (
                 <Editor
                   height="100%"
@@ -734,6 +846,21 @@ function App() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {(voice.status === 'consent' || voice.status === 'downloading') && (
+        <VoiceModelModal
+          defaultModel={settings.voiceModel}
+          language={settings.voiceLanguage}
+          onLanguageChange={(lang) => updateSetting('voiceLanguage', lang)}
+          downloading={voice.status === 'downloading'}
+          progress={voice.progress}
+          onConfirm={(model) => {
+            updateSetting('voiceModel', model)
+            voice.confirmDownload(model)
+          }}
+          onClose={voice.status === 'downloading' ? voice.cancelDownload : voice.dismissConsent}
+        />
       )}
 
       {showSettings && (

@@ -1,3 +1,6 @@
+// Must stay the first import: pins the app name (and thus the userData dir)
+// before any module resolves paths under it at import time.
+import './appIdentity'
 import { app, shell, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import fs from 'fs'

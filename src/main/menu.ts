@@ -40,7 +40,6 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
       submenu: [
         {
           label: 'Open Folder…',
-          accelerator: 'CmdOrCtrl+Shift+O',
           click: () => sendAction('open-folder')
         },
         { type: 'separator' },
@@ -51,7 +50,9 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           accelerator: 'CmdOrCtrl+Shift+T',
           click: () => sendAction('reopen-tab')
         },
-        ...(!isMac ? [{ type: 'separator' } as Electron.MenuItemConstructorOptions, preferencesItem] : [])
+        ...(!isMac
+          ? [{ type: 'separator' } as Electron.MenuItemConstructorOptions, preferencesItem]
+          : [])
       ]
     },
     {
@@ -63,7 +64,18 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
-        { role: 'selectAll' }
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Start/Stop Dictation',
+          accelerator: 'CmdOrCtrl+D',
+          click: () => sendAction('toggle-dictation')
+        },
+        {
+          label: 'Format Document',
+          accelerator: 'Alt+CmdOrCtrl+L',
+          click: () => sendAction('format-document')
+        }
       ]
     },
     {
@@ -79,6 +91,16 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           label: 'Toggle Git Panel',
           accelerator: 'CmdOrCtrl+K',
           click: () => sendAction('toggle-git-panel')
+        },
+        {
+          label: 'Toggle Preview',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => sendAction('toggle-preview')
+        },
+        {
+          label: 'Toggle Terminal',
+          accelerator: 'Ctrl+`',
+          click: () => sendAction('toggle-terminal')
         },
         { type: 'separator' },
         { role: 'reload' },

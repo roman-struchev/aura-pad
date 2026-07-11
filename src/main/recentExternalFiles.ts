@@ -19,7 +19,9 @@ function saveRecentExternalFiles(entries: RecentExternalFile[]): void {
 export function loadRecentExternalFiles(): RecentExternalFile[] {
   try {
     if (fs.existsSync(recentFilesConfigPath)) {
-      const entries = JSON.parse(fs.readFileSync(recentFilesConfigPath, 'utf-8')) as RecentExternalFile[]
+      const entries = JSON.parse(
+        fs.readFileSync(recentFilesConfigPath, 'utf-8')
+      ) as RecentExternalFile[]
       const cutoff = Date.now() - RETENTION_MS
       return entries.filter((e) => e.openedAt >= cutoff)
     }

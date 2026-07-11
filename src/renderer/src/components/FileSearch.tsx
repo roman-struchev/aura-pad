@@ -176,7 +176,9 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect, rootN
 
         <div className="px-3 py-1.5 bg-fleet-header border-t border-fleet-border text-[9px] text-gray-600 flex justify-between uppercase tracking-wider">
           <span>{results.length} results found</span>
-          <span>{pathMode ? 'Tab to Complete · Double-Shift to Close' : 'Double-Shift to Close'}</span>
+          <span>
+            {pathMode ? 'Tab to Complete · Double-Shift to Close' : 'Double-Shift to Close'}
+          </span>
         </div>
       </div>
     </div>

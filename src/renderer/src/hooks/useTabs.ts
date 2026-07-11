@@ -100,6 +100,29 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     editorRef.current = editor
   }
 
+  // Voice dictation lands here: replace the current selection (or insert at
+  // the cursor) via executeEdits, which flows through the normal onChange
+  // path (so tab state updates) and stays a single undo step. Adds a leading
+  // space when gluing onto a word, since transcribed text arrives trimmed.
+  const insertTextAtCursor = (text: string): void => {
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    const selection = editor?.getSelection()
+    if (!editor || !model || !selection || !text) return
+    const { startLineNumber, startColumn } = selection
+    const charBefore =
+      startColumn > 1
+        ? model.getValueInRange(
+            new monaco.Range(startLineNumber, startColumn - 1, startLineNumber, startColumn)
+          )
+        : ''
+    const needsSpace = charBefore !== '' && !/\s/.test(charBefore)
+    editor.executeEdits('voice-dictation', [
+      { range: selection, text: needsSpace ? ` ${text}` : text, forceMoveMarkers: true }
+    ])
+    editor.focus()
+  }
+
   const handleEditorChange = (value: string | undefined): void => {
     if (value !== undefined && activeTabPath) {
       updateTab(activeTabPath, { content: value, isSaved: false })
@@ -322,6 +345,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     reorderTab,
     handleSave,
     handleEditorChange,
+    insertTextAtCursor,
     handleEditorDidMount,
     reloadFromDisk,
     remapTabPaths,

@@ -2,7 +2,13 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import type { AppSettings } from '../../../shared/settings'
-import { SIDEBAR_POSITIONS, THEME_MODES, UI_MODES } from '../../../shared/settings'
+import {
+  SIDEBAR_POSITIONS,
+  THEME_MODES,
+  UI_MODES,
+  VOICE_LANGUAGES,
+  VOICE_MODELS
+} from '../../../shared/settings'
 import type { DensityPreset } from '../density'
 import { Modal } from './Modal'
 import { SettingToggle } from './SettingToggle'
@@ -20,6 +26,10 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⌘W', description: 'Close tab' },
   { keys: '⇧⌘T', description: 'Reopen closed tab' },
   { keys: '⌘K', description: 'Toggle the Git sidebar tab' },
+  { keys: '⌘D', description: 'Start/stop voice dictation' },
+  { keys: '⌥⌘L', description: 'Format document (JSON/HTML/XML)' },
+  { keys: '⇧⌘P', description: 'Toggle Markdown/HTML preview' },
+  { keys: '⌃`', description: 'Toggle the terminal' },
   { keys: '⇧⌘F', description: 'Search in workspace' },
   { keys: 'Shift Shift', description: 'Quick open a file or folder' },
   { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
@@ -102,6 +112,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           description="Inline error checking for TypeScript, JavaScript and Python"
           checked={settings.diagnosticsEnabled}
           onChange={(v) => updateSetting('diagnosticsEnabled', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingSelect
+          label="Dictation Model"
+          description="Whisper model for voice input - larger is more accurate but a bigger download"
+          value={settings.voiceModel}
+          options={VOICE_MODELS}
+          onChange={(v) => updateSetting('voiceModel', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingSelect
+          label="Dictation Language"
+          description="The language you dictate in"
+          value={settings.voiceLanguage}
+          options={VOICE_LANGUAGES}
+          onChange={(v) => updateSetting('voiceLanguage', v)}
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
