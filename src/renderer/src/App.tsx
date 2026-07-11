@@ -21,6 +21,7 @@ import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { VoiceModelModal } from './components/VoiceModelModal'
+import { VoiceLevelMeter } from './components/VoiceLevelMeter'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
 import { ToolbarButton } from './components/ToolbarButton'
@@ -513,10 +514,12 @@ function App() {
                     )}
                   </ToolbarButton>
                   {voice.status === 'recording' && (
-                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[11px] font-medium select-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                      {Math.floor(voice.recordingSeconds / 60)}:
-                      {String(voice.recordingSeconds % 60).padStart(2, '0')}
+                    <span className="flex items-center px-2 py-0.5 rounded-full bg-red-500/15 select-none">
+                      {voice.analyser ? (
+                        <VoiceLevelMeter analyser={voice.analyser} />
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      )}
                     </span>
                   )}
                 </>

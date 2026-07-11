@@ -28,8 +28,10 @@ export function useVoiceInput(
 ) {
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [progress, setProgress] = useState(0)
-  // Elapsed recording time, for the toolbar's REC indicator.
-  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  // Live analyser over the mic stream while recording - the toolbar's level
+  // meter reads it directly (via rAF, no React state churn) to show the
+  // voice reacting in real time.
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
 
   const workerRef = useRef<Worker | null>(null)
   const readyModelRef = useRef<VoiceModel | null>(null)
@@ -40,7 +42,7 @@ export function useVoiceInput(
   const afterLoadRef = useRef<'record' | 'idle'>('idle')
   const recorderRef = useRef<MediaRecorder | null>(null)
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const levelCtxRef = useRef<AudioContext | null>(null)
   const progressPerFileRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
 
   // Read through refs by the worker's message handler (attached once per
@@ -132,15 +134,28 @@ export function useVoiceInput(
     recorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop())
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-      if (recordTickRef.current) clearInterval(recordTickRef.current)
+      levelCtxRef.current?.close()
+      levelCtxRef.current = null
+      setAnalyser(null)
       recorderRef.current = null
       transcribeBlob(new Blob(chunks, { type: recorder.mimeType }))
     }
     recorderRef.current = recorder
     recorder.start()
+    // Tap the same stream with an analyser for the live level meter. Purely
+    // cosmetic, so a failure here must never block the recording itself.
+    try {
+      const ctx = new AudioContext()
+      const node = ctx.createAnalyser()
+      node.fftSize = 64
+      node.smoothingTimeConstant = 0.75
+      ctx.createMediaStreamSource(stream).connect(node)
+      levelCtxRef.current = ctx
+      setAnalyser(node)
+    } catch {
+      // No meter, but dictation still works.
+    }
     setStatus('recording')
-    setRecordingSeconds(0)
-    recordTickRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000)
     stopTimerRef.current = setTimeout(() => {
       if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
     }, MAX_RECORDING_MS)
@@ -223,14 +238,14 @@ export function useVoiceInput(
     return () => {
       workerRef.current?.terminate()
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-      if (recordTickRef.current) clearInterval(recordTickRef.current)
+      levelCtxRef.current?.close()
     }
   }, [])
 
   return {
     status,
     progress,
-    recordingSeconds,
+    analyser,
     toggle,
     confirmDownload,
     cancelDownload,
