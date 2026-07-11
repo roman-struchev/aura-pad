@@ -1,5 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../shared/settings'
+import type { OpenTabsState } from '../shared/openTabsState'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
 import type { GitRepoStatus } from '../shared/gitStatus'
@@ -50,6 +51,9 @@ declare global {
 
       getSettings: () => Promise<AppSettings>
       saveSettings: (settings: AppSettings) => Promise<AppSettings>
+
+      getOpenTabs: () => Promise<OpenTabsState>
+      saveOpenTabs: (state: OpenTabsState) => Promise<void>
       onWorkspacesChanged: (callback: (trees: FileNode[]) => void) => () => void
       onFileChangedExternally: (callback: (path: string) => void) => () => void
       onOpenFileRequest: (callback: (path: string) => void) => () => void

@@ -21,6 +21,7 @@ import {
   movePath
 } from './workspaces'
 import { loadSettings, saveSettings } from './settings'
+import { loadOpenTabsState, saveOpenTabsState } from './openTabsState'
 import {
   loadRecentExternalFiles,
   touchRecentExternalFile,
@@ -42,6 +43,7 @@ import {
 } from './git'
 import { lintPython, lintEslint } from './lint'
 import type { AppSettings } from '../shared/settings'
+import type { OpenTabsState } from '../shared/openTabsState'
 
 // Opening a file via "Open With" (or dropping one on the dock icon on macOS)
 // only reaches this process, not the renderer directly - forward it over
@@ -293,6 +295,12 @@ ipcMain.handle('get-settings', () => loadSettings())
 ipcMain.handle('save-settings', (_, settings: AppSettings) => {
   saveSettings(settings)
   return settings
+})
+
+ipcMain.handle('get-open-tabs', () => loadOpenTabsState())
+
+ipcMain.handle('save-open-tabs', (_, state: OpenTabsState) => {
+  saveOpenTabsState(state)
 })
 
 ipcMain.handle('rename-path', async (_, oldPath: string, newName: string) => {

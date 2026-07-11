@@ -8,10 +8,17 @@
          features: onnxruntime's wasm backend, and the one-time Whisper/Piper
          model downloads (huggingface.co redirects to its
          cdn-lfs.huggingface.co / cas-bridge.xethub.hf.co CDNs).
-         media-src blob: lets read-aloud play the synthesized wav chunks. -->
+         media-src blob: lets read-aloud play the synthesized wav chunks.
+         script-src's 'unsafe-inline' + https: exist for the HTML preview
+         (HtmlPreview.tsx): its iframe is a srcDoc document, which inherits
+         this page's CSP rather than getting its own, so previewed files can
+         only run inline <script> blocks / pull a library off a CDN if this
+         policy allows it too - this is a deliberate, app-wide loosening
+         (not scoped to just the preview) so it only runs script from files
+         you open yourself, not arbitrary remote content. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co"
     />
   </head>
 

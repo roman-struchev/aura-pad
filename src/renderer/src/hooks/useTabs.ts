@@ -24,6 +24,15 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   const tabsRef = useRef<OpenTab[]>([])
   const pendingJumpLine = useRef<number | null>(null)
   const closedStackRef = useRef<string[]>([])
+  // Guards the persistence effect below from firing (and overwriting the
+  // saved session with an empty one) before the restore-on-mount effect has
+  // had a chance to run.
+  const hasRestoredRef = useRef(false)
+  // Guards the restore effect itself from running twice - React 18
+  // StrictMode (dev only) double-invokes mount effects, and since this one
+  // is async, a second run can start before the first has committed its
+  // tabs, both passing the "not already open" check and adding a duplicate.
+  const restoreStartedRef = useRef(false)
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null
   const selectedPath = activeTab?.path ?? null
@@ -322,6 +331,72 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     })
     return unsubscribe
   }, [])
+
+  // Restore last session's open tabs on launch. Only paths (not content) are
+  // persisted, so each is re-read from disk here; ones that no longer exist
+  // (deleted/moved since last run) are silently skipped rather than showing
+  // an error, since this isn't a user-initiated open. In single-tab mode
+  // (tabsEnabled off) only the previously active file is restored.
+  useEffect(() => {
+    if (restoreStartedRef.current) return
+    restoreStartedRef.current = true
+    ;(async () => {
+      const state = await window.api.getOpenTabs()
+      const pathsToRestore = tabsEnabled
+        ? state.paths
+        : state.activeTabPath
+          ? [state.activeTabPath]
+          : []
+
+      const restored: OpenTab[] = []
+      for (const p of pathsToRestore) {
+        if (tabsRef.current.some((t) => t.path === p)) continue
+        const result = await window.api.readFile(p)
+        if (!result.success) continue
+        restored.push({
+          path: p,
+          content: result.content || '',
+          isSaved: true,
+          externalChangeAvailable: false,
+          showPreview: false,
+          pinned: state.pinnedPaths.includes(p)
+        })
+      }
+
+      if (restored.length > 0) {
+        // Re-checked against `prev` (not just the pre-restore tabsRef
+        // snapshot above) so a tab opened concurrently while these files
+        // were being read from disk - e.g. the OS/CLI delivering the same
+        // path as the one being restored - can't end up duplicated.
+        setTabs((prev) => {
+          const existing = new Set(prev.map((t) => t.path))
+          const toAdd = restored.filter((t) => !existing.has(t.path))
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev
+        })
+        const activePath =
+          state.activeTabPath && restored.some((t) => t.path === state.activeTabPath)
+            ? state.activeTabPath
+            : restored[restored.length - 1].path
+        setActiveTabPath((prev) => prev ?? activePath)
+      }
+      hasRestoredRef.current = true
+    })()
+  }, [tabsEnabled])
+
+  // Persist the open tab list (paths, active tab, pinned state - not
+  // content, which is re-read from disk on restore) so it survives an app
+  // restart. Debounced since tab/content changes can fire in quick bursts.
+  useEffect(() => {
+    if (!hasRestoredRef.current) return
+    const timer = setTimeout(() => {
+      window.api.saveOpenTabs({
+        paths: tabsRef.current.map((t) => t.path),
+        activeTabPath,
+        pinnedPaths: tabsRef.current.filter((t) => t.pinned).map((t) => t.path)
+      })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [tabs, activeTabPath])
 
   return {
     tabs,

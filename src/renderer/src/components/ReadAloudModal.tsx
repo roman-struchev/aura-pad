@@ -171,7 +171,7 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
             })
           }
         >
-          {needsDownload ? 'Download' : mode === 'consent' ? 'Read' : 'Done'}
+          {needsDownload ? 'Download' : mode === 'consent' ? 'Read' : 'Use Model'}
         </button>
       </div>
     </Modal>

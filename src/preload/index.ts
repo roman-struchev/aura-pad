@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AppSettings } from '../shared/settings'
+import type { OpenTabsState } from '../shared/openTabsState'
 import type { FileNode } from '../shared/fileNode'
 import type { GitRepoStatus } from '../shared/gitStatus'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
@@ -38,6 +39,9 @@ const api = {
 
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke('save-settings', settings),
+
+  getOpenTabs: (): Promise<OpenTabsState> => ipcRenderer.invoke('get-open-tabs'),
+  saveOpenTabs: (state: OpenTabsState) => ipcRenderer.invoke('save-open-tabs', state),
   onThemeUpdated: (callback: (isDark: boolean) => void) => {
     const listener = (_, isDark: boolean) => callback(isDark)
     ipcRenderer.on('theme-updated', listener)

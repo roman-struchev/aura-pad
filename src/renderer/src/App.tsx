@@ -182,8 +182,10 @@ function App() {
   const editorInstanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 
   // Reads the selection if there is one; otherwise from the cursor to the end
-  // of the file; in Markdown/HTML preview mode (no editor mounted) the whole
-  // file. Markdown is flattened to prose before speaking.
+  // of the file, falling back to the whole file if the cursor is already at
+  // (or past) the end and that range is empty; in Markdown/HTML preview mode
+  // (no editor mounted) the whole file. Markdown is flattened to prose before
+  // speaking.
   const startReadAloud = (): void => {
     const t = tabsRef.current
     if (!t.selectedPath) return
@@ -198,9 +200,10 @@ function App() {
         text = model.getValueInRange(selection)
       } else if (position) {
         const full = model.getFullModelRange()
-        text = model.getValueInRange(
+        const fromCursor = model.getValueInRange(
           new monaco.Range(position.lineNumber, position.column, full.endLineNumber, full.endColumn)
         )
+        text = fromCursor.trim().length > 0 ? fromCursor : model.getValue()
       }
     }
     readAloudRef.current.speak(text, { markdown })
