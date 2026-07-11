@@ -41,10 +41,16 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
   scripts, no network), so it's a markup preview rather than a browser.
 - Line numbers, editor scrollbar width, UI density (micro/compact/normal/large), and a
   dark/light/system theme are all adjustable in Settings.
-- Voice dictation (`Cmd+D` or the mic toolbar button): speak, press again, and the
-  transcribed text lands at the cursor. Runs Whisper locally (WebGPU, wasm fallback) — audio
+- Voice dictation in Markdown/text files (`Cmd+D` or the mic toolbar button): speak, press
+  again, and the transcribed text lands at the cursor. Runs Whisper locally (WebGPU, wasm fallback) — audio
   never leaves the machine. The model (pick tiny/base/small/turbo in Settings) is downloaded
   once from Hugging Face after an explicit confirmation, then cached for offline use.
+- Read aloud for Markdown/text files: the speaker toolbar button (or right-click → Read
+  Aloud) speaks the selection, or everything from the cursor down. Natural-sounding neural
+  voices (Piper) run locally — Russian/English picked automatically per paragraph — after a
+  one-time ~60-80 MB per-language download from Hugging Face (declining falls back to the
+  basic OS voices). Markdown syntax is stripped and code blocks skipped; a 1×/1.5×/2× speed
+  toggle appears while reading, `Esc` stops.
 
 **Files**
 
@@ -96,7 +102,7 @@ rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applicatio
 | `Cmd/Ctrl + C`          | Copy the selected file/folder (when the file tree has focus)            |
 | `Cmd/Ctrl + V`          | Paste/duplicate into the selected folder (when the file tree has focus) |
 | `Delete` / `Backspace`  | Move the selected file/folder to Trash (when the file tree has focus)   |
-| `Esc`                   | Close a dialog / discard an active dictation recording                  |
+| `Esc`                   | Close a dialog / discard a dictation recording / stop reading aloud     |
 
 Files and folders can also be dragged and dropped between folders in the tree (or in from
 Finder/Explorer to open them), tabs can be dragged to reorder, and most tree actions are also

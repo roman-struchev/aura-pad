@@ -1,0 +1,457 @@
+import { useEffect, useRef, useState } from 'react'
+import { marked } from 'marked'
+import TtsWorker from '../lib/tts/piperWorker?worker'
+import type { TtsWorkerResponse } from '../lib/tts/piperWorker'
+import { download as piperDownload, remove as piperRemove } from '@mintplex-labs/piper-tts-web'
+import { alertDialog } from '../lib/dialogs'
+import type { ReadVoiceEn, ReadVoiceRu } from '../../../shared/settings'
+
+// Read-aloud with local neural voices (Piper) synthesized in a worker and
+// played back chunk by chunk - the next sentence is being synthesized while
+// the current one plays. Each language's voice is a setting; 'system' (the
+// OS's built-in synthesis, no download) is one of the choices and mixes
+// freely with neural chunks in the same document. Neural voices download
+// once from Hugging Face, after the consent dialog.
+
+const RATE_KEY = 'aurapad-read-aloud-rate'
+const DOWNLOADED_VOICES_KEY = 'aurapad-tts-voices-downloaded'
+export const READ_ALOUD_RATES = [1, 1.5, 2]
+// Chunks are sentence groups capped at this size: language switching happens
+// on chunk boundaries, and the first chunk's synthesis time is the latency
+// before the user hears anything.
+const MAX_CHUNK_CHARS = 220
+// A loaded Piper session holds ~100MB+ per voice; drop the worker after this
+// long without reading (mirrors the dictation model's idle unload).
+const TTS_IDLE_UNLOAD_MS = 30 * 60 * 1000
+
+export type ReadLang = 'ru' | 'en'
+
+// Settings keys -> Piper voices (all from rhasspy/piper-voices), with what
+// the download-consent dialog shows. 'system' is deliberately absent - it's
+// not a download.
+export interface ReadVoiceInfo {
+  id: string
+  label: string
+  approxDownload: string
+}
+export const RU_VOICES: Record<Exclude<ReadVoiceRu, 'system'>, ReadVoiceInfo> = {
+  irina: { id: 'ru_RU-irina-medium', label: 'Irina', approxDownload: '~78 MB' },
+  dmitri: { id: 'ru_RU-dmitri-medium', label: 'Dmitri', approxDownload: '~76 MB' },
+  denis: { id: 'ru_RU-denis-medium', label: 'Denis', approxDownload: '~76 MB' },
+  ruslan: { id: 'ru_RU-ruslan-medium', label: 'Ruslan', approxDownload: '~78 MB' }
+}
+export const EN_VOICES: Record<Exclude<ReadVoiceEn, 'system'>, ReadVoiceInfo> = {
+  hfc_female: { id: 'en_US-hfc_female-medium', label: 'Female (HFC)', approxDownload: '~63 MB' },
+  hfc_male: { id: 'en_US-hfc_male-medium', label: 'Male (HFC)', approxDownload: '~63 MB' },
+  lessac: { id: 'en_US-lessac-medium', label: 'Lessac', approxDownload: '~63 MB' },
+  ryan: { id: 'en_US-ryan-high', label: 'Ryan (high quality)', approxDownload: '~115 MB' }
+}
+
+// Markdown read as prose: rendered to HTML with the same marked call the
+// preview uses, code blocks dropped (listening to one being spelled out is
+// useless), then flattened to plain text - no "asterisk asterisk" artifacts.
+const markdownToPlainText = (md: string): string => {
+  const html = marked.parse(md, { async: false }) as string
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  doc.querySelectorAll('pre').forEach((el) => el.remove())
+  return doc.body.textContent ?? ''
+}
+
+const detectLang = (text: string): ReadLang => {
+  const cyrillic = (text.match(/[а-яё]/gi) ?? []).length
+  const latin = (text.match(/[a-z]/gi) ?? []).length
+  return cyrillic > latin ? 'ru' : 'en'
+}
+
+// Split into sentences, then merge neighbors that speak the same language
+// into chunks of a comfortable size.
+const chunkText = (text: string): string[] => {
+  const sentences = text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?…])\s+/))
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const chunks: string[] = []
+  for (const sentence of sentences) {
+    const last = chunks[chunks.length - 1]
+    if (
+      last &&
+      last.length + sentence.length < MAX_CHUNK_CHARS &&
+      detectLang(last) === detectLang(sentence)
+    ) {
+      chunks[chunks.length - 1] = `${last} ${sentence}`
+    } else {
+      chunks.push(sentence)
+    }
+  }
+  return chunks
+}
+
+export const downloadedVoices = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(DOWNLOADED_VOICES_KEY) ?? '[]') as string[]
+  } catch {
+    return []
+  }
+}
+
+const markVoiceDownloaded = (voiceId: string): void => {
+  const list = downloadedVoices()
+  if (!list.includes(voiceId))
+    localStorage.setItem(DOWNLOADED_VOICES_KEY, JSON.stringify([...list, voiceId]))
+}
+
+const unmarkVoiceDownloaded = (voiceId: string): void => {
+  localStorage.setItem(
+    DOWNLOADED_VOICES_KEY,
+    JSON.stringify(downloadedVoices().filter((v) => v !== voiceId))
+  )
+}
+
+// --- System (OS) voices, one of the selectable options per language ---
+
+let voicesPromise: Promise<SpeechSynthesisVoice[]> | null = null
+const ensureSystemVoices = (): Promise<SpeechSynthesisVoice[]> => {
+  voicesPromise ??= new Promise((resolve) => {
+    const loaded = speechSynthesis.getVoices()
+    if (loaded.length > 0) return resolve(loaded)
+    speechSynthesis.addEventListener('voiceschanged', () => resolve(speechSynthesis.getVoices()), {
+      once: true
+    })
+    setTimeout(() => resolve(speechSynthesis.getVoices()), 1500)
+  })
+  return voicesPromise
+}
+
+const pickSystemVoice = (
+  voices: SpeechSynthesisVoice[],
+  lang: ReadLang
+): SpeechSynthesisVoice | null => {
+  const candidates = voices.filter((v) => v.lang.toLowerCase().startsWith(lang))
+  if (candidates.length === 0) return null
+  const score = (v: SpeechSynthesisVoice): number =>
+    /premium/i.test(v.name) ? 3 : /enhanced/i.test(v.name) ? 2 : v.default ? 1 : 0
+  return [...candidates].sort((a, b) => score(b) - score(a))[0]
+}
+
+// What sits in the playback buffer for one chunk: a synthesized wav, or a
+// marker to speak it with the system voice when its turn comes.
+type PlayableChunk = { kind: 'wav'; url: string } | { kind: 'system'; text: string }
+
+export function useReadAloud(ruVoice: ReadVoiceRu, enVoice: ReadVoiceEn) {
+  const [speaking, setSpeaking] = useState(false)
+  const [rate, setRate] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(RATE_KEY))
+    return READ_ALOUD_RATES.includes(saved) ? saved : 1
+  })
+  // Percentage while voice models download, null otherwise.
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
+  // Consent dialog state, mirroring dictation's modal: which languages the
+  // pending text needs ('consent' = choosing, 'downloading' = progress bar).
+  const [modalPhase, setModalPhase] = useState<'consent' | 'downloading' | null>(null)
+  const [consentLangs, setConsentLangs] = useState<ReadLang[]>([])
+
+  const rateRef = useRef(rate)
+  const speakingRef = useRef(false)
+  const workerRef = useRef<Worker | null>(null)
+  const idleUnloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingChunksRef = useRef<string[]>([])
+
+  const ruVoiceRef = useRef(ruVoice)
+  const enVoiceRef = useRef(enVoice)
+  useEffect(() => {
+    ruVoiceRef.current = ruVoice
+    enVoiceRef.current = enVoice
+  })
+  const voiceFor = (lang: ReadLang): ReadVoiceInfo | 'system' => {
+    if (lang === 'ru')
+      return ruVoiceRef.current === 'system' ? 'system' : RU_VOICES[ruVoiceRef.current]
+    return enVoiceRef.current === 'system' ? 'system' : EN_VOICES[enVoiceRef.current]
+  }
+
+  // Playback pipeline: chunks are keyed by sequential ids; synthesized wavs
+  // arrive from the worker, system chunks are placed directly, and playNext
+  // consumes them strictly in order.
+  const nextIdRef = useRef(0)
+  const pendingIdsRef = useRef<Set<number>>(new Set())
+  const bufferRef = useRef<Map<number, PlayableChunk>>(new Map())
+  const playIndexRef = useRef(0)
+  const playingRef = useRef(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const systemVoicesRef = useRef<SpeechSynthesisVoice[]>([])
+  const progressPerUrlRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
+
+  const scheduleIdleUnload = (): void => {
+    if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
+    idleUnloadRef.current = setTimeout(() => {
+      if (!speakingRef.current && workerRef.current) {
+        workerRef.current.terminate()
+        workerRef.current = null
+      }
+    }, TTS_IDLE_UNLOAD_MS)
+  }
+
+  const finishIfDone = (): void => {
+    if (pendingIdsRef.current.size === 0 && bufferRef.current.size === 0 && !playingRef.current) {
+      speakingRef.current = false
+      setSpeaking(false)
+      setDownloadProgress(null)
+      scheduleIdleUnload()
+    }
+  }
+
+  const playNext = (): void => {
+    if (playingRef.current || !speakingRef.current) return
+    const item = bufferRef.current.get(playIndexRef.current)
+    if (!item) {
+      finishIfDone()
+      return
+    }
+    bufferRef.current.delete(playIndexRef.current)
+    playIndexRef.current += 1
+    playingRef.current = true
+
+    if (item.kind === 'wav') {
+      const audio = new Audio(item.url)
+      audioRef.current = audio
+      audio.playbackRate = rateRef.current
+      audio.onended = () => {
+        URL.revokeObjectURL(item.url)
+        playingRef.current = false
+        audioRef.current = null
+        playNext()
+      }
+      // A chunk that fails to *play* is abnormal (e.g. CSP blocking blob:
+      // media) - stop loudly rather than silently skipping through the text.
+      audio.onerror = () => {
+        URL.revokeObjectURL(item.url)
+        stop()
+        alertDialog('Read aloud playback failed (see DevTools console).')
+      }
+      audio.play()
+    } else {
+      const utterance = new SpeechSynthesisUtterance(item.text)
+      const lang = detectLang(item.text)
+      const voice = pickSystemVoice(systemVoicesRef.current, lang)
+      if (voice) utterance.voice = voice
+      utterance.lang = lang === 'ru' ? 'ru-RU' : 'en-US'
+      utterance.rate = rateRef.current
+      utterance.onend = utterance.onerror = () => {
+        playingRef.current = false
+        playNext()
+      }
+      speechSynthesis.speak(utterance)
+    }
+  }
+
+  const handleWorkerMessage = (msg: TtsWorkerResponse): void => {
+    switch (msg.type) {
+      case 'progress': {
+        progressPerUrlRef.current.set(msg.url, { loaded: msg.loaded, total: msg.total })
+        let loaded = 0
+        let total = 0
+        for (const f of progressPerUrlRef.current.values()) {
+          loaded += f.loaded
+          total += f.total
+        }
+        if (total > 0) setDownloadProgress(Math.round((loaded / total) * 100))
+        break
+      }
+      case 'audio': {
+        if (!pendingIdsRef.current.delete(msg.id)) return // stale, after stop()
+        markVoiceDownloaded(msg.voiceId)
+        setDownloadProgress(null)
+        setModalPhase(null)
+        const blob = new Blob([msg.wav], { type: 'audio/wav' })
+        bufferRef.current.set(msg.id, { kind: 'wav', url: URL.createObjectURL(blob) })
+        playNext()
+        break
+      }
+      case 'error':
+        if (!pendingIdsRef.current.delete(msg.id)) return
+        stop()
+        alertDialog(`Read aloud failed: ${msg.message}`)
+        break
+    }
+  }
+
+  const getWorker = (): Worker => {
+    if (!workerRef.current) {
+      const worker = new TtsWorker()
+      worker.onmessage = (e: MessageEvent<TtsWorkerResponse>) => handleWorkerMessage(e.data)
+      worker.onerror = () => {
+        stop()
+        alertDialog('Read aloud failed to start (see DevTools).')
+      }
+      workerRef.current = worker
+    }
+    return workerRef.current
+  }
+
+  const stop = (): void => {
+    speakingRef.current = false
+    setSpeaking(false)
+    setDownloadProgress(null)
+    setModalPhase(null)
+    pendingChunksRef.current = []
+    workerRef.current?.postMessage({ type: 'cancel' })
+    pendingIdsRef.current.clear()
+    for (const item of bufferRef.current.values()) {
+      if (item.kind === 'wav') URL.revokeObjectURL(item.url)
+    }
+    bufferRef.current.clear()
+    playingRef.current = false
+    audioRef.current?.pause()
+    audioRef.current = null
+    speechSynthesis.cancel()
+    scheduleIdleUnload()
+  }
+
+  const enqueueChunks = async (chunks: string[]): Promise<void> => {
+    progressPerUrlRef.current = new Map()
+    playIndexRef.current = nextIdRef.current
+    if (chunks.some((c) => voiceFor(detectLang(c)) === 'system')) {
+      systemVoicesRef.current = await ensureSystemVoices()
+      if (!speakingRef.current) return // stopped while voices were loading
+    }
+    for (const chunk of chunks) {
+      const id = nextIdRef.current++
+      const voice = voiceFor(detectLang(chunk))
+      if (voice === 'system') {
+        bufferRef.current.set(id, { kind: 'system', text: chunk })
+      } else {
+        pendingIdsRef.current.add(id)
+        getWorker().postMessage({ type: 'synthesize', id, text: chunk, voiceId: voice.id })
+      }
+    }
+    playNext()
+  }
+
+  const speak = (text: string, options: { markdown: boolean }): void => {
+    stop()
+    const chunks = chunkText(options.markdown ? markdownToPlainText(text) : text)
+    if (chunks.length === 0) return
+
+    speakingRef.current = true
+    setSpeaking(true)
+
+    // Languages whose selected voice is neural but never downloaded: open
+    // the consent dialog (listing every needed language's voice choices)
+    // and keep the chunks aside until the user decides.
+    const langs = [...new Set(chunks.map(detectLang))]
+    const missing = langs.filter((lang) => {
+      const voice = voiceFor(lang)
+      return voice !== 'system' && !downloadedVoices().includes(voice.id)
+    })
+    if (missing.length > 0) {
+      pendingChunksRef.current = chunks
+      setConsentLangs(langs)
+      setModalPhase('consent')
+      return
+    }
+    enqueueChunks(chunks)
+  }
+
+  // Consent dialog confirmed. The dialog may have changed the voice choices;
+  // they're applied to the refs right away (App persists them to Settings in
+  // parallel) so this read uses them. If everything selected is already
+  // downloaded or 'system', the dialog just closes and reading starts.
+  const confirmVoiceDownload = (choices: { ru?: ReadVoiceRu; en?: ReadVoiceEn }): void => {
+    if (choices.ru) ruVoiceRef.current = choices.ru
+    if (choices.en) enVoiceRef.current = choices.en
+    const stillMissing = consentLangs.some((lang) => {
+      const voice = voiceFor(lang)
+      return voice !== 'system' && !downloadedVoices().includes(voice.id)
+    })
+    setModalPhase(stillMissing ? 'downloading' : null)
+    const chunks = pendingChunksRef.current
+    pendingChunksRef.current = []
+    enqueueChunks(chunks)
+  }
+
+  // Fetch voices to OPFS without reading anything - the Settings-opened
+  // dialog's Download button. Progress flows through the same modal states
+  // as the consent flow.
+  const predownloadVoices = async (voiceIds: string[]): Promise<void> => {
+    setModalPhase('downloading')
+    progressPerUrlRef.current = new Map()
+    try {
+      for (const voiceId of voiceIds) {
+        await piperDownload(voiceId as never, (p) => {
+          progressPerUrlRef.current.set(p.url, { loaded: p.loaded, total: p.total })
+          let loaded = 0
+          let total = 0
+          for (const f of progressPerUrlRef.current.values()) {
+            loaded += f.loaded
+            total += f.total
+          }
+          if (total > 0) setDownloadProgress(Math.round((loaded / total) * 100))
+        })
+        markVoiceDownloaded(voiceId)
+      }
+    } catch (e) {
+      alertDialog(`Voice download failed: ${e instanceof Error ? e.message : e}`)
+    }
+    setDownloadProgress(null)
+    setModalPhase(null)
+  }
+
+  // Delete a downloaded voice from disk (trash icon in the voice dialog).
+  // The worker is dropped too - one of its sessions may hold that voice.
+  const deleteVoice = async (voiceId: string): Promise<void> => {
+    if (speakingRef.current) stop()
+    workerRef.current?.terminate()
+    workerRef.current = null
+    try {
+      await piperRemove(voiceId as never)
+    } catch {
+      // Not in OPFS (e.g. cleared manually) - the marker removal is what counts.
+    }
+    unmarkVoiceDownloaded(voiceId)
+  }
+
+  // Closing the dialog = don't read; mid-download it also terminates the
+  // worker, the only way to abort the in-flight fetches (finished files stay
+  // cached, so retrying resumes).
+  const closeVoiceModal = (): void => {
+    if (modalPhase === 'downloading') {
+      workerRef.current?.terminate()
+      workerRef.current = null
+    }
+    stop()
+  }
+
+  // Cycles 1x -> 1.5x -> 2x, applied live to the playing audio (pitch is
+  // preserved by the browser) and to everything queued after it.
+  const cycleRate = (): void => {
+    const next =
+      READ_ALOUD_RATES[(READ_ALOUD_RATES.indexOf(rateRef.current) + 1) % READ_ALOUD_RATES.length]
+    rateRef.current = next
+    setRate(next)
+    localStorage.setItem(RATE_KEY, String(next))
+    if (audioRef.current) audioRef.current.playbackRate = next
+  }
+
+  useEffect(() => {
+    return () => {
+      workerRef.current?.terminate()
+      if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
+      speechSynthesis.cancel()
+    }
+  }, [])
+
+  return {
+    speaking,
+    rate,
+    downloadProgress,
+    modalPhase,
+    consentLangs,
+    confirmVoiceDownload,
+    closeVoiceModal,
+    predownloadVoices,
+    deleteVoice,
+    cycleRate,
+    speak,
+    stop
+  }
+}

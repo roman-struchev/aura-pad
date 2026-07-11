@@ -5,9 +5,20 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
 const ORT_DIST = resolve('node_modules/onnxruntime-web/dist')
-// The wasm runtime the dictation worker points onnxruntime at (see
-// whisperWorker.ts) - must be the asyncify build for this ort version.
-const ORT_FILES = ['ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm']
+// The wasm runtimes the app's workers point onnxruntime at: the dictation
+// worker (whisperWorker.ts) needs the asyncify build - what transformers.js's
+// bundled ort initializes webgpu through - while the read-aloud worker
+// (piperWorker.ts) imports plain onnxruntime-web, whose 1.26 entry loads the
+// jsep build.
+const ORT_FILES = [
+  'ort-wasm-simd-threaded.asyncify.mjs',
+  'ort-wasm-simd-threaded.asyncify.wasm',
+  'ort-wasm-simd-threaded.jsep.mjs',
+  'ort-wasm-simd-threaded.jsep.wasm'
+]
+// espeak-based phonemizer used by the Piper voices (read aloud).
+const PIPER_DIST = resolve('node_modules/@diffusionstudio/piper-wasm/build')
+const PIPER_FILES = ['piper_phonemize.wasm', 'piper_phonemize.data']
 
 // Exposes onnxruntime's wasm runtime under a stable /ort-dist/ path: served
 // from node_modules in dev, copied into the renderer output in build. A plain
@@ -19,13 +30,18 @@ function ortAssets(): Plugin {
     name: 'ort-assets',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const file = ORT_FILES.find((f) => req.url === `/ort-dist/${f}`)
-        if (!file) return next()
-        res.setHeader(
-          'Content-Type',
-          file.endsWith('.mjs') ? 'text/javascript' : 'application/wasm'
-        )
-        res.end(readFileSync(join(ORT_DIST, file)))
+        const serve = (dir: string, file: string): void => {
+          res.setHeader(
+            'Content-Type',
+            file.endsWith('.mjs') || file.endsWith('.js') ? 'text/javascript' : 'application/wasm'
+          )
+          res.end(readFileSync(join(dir, file)))
+        }
+        const ortFile = ORT_FILES.find((f) => req.url === `/ort-dist/${f}`)
+        if (ortFile) return serve(ORT_DIST, ortFile)
+        const piperFile = PIPER_FILES.find((f) => req.url === `/piper-dist/${f}`)
+        if (piperFile) return serve(PIPER_DIST, piperFile)
+        next()
       })
     },
     generateBundle(_options, bundle) {
@@ -34,6 +50,13 @@ function ortAssets(): Plugin {
           type: 'asset',
           fileName: `ort-dist/${file}`,
           source: readFileSync(join(ORT_DIST, file))
+        })
+      }
+      for (const file of PIPER_FILES) {
+        this.emitFile({
+          type: 'asset',
+          fileName: `piper-dist/${file}`,
+          source: readFileSync(join(PIPER_DIST, file))
         })
       }
       // transformers.js's bundle carries its own new URL() reference to the

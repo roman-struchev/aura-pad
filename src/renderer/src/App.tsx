@@ -20,7 +20,9 @@ import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
+import { useReadAloud, RU_VOICES, EN_VOICES, downloadedVoices } from './hooks/useReadAloud'
 import { VoiceModelModal } from './components/VoiceModelModal'
+import { ReadAloudModal } from './components/ReadAloudModal'
 import { VoiceLevelMeter } from './components/VoiceLevelMeter'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
@@ -32,6 +34,7 @@ import { dirname, isUnderAnyRoot } from './lib/path'
 import { prettyPrintMarkup } from './lib/formatMarkup'
 import { quoteForShell } from './lib/shellQuote'
 import Editor from '@monaco-editor/react'
+import * as monaco from 'monaco-editor'
 import clsx from 'clsx'
 import {
   FolderOpen,
@@ -48,7 +51,8 @@ import {
   Settings as SettingsIcon,
   Mic,
   Loader2,
-  Square
+  Square,
+  Volume2
 } from 'lucide-react'
 
 // File types with a rendered preview mode (the toolbar's Show Preview toggle
@@ -58,6 +62,10 @@ const isHtmlPath = (path: string | null): boolean =>
   !!path && (path.endsWith('.html') || path.endsWith('.htm'))
 const isPreviewablePath = (path: string | null): boolean =>
   !!path && (path.endsWith('.md') || isHtmlPath(path))
+// Voice features target prose, not code: dictation inserts into (and the
+// read-aloud button reads from) Markdown and plain-text files only.
+const isProsePath = (path: string | null): boolean =>
+  !!path && (path.endsWith('.md') || path.endsWith('.markdown') || path.endsWith('.txt'))
 
 function App() {
   const { settings, updateSetting } = useSettings()
@@ -115,12 +123,101 @@ function App() {
       v.toggle()
       return
     }
-    if (!t.selectedPath) return
+    if (!isProsePath(t.selectedPath)) return
     if (t.showMarkdownPreview && t.activeTabPath)
       t.updateTab(t.activeTabPath, { showPreview: false })
     v.toggle()
   }
-  const canDictate = !!tabs.selectedPath
+  const canDictate = isProsePath(tabs.selectedPath)
+
+  // One entry point for both the toolbar buttons and the Option+Cmd+L menu
+  // accelerator: picks the formatter by the active file's extension. Reads
+  // through tabsRef so the menu handler (subscribed once) never acts on a
+  // stale tab snapshot.
+  const formatActiveDocument = (): void => {
+    const t = tabsRef.current
+    const path = t.activeTabPath
+    if (!path) return
+    if (path.endsWith('.json')) {
+      try {
+        t.updateTab(path, {
+          content: JSON.stringify(JSON.parse(t.fileContent), null, 2),
+          isSaved: false
+        })
+      } catch {
+        alertDialog('Invalid JSON format.')
+      }
+    } else if (path.endsWith('.html') || path.endsWith('.htm') || path.endsWith('.xml')) {
+      t.updateTab(path, { content: prettyPrintMarkup(t.fileContent), isSaved: false })
+    }
+  }
+
+  // Where a terminal opened without explicit context (toolbar button, Ctrl+`)
+  // should start: the workspace root the active file belongs to, else the
+  // first open workspace, else undefined (falls back to the user's home).
+  const defaultTerminalCwd = (): string | undefined => {
+    const roots = treeRef.current.rootNodes
+    const active = tabsRef.current.selectedPath
+    const activeRoot = active
+      ? roots.find((r) => active === r.path || active.startsWith(r.path + '/'))
+      : undefined
+    return (activeRoot ?? roots[0])?.path
+  }
+
+  // Shared by the toolbar button and the Ctrl+` menu accelerator.
+  const toggleTerminal = (): void => {
+    const term = terminalRef.current
+    if (!term.showTerminal && term.terminals.length === 0)
+      term.openNewTerminal(defaultTerminalCwd())
+    else term.setShowTerminal(!term.showTerminal)
+  }
+
+  const readAloud = useReadAloud(settings.readVoiceRu, settings.readVoiceEn)
+  const readAloudRef = useRef(readAloud)
+  useEffect(() => {
+    readAloudRef.current = readAloud
+  })
+  // The live Monaco instance, captured on mount - needed here (not just
+  // inside useTabs) so read-aloud can start from the selection/cursor.
+  const editorInstanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+
+  // Reads the selection if there is one; otherwise from the cursor to the end
+  // of the file; in Markdown/HTML preview mode (no editor mounted) the whole
+  // file. Markdown is flattened to prose before speaking.
+  const startReadAloud = (): void => {
+    const t = tabsRef.current
+    if (!t.selectedPath) return
+    const markdown = t.selectedPath.endsWith('.md')
+    let text = t.fileContent
+    const editor = editorInstanceRef.current
+    const model = editor?.getModel()
+    if (!t.showMarkdownPreview && editor && model) {
+      const selection = editor.getSelection()
+      const position = editor.getPosition()
+      if (selection && !selection.isEmpty()) {
+        text = model.getValueInRange(selection)
+      } else if (position) {
+        const full = model.getFullModelRange()
+        text = model.getValueInRange(
+          new monaco.Range(position.lineNumber, position.column, full.endLineNumber, full.endColumn)
+        )
+      }
+    }
+    readAloudRef.current.speak(text, { markdown })
+  }
+
+  const handleEditorMount = (editor: monaco.editor.IStandaloneCodeEditor): void => {
+    tabs.handleEditorDidMount(editor)
+    editorInstanceRef.current = editor
+    // Right-click -> Read Aloud, for the selection (or from the cursor).
+    editor.addAction({
+      id: 'aurapad.read-aloud',
+      label: 'Read Aloud',
+      contextMenuGroupId: '9_aurapad',
+      contextMenuOrder: 1,
+      run: () => startReadAloud()
+    })
+  }
   const git = useGitStatus(settings.gitEnabled)
   useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
   const recentExternalFiles = useRecentExternalFiles()
@@ -153,6 +250,10 @@ function App() {
   const [showSearch, setShowSearch] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  // The dictation/read-aloud dialogs double as their Settings pages -
+  // "Configure…" opens them on top of the Settings modal.
+  const [showDictationConfig, setShowDictationConfig] = useState(false)
+  const [showReadAloudConfig, setShowReadAloudConfig] = useState(false)
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
 
   const lastShiftTime = useRef<number>(0)
@@ -197,6 +298,11 @@ function App() {
       // (nothing gets transcribed or inserted).
       if (e.key === 'Escape' && voiceRef.current.status === 'recording') {
         voiceRef.current.cancelRecording()
+        return
+      }
+      // Escape during read-aloud: stop speaking.
+      if (e.key === 'Escape' && readAloudRef.current.speaking) {
+        readAloudRef.current.stop()
         return
       }
 
@@ -355,48 +461,6 @@ function App() {
     terminal.openNewTerminal(cwd)
   }
 
-  // One entry point for both the toolbar buttons and the Option+Cmd+L menu
-  // accelerator: picks the formatter by the active file's extension. Reads
-  // through tabsRef so the menu handler (subscribed once) never acts on a
-  // stale tab snapshot.
-  const formatActiveDocument = (): void => {
-    const t = tabsRef.current
-    const path = t.activeTabPath
-    if (!path) return
-    if (path.endsWith('.json')) {
-      try {
-        t.updateTab(path, {
-          content: JSON.stringify(JSON.parse(t.fileContent), null, 2),
-          isSaved: false
-        })
-      } catch {
-        alertDialog('Invalid JSON format.')
-      }
-    } else if (path.endsWith('.html') || path.endsWith('.htm') || path.endsWith('.xml')) {
-      t.updateTab(path, { content: prettyPrintMarkup(t.fileContent), isSaved: false })
-    }
-  }
-
-  // Where a terminal opened without explicit context (toolbar button, Ctrl+`)
-  // should start: the workspace root the active file belongs to, else the
-  // first open workspace, else undefined (falls back to the user's home).
-  const defaultTerminalCwd = (): string | undefined => {
-    const roots = treeRef.current.rootNodes
-    const active = tabsRef.current.selectedPath
-    const activeRoot = active
-      ? roots.find((r) => active === r.path || active.startsWith(r.path + '/'))
-      : undefined
-    return (activeRoot ?? roots[0])?.path
-  }
-
-  // Shared by the toolbar button and the Ctrl+` menu accelerator.
-  const toggleTerminal = (): void => {
-    const term = terminalRef.current
-    if (!term.showTerminal && term.terminals.length === 0)
-      term.openNewTerminal(defaultTerminalCwd())
-    else term.setShowTerminal(!term.showTerminal)
-  }
-
   const handleWindowDragOver = (e: DragEvent): void => {
     e.preventDefault()
   }
@@ -551,6 +615,42 @@ function App() {
                   )}
                 </>
               )}
+              {(isProsePath(tabs.selectedPath) || readAloud.speaking) && (
+                <>
+                  <ToolbarButton
+                    onClick={readAloud.speaking ? readAloud.stop : startReadAloud}
+                    title={readAloud.speaking ? 'Stop Reading (Esc)' : 'Read Aloud'}
+                    colorClassName={
+                      readAloud.speaking
+                        ? 'text-blue-400 bg-fleet-active'
+                        : 'text-gray-400 hover:text-white'
+                    }
+                  >
+                    {readAloud.speaking ? (
+                      <Square size={16} className="fill-current" />
+                    ) : (
+                      <Volume2 size={16} />
+                    )}
+                  </ToolbarButton>
+                  {readAloud.speaking &&
+                    (readAloud.downloadProgress !== null ? (
+                      <span
+                        className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium select-none"
+                        title="Downloading voice…"
+                      >
+                        {readAloud.downloadProgress}%
+                      </span>
+                    ) : (
+                      <button
+                        onClick={readAloud.cycleRate}
+                        className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium hover:text-white select-none"
+                        title="Reading speed"
+                      >
+                        {readAloud.rate}×
+                      </button>
+                    ))}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -646,7 +746,7 @@ function App() {
                   theme={monacoTheme}
                   value={tabs.fileContent}
                   onChange={tabs.handleEditorChange}
-                  onMount={tabs.handleEditorDidMount}
+                  onMount={handleEditorMount}
                   options={{
                     minimap: { enabled: false },
                     fontSize: density.editorFontSize,
@@ -878,7 +978,18 @@ function App() {
         </Modal>
       )}
 
-      {(voice.status === 'consent' || voice.status === 'downloading') && (
+      {showSettings && (
+        <SettingsModal
+          settings={settings}
+          updateSetting={updateSetting}
+          density={density}
+          onConfigureDictation={() => setShowDictationConfig(true)}
+          onConfigureReadAloud={() => setShowReadAloudConfig(true)}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {(voice.status === 'consent' || voice.status === 'downloading' || showDictationConfig) && (
         <VoiceModelModal
           defaultModel={settings.voiceModel}
           language={settings.voiceLanguage}
@@ -887,18 +998,48 @@ function App() {
           progress={voice.progress}
           onConfirm={(model) => {
             updateSetting('voiceModel', model)
+            setShowDictationConfig(false)
+            // Also warms/downloads the model; harmless when opened from
+            // Settings - the modal stays visible through 'downloading'.
             voice.confirmDownload(model)
           }}
-          onClose={voice.status === 'downloading' ? voice.cancelDownload : voice.dismissConsent}
+          onDeleteModel={voice.deleteModel}
+          onClose={() => {
+            setShowDictationConfig(false)
+            if (voice.status === 'downloading') voice.cancelDownload()
+            else voice.dismissConsent()
+          }}
         />
       )}
 
-      {showSettings && (
-        <SettingsModal
-          settings={settings}
-          updateSetting={updateSetting}
-          density={density}
-          onClose={() => setShowSettings(false)}
+      {(readAloud.modalPhase !== null || showReadAloudConfig) && (
+        <ReadAloudModal
+          langs={showReadAloudConfig ? ['ru', 'en'] : readAloud.consentLangs}
+          currentRu={settings.readVoiceRu}
+          currentEn={settings.readVoiceEn}
+          downloading={readAloud.modalPhase === 'downloading'}
+          progress={readAloud.downloadProgress}
+          mode={showReadAloudConfig ? 'settings' : 'consent'}
+          onConfirm={(choices) => {
+            if (choices.ru) updateSetting('readVoiceRu', choices.ru)
+            if (choices.en) updateSetting('readVoiceEn', choices.en)
+            if (showReadAloudConfig) {
+              // Settings flow: download anything newly selected, no reading.
+              const missing = [
+                choices.ru && choices.ru !== 'system' ? RU_VOICES[choices.ru].id : null,
+                choices.en && choices.en !== 'system' ? EN_VOICES[choices.en].id : null
+              ].filter((id): id is string => !!id && !downloadedVoices().includes(id))
+              if (missing.length > 0) readAloud.predownloadVoices(missing)
+              else setShowReadAloudConfig(false)
+            } else {
+              readAloud.confirmVoiceDownload(choices)
+            }
+          }}
+          onDeleteVoice={readAloud.deleteVoice}
+          onClose={() => {
+            setShowReadAloudConfig(false)
+            readAloud.closeVoiceModal()
+          }}
         />
       )}
 

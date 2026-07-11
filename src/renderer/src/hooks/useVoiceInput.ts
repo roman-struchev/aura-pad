@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import WhisperWorker from '../lib/voice/whisperWorker?worker'
 import type { WorkerResponse } from '../lib/voice/whisperWorker'
-import { isModelDownloaded, markModelDownloaded } from '../lib/voice/models'
+import { deleteModelDownload, isModelDownloaded, markModelDownloaded } from '../lib/voice/models'
 import { alertDialog } from '../lib/dialogs'
 import type { VoiceLanguage, VoiceModel } from '../../../shared/settings'
 
@@ -286,6 +286,17 @@ export function useVoiceInput(
 
   const dismissConsent = (): void => setStatus('idle')
 
+  // Delete a downloaded model from disk (trash icon in the model dialog).
+  // If it's the one currently loaded, the worker goes with it.
+  const deleteModel = async (target: VoiceModel): Promise<void> => {
+    if (readyModelRef.current === target) {
+      workerRef.current?.terminate()
+      workerRef.current = null
+      readyModelRef.current = null
+    }
+    await deleteModelDownload(target)
+  }
+
   useEffect(() => {
     return () => {
       workerRef.current?.terminate()
@@ -303,6 +314,7 @@ export function useVoiceInput(
     cancelRecording,
     confirmDownload,
     cancelDownload,
-    dismissConsent
+    dismissConsent,
+    deleteModel
   }
 }

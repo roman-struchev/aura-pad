@@ -2,13 +2,7 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import type { AppSettings } from '../../../shared/settings'
-import {
-  SIDEBAR_POSITIONS,
-  THEME_MODES,
-  UI_MODES,
-  VOICE_LANGUAGES,
-  VOICE_MODELS
-} from '../../../shared/settings'
+import { SIDEBAR_POSITIONS, THEME_MODES, UI_MODES } from '../../../shared/settings'
 import type { DensityPreset } from '../density'
 import { Modal } from './Modal'
 import { SettingToggle } from './SettingToggle'
@@ -18,6 +12,8 @@ interface SettingsModalProps {
   settings: AppSettings
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void
   density: DensityPreset
+  onConfigureDictation: () => void
+  onConfigureReadAloud: () => void
   onClose: () => void
 }
 
@@ -34,13 +30,15 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: 'Shift Shift', description: 'Quick open a file or folder' },
   { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
   { keys: 'Delete', description: 'Delete in the file tree (row focused)' },
-  { keys: 'Esc', description: 'Close a dialog / discard an active dictation recording' }
+  { keys: 'Esc', description: 'Close a dialog / discard a dictation take / stop reading aloud' }
 ]
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   updateSetting,
   density,
+  onConfigureDictation,
+  onConfigureReadAloud,
   onClose
 }) => {
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -115,24 +113,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
-        <SettingSelect
-          label="Dictation Model"
-          description="Whisper model for voice input - larger is more accurate but a bigger download"
-          value={settings.voiceModel}
-          options={VOICE_MODELS}
-          onChange={(v) => updateSetting('voiceModel', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingSelect
-          label="Dictation Language"
-          description="The language you dictate in"
-          value={settings.voiceLanguage}
-          options={VOICE_LANGUAGES}
-          onChange={(v) => updateSetting('voiceLanguage', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col min-w-0">
+            <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Dictation</span>
+            <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+              Whisper {settings.voiceModel} · {settings.voiceLanguage}
+            </span>
+          </div>
+          <button
+            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
+            onClick={onConfigureDictation}
+          >
+            Configure…
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col min-w-0">
+            <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Read Aloud</span>
+            <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+              Voices: {settings.readVoiceRu} / {settings.readVoiceEn.replace('_', ' ')}
+            </span>
+          </div>
+          <button
+            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
+            onClick={onConfigureReadAloud}
+          >
+            Configure…
+          </button>
+        </div>
       </div>
 
       <div className="border-t border-fleet-border mt-4 pt-3">

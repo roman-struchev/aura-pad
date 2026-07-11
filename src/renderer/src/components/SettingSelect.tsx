@@ -6,6 +6,9 @@ interface SettingSelectProps<T extends string> {
   description: string
   value: T
   options: T[]
+  // Display text per option, for values that don't read well raw (e.g.
+  // 'hfc_female' -> 'Female (HFC)'). Unlisted options fall back to the value.
+  optionLabels?: Partial<Record<T, string>>
   onChange: (value: T) => void
   labelClassName?: string
   descriptionClassName?: string
@@ -16,6 +19,7 @@ export function SettingSelect<T extends string>({
   description,
   value,
   options,
+  optionLabels,
   onChange,
   labelClassName = 'text-sm',
   descriptionClassName = 'text-xs'
@@ -33,7 +37,7 @@ export function SettingSelect<T extends string>({
       >
         {options.map((opt) => (
           <option key={opt} value={opt} className="capitalize">
-            {opt}
+            {optionLabels?.[opt] ?? opt}
           </option>
         ))}
       </select>

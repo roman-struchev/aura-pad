@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <title>AuraPad</title>
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-         'wasm-unsafe-eval' + the huggingface hosts exist for voice dictation:
-         onnxruntime's wasm backend, and the one-time Whisper model download
-         (huggingface.co redirects to its cdn-lfs.huggingface.co /
-         cas-bridge.xethub.hf.co CDNs). -->
+         'wasm-unsafe-eval' + the huggingface hosts exist for the voice
+         features: onnxruntime's wasm backend, and the one-time Whisper/Piper
+         model downloads (huggingface.co redirects to its
+         cdn-lfs.huggingface.co / cas-bridge.xethub.hf.co CDNs).
+         media-src blob: lets read-aloud play the synthesized wav chunks. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co"
     />
   </head>
 

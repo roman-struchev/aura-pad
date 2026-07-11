@@ -89,3 +89,24 @@ export function markModelDownloaded(id: VoiceModel): void {
   })()
   if (!list.includes(id)) localStorage.setItem(DOWNLOADED_KEY, JSON.stringify([...list, id]))
 }
+
+// Frees the disk space: drops every cached file of the model's repo from the
+// transformers.js browser cache (entries are keyed by their Hugging Face
+// URL), plus the "downloaded" marker - the consent dialog will ask again.
+export async function deleteModelDownload(id: VoiceModel): Promise<void> {
+  const repo = VOICE_MODEL_CATALOG[id].repo
+  try {
+    const cache = await caches.open('transformers-cache')
+    for (const request of await cache.keys()) {
+      if (request.url.includes(repo)) await cache.delete(request)
+    }
+  } catch {
+    // Cache API unavailable - still remove the marker below.
+  }
+  try {
+    const list = JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]
+    localStorage.setItem(DOWNLOADED_KEY, JSON.stringify(list.filter((m) => m !== id)))
+  } catch {
+    localStorage.removeItem(DOWNLOADED_KEY)
+  }
+}

@@ -41,6 +41,14 @@ export const UI_MODES: UiMode[] = ['micro', 'compact', 'normal', 'large']
 export const SIDEBAR_POSITIONS: SidebarPosition[] = ['left', 'right']
 export const THEME_MODES: ThemeMode[] = ['dark', 'light', 'system', 'monokai', 'solarized']
 export const VOICE_MODELS: VoiceModel[] = ['tiny', 'base', 'small', 'turbo']
+// Read-aloud voices, one per language: either a Piper neural voice (the
+// mapping to full Piper ids lives in useReadAloud's catalog) or 'system' -
+// the OS's built-in synthesis, which needs no download.
+export type ReadVoiceRu = 'irina' | 'dmitri' | 'denis' | 'ruslan' | 'system'
+export type ReadVoiceEn = 'hfc_female' | 'hfc_male' | 'lessac' | 'ryan' | 'system'
+export const READ_VOICES_RU: ReadVoiceRu[] = ['irina', 'dmitri', 'denis', 'ruslan', 'system']
+export const READ_VOICES_EN: ReadVoiceEn[] = ['hfc_female', 'hfc_male', 'lessac', 'ryan', 'system']
+
 export const VOICE_LANGUAGES: VoiceLanguage[] = [
   'auto',
   'english',
@@ -70,6 +78,8 @@ export interface AppSettings {
   lineNumbersEnabled: boolean
   voiceModel: VoiceModel
   voiceLanguage: VoiceLanguage
+  readVoiceRu: ReadVoiceRu
+  readVoiceEn: ReadVoiceEn
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -83,5 +93,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sidebarWidth: 256,
   lineNumbersEnabled: true,
   voiceModel: 'base',
-  voiceLanguage: 'auto'
+  voiceLanguage: 'auto',
+  readVoiceRu: 'irina',
+  readVoiceEn: 'hfc_female'
 }

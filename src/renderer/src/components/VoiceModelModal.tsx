@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import clsx from 'clsx'
+import { Trash2 } from 'lucide-react'
 import { Modal } from './Modal'
 import { VOICE_MODEL_CATALOG, isModelDownloaded } from '../lib/voice/models'
 import {
@@ -16,12 +17,13 @@ interface VoiceModelModalProps {
   downloading: boolean
   progress: number
   onConfirm: (model: VoiceModel) => void
+  onDeleteModel: (model: VoiceModel) => Promise<void>
   onClose: () => void
 }
 
-// First-use dictation dialog: nothing is downloaded until the user picks a
-// model here and explicitly confirms. Stays open showing progress while the
-// download runs; closing it mid-download cancels.
+// Dictation model dialog, doubling as its Settings page: pick the model and
+// language, download (with progress; closing mid-download cancels), or free
+// disk space via the trash icon on downloaded models.
 export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
   defaultModel,
   language,
@@ -29,9 +31,19 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
   downloading,
   progress,
   onConfirm,
+  onDeleteModel,
   onClose
 }) => {
   const [selected, setSelected] = useState<VoiceModel>(defaultModel)
+  // Bumped after a deletion so the "downloaded" marks re-read localStorage.
+  const [, setDeletedCount] = useState(0)
+
+  const handleDelete = async (e: React.MouseEvent, id: VoiceModel): Promise<void> => {
+    e.preventDefault()
+    e.stopPropagation()
+    await onDeleteModel(id)
+    setDeletedCount((n) => n + 1)
+  }
 
   return (
     <Modal onClose={onClose} width="w-[26rem]">
@@ -63,7 +75,7 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
                 disabled={downloading}
                 onChange={() => setSelected(id)}
               />
-              <div className="flex flex-col min-w-0">
+              <div className="flex flex-col min-w-0 flex-1">
                 <span className="text-xs text-fleet-text">
                   {info.label}
                   {isModelDownloaded(id) && <span className="text-green-500"> - downloaded</span>}
@@ -72,6 +84,15 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
                   {info.quality} · {info.approxDownload}
                 </span>
               </div>
+              {isModelDownloaded(id) && (
+                <button
+                  className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-fleet-bg shrink-0"
+                  title="Delete downloaded model"
+                  onClick={(e) => handleDelete(e, id)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
             </label>
           )
         })}
