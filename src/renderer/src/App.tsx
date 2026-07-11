@@ -377,10 +377,23 @@ function App() {
     }
   }
 
-  // Shared by the toolbar button and the Cmd+T menu accelerator.
+  // Where a terminal opened without explicit context (toolbar button, Ctrl+`)
+  // should start: the workspace root the active file belongs to, else the
+  // first open workspace, else undefined (falls back to the user's home).
+  const defaultTerminalCwd = (): string | undefined => {
+    const roots = treeRef.current.rootNodes
+    const active = tabsRef.current.selectedPath
+    const activeRoot = active
+      ? roots.find((r) => active === r.path || active.startsWith(r.path + '/'))
+      : undefined
+    return (activeRoot ?? roots[0])?.path
+  }
+
+  // Shared by the toolbar button and the Ctrl+` menu accelerator.
   const toggleTerminal = (): void => {
     const term = terminalRef.current
-    if (!term.showTerminal && term.terminals.length === 0) term.openNewTerminal()
+    if (!term.showTerminal && term.terminals.length === 0)
+      term.openNewTerminal(defaultTerminalCwd())
     else term.setShowTerminal(!term.showTerminal)
   }
 
@@ -685,7 +698,7 @@ function App() {
                   </div>
                 ))}
                 <button
-                  onClick={() => terminal.openNewTerminal()}
+                  onClick={() => terminal.openNewTerminal(defaultTerminalCwd())}
                   className="p-1.5 text-gray-400 hover:text-white mx-1"
                 >
                   <Plus size={14} />
