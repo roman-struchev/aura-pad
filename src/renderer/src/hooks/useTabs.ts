@@ -79,10 +79,28 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       return
     }
 
+    // Single-tab mode swaps out whatever is currently open, which is a close
+    // in disguise: it must go through the same pinned/unsaved confirmation as
+    // closeTab, or opening a file would silently throw away unsaved edits.
+    if (!tabsEnabled) {
+      for (const tab of tabsRef.current) {
+        if (tab.path !== filePath && !(await confirmCanClose(tab))) return
+      }
+    }
+
     const result = await window.api.readFile(filePath)
     if (!result.success) {
       await alertDialog(result.error || 'Failed to open file.')
       return
+    }
+
+    // Only once the new file has actually been read: the replaced tab also
+    // needs the full close path (closed-tabs stack, Monaco model disposal),
+    // not just being dropped by the [newTab] overwrite below.
+    if (!tabsEnabled) {
+      for (const tab of tabsRef.current) {
+        if (tab.path !== filePath) removeTabFromState(tab.path)
+      }
     }
 
     const newTab: OpenTab = {
@@ -140,8 +158,17 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
 
   const handleSave = async (): Promise<void> => {
     if (!activeTab || activeTab.isSaved) return
-    const result = await window.api.saveFile(activeTab.path, activeTab.content)
-    if (result.success) updateTab(activeTab.path, { isSaved: true })
+    const { path, content } = activeTab
+    const result = await window.api.saveFile(path, content)
+    // Marked saved only if the buffer still holds exactly what was written -
+    // edits typed while the (possibly slow) write was in flight must keep the
+    // tab dirty, or closing it would skip the unsaved-changes prompt and lose
+    // them.
+    if (result.success) {
+      setTabs((prev) =>
+        prev.map((t) => (t.path === path && t.content === content ? { ...t, isSaved: true } : t))
+      )
+    }
   }
 
   // Shared pinned/unsaved confirmation for any close path (single or bulk).

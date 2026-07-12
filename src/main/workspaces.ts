@@ -248,12 +248,39 @@ export function readFileContent(filePath: string): {
   }
 }
 
+// Writes to a temp file in the same directory and renames it over the target
+// (atomic within one filesystem), so a crash or power loss mid-write can't
+// leave the user's file truncated: it holds either the old or the new content,
+// never a partial one. The dot-prefixed temp name keeps it out of the file
+// tree and the watcher, both of which skip dotfiles via isIgnored().
 export function writeFileContent(
   filePath: string,
   content: string
 ): { success: boolean; error?: string } {
   try {
-    fs.writeFileSync(filePath, content, 'utf-8')
+    // Follow a symlink to its real target - renaming over the link itself
+    // would silently replace the link with a regular file. Also keep the
+    // existing file's permissions (e.g. an executable script's +x bit),
+    // which the fresh temp file wouldn't have.
+    let targetPath = filePath
+    let mode: number | undefined
+    try {
+      targetPath = fs.realpathSync(filePath)
+      mode = fs.statSync(targetPath).mode
+    } catch {
+      // New file: keep the given path and default permissions.
+    }
+    const tmpPath = path.join(
+      path.dirname(targetPath),
+      `.${path.basename(targetPath)}.${process.pid}.tmp`
+    )
+    fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode })
+    try {
+      fs.renameSync(tmpPath, targetPath)
+    } catch (e) {
+      fs.rmSync(tmpPath, { force: true })
+      throw e
+    }
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e.message }

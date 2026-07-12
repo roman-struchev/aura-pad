@@ -227,12 +227,20 @@ export function useReadAloud(voices: ReadVoices) {
       }
       // A chunk that fails to *play* is abnormal (e.g. CSP blocking blob:
       // media) - stop loudly rather than silently skipping through the text.
-      audio.onerror = () => {
+      // play()'s rejection (autoplay policy, an aborted load) needs the same
+      // treatment as onerror; either can fire without the other - or both,
+      // hence the once-guard - and an unhandled rejection would leave
+      // playingRef stuck at true, wedging the whole pipeline in 'speaking'.
+      let failed = false
+      const fail = (): void => {
+        if (failed) return
+        failed = true
         URL.revokeObjectURL(item.url)
         stop()
         alertDialog('Read aloud playback failed (see DevTools console).')
       }
-      audio.play()
+      audio.onerror = fail
+      audio.play().catch(fail)
     } else {
       const utterance = new SpeechSynthesisUtterance(item.text)
       const lang = detectLang(item.text)

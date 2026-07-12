@@ -128,7 +128,23 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
     return
   }
 
-  // 'rename' covers create/delete/move of an entry - the tree shape may differ.
+  // 'rename' covers create/delete/move of an entry - the tree shape may
+  // differ. Except when it's our own save: writeFileContent atomically
+  // replaces the target via temp-file + rename, which surfaces here as a
+  // 'rename' on the saved path, and rebuilding the whole tree on every
+  // (auto)save would be pure noise. Same grace-window/content fallback as
+  // the 'change' suppression above; the record is deliberately not forgotten
+  // here, since a 'change' event for the same write may still follow.
+  const selfWrite = recentSelfWrites.get(fullPath)
+  if (selfWrite) {
+    if (Date.now() - selfWrite.time < SELF_WRITE_GRACE_MS) return
+    try {
+      if (fs.readFileSync(fullPath, 'utf-8') === selfWrite.content) return
+    } catch {
+      // Unreadable means the entry really was deleted/moved - fall through
+      // to the structural rebuild.
+    }
+  }
   clearTimeout(structureDebounceTimers.get(rootPath))
   structureDebounceTimers.set(
     rootPath,

@@ -153,11 +153,19 @@ export function useVoiceInput(
   }
 
   const startRecording = async (): Promise<void> => {
+    // Claim the busy state before the getUserMedia await - and mirror it into
+    // statusRef synchronously, since the effect only syncs the ref after a
+    // render - so a second toggle while the permission prompt is up can't
+    // pass the idle check and start a parallel recording, leaking the first
+    // recorder and its MediaStream.
+    setStatus('recording')
+    statusRef.current = 'recording'
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
       setStatus('idle')
+      statusRef.current = 'idle'
       alertDialog('Microphone access was denied. Allow it in System Settings to use dictation.')
       return
     }
@@ -194,7 +202,6 @@ export function useVoiceInput(
     } catch {
       // No meter, but dictation still works.
     }
-    setStatus('recording')
     stopTimerRef.current = setTimeout(() => {
       if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
     }, MAX_RECORDING_MS)
@@ -239,11 +246,15 @@ export function useVoiceInput(
   // The mic button / Cmd+Shift+D. One press to record, another to transcribe;
   // presses while busy (loading/transcribing/consent dialog open) do nothing.
   const toggle = (): void => {
-    if (status === 'recording') {
+    // Read through statusRef, not the render-time `status` closure: two quick
+    // presses can both arrive before React re-renders, and the second must
+    // see the first's synchronous status claim from startRecording.
+    const current = statusRef.current
+    if (current === 'recording') {
       recorderRef.current?.stop()
       return
     }
-    if (status !== 'idle') return
+    if (current !== 'idle') return
     const target = modelRef.current
     if (readyModelRef.current === target) {
       startRecording()
