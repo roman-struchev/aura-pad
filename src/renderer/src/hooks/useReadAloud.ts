@@ -4,7 +4,8 @@ import TtsWorker from '../lib/tts/piperWorker?worker'
 import type { TtsWorkerResponse } from '../lib/tts/piperWorker'
 import { download as piperDownload, remove as piperRemove } from '@mintplex-labs/piper-tts-web'
 import { alertDialog } from '../lib/dialogs'
-import type { ReadVoiceEn, ReadVoiceRu } from '../../../shared/settings'
+import { type ReadLang, type ReadVoiceKeysByLang, type ReadVoices } from '../../../shared/settings'
+export type { ReadLang } from '../../../shared/settings'
 
 // Read-aloud with local neural voices (Piper) synthesized in a worker and
 // played back chunk by chunk - the next sentence is being synthesized while
@@ -24,8 +25,6 @@ const MAX_CHUNK_CHARS = 220
 // long without reading (mirrors the dictation model's idle unload).
 const TTS_IDLE_UNLOAD_MS = 30 * 60 * 1000
 
-export type ReadLang = 'ru' | 'en'
-
 // Settings keys -> Piper voices (all from rhasspy/piper-voices), with what
 // the download-consent dialog shows. 'system' is deliberately absent - it's
 // not a download.
@@ -34,18 +33,28 @@ export interface ReadVoiceInfo {
   label: string
   approxDownload: string
 }
-export const RU_VOICES: Record<Exclude<ReadVoiceRu, 'system'>, ReadVoiceInfo> = {
-  irina: { id: 'ru_RU-irina-medium', label: 'Irina', approxDownload: '~78 MB' },
-  dmitri: { id: 'ru_RU-dmitri-medium', label: 'Dmitri', approxDownload: '~76 MB' },
-  denis: { id: 'ru_RU-denis-medium', label: 'Denis', approxDownload: '~76 MB' },
-  ruslan: { id: 'ru_RU-ruslan-medium', label: 'Ruslan', approxDownload: '~78 MB' }
+export const VOICE_CATALOG: {
+  [L in ReadLang]: Record<Exclude<ReadVoiceKeysByLang[L], 'system'>, ReadVoiceInfo>
+} = {
+  ru: {
+    ruslan: { id: 'ru_RU-ruslan-medium', label: 'Ruslan (recommended)', approxDownload: '~78 MB' },
+    irina: { id: 'ru_RU-irina-medium', label: 'Irina', approxDownload: '~78 MB' },
+    dmitri: { id: 'ru_RU-dmitri-medium', label: 'Dmitri', approxDownload: '~76 MB' },
+    denis: { id: 'ru_RU-denis-medium', label: 'Denis', approxDownload: '~76 MB' }
+  },
+  en: {
+    ryan: {
+      id: 'en_US-ryan-high',
+      label: 'Ryan (recommended, high quality)',
+      approxDownload: '~115 MB'
+    },
+    hfc_female: { id: 'en_US-hfc_female-medium', label: 'Female (HFC)', approxDownload: '~63 MB' },
+    hfc_male: { id: 'en_US-hfc_male-medium', label: 'Male (HFC)', approxDownload: '~63 MB' },
+    lessac: { id: 'en_US-lessac-medium', label: 'Lessac', approxDownload: '~63 MB' }
+  }
 }
-export const EN_VOICES: Record<Exclude<ReadVoiceEn, 'system'>, ReadVoiceInfo> = {
-  hfc_female: { id: 'en_US-hfc_female-medium', label: 'Female (HFC)', approxDownload: '~63 MB' },
-  hfc_male: { id: 'en_US-hfc_male-medium', label: 'Male (HFC)', approxDownload: '~63 MB' },
-  lessac: { id: 'en_US-lessac-medium', label: 'Lessac', approxDownload: '~63 MB' },
-  ryan: { id: 'en_US-ryan-high', label: 'Ryan (high quality)', approxDownload: '~115 MB' }
-}
+const voiceInfo = (lang: ReadLang, key: string): ReadVoiceInfo | null =>
+  key === 'system' ? null : (VOICE_CATALOG[lang] as Record<string, ReadVoiceInfo>)[key]
 
 // Markdown read as prose: rendered to HTML with the same marked call the
 // preview uses, code blocks dropped (listening to one being spelled out is
@@ -138,7 +147,7 @@ const pickSystemVoice = (
 // marker to speak it with the system voice when its turn comes.
 type PlayableChunk = { kind: 'wav'; url: string } | { kind: 'system'; text: string }
 
-export function useReadAloud(ruVoice: ReadVoiceRu, enVoice: ReadVoiceEn) {
+export function useReadAloud(voices: ReadVoices) {
   const [speaking, setSpeaking] = useState(false)
   const [rate, setRate] = useState<number>(() => {
     const saved = Number(localStorage.getItem(RATE_KEY))
@@ -157,17 +166,12 @@ export function useReadAloud(ruVoice: ReadVoiceRu, enVoice: ReadVoiceEn) {
   const idleUnloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingChunksRef = useRef<string[]>([])
 
-  const ruVoiceRef = useRef(ruVoice)
-  const enVoiceRef = useRef(enVoice)
+  const voicesRef = useRef(voices)
   useEffect(() => {
-    ruVoiceRef.current = ruVoice
-    enVoiceRef.current = enVoice
+    voicesRef.current = voices
   })
-  const voiceFor = (lang: ReadLang): ReadVoiceInfo | 'system' => {
-    if (lang === 'ru')
-      return ruVoiceRef.current === 'system' ? 'system' : RU_VOICES[ruVoiceRef.current]
-    return enVoiceRef.current === 'system' ? 'system' : EN_VOICES[enVoiceRef.current]
-  }
+  const voiceFor = (lang: ReadLang): ReadVoiceInfo | 'system' =>
+    voiceInfo(lang, voicesRef.current[lang]) ?? 'system'
 
   // Playback pipeline: chunks are keyed by sequential ids; synthesized wavs
   // arrive from the worker, system chunks are placed directly, and playNext
@@ -356,9 +360,8 @@ export function useReadAloud(ruVoice: ReadVoiceRu, enVoice: ReadVoiceEn) {
   // they're applied to the refs right away (App persists them to Settings in
   // parallel) so this read uses them. If everything selected is already
   // downloaded or 'system', the dialog just closes and reading starts.
-  const confirmVoiceDownload = (choices: { ru?: ReadVoiceRu; en?: ReadVoiceEn }): void => {
-    if (choices.ru) ruVoiceRef.current = choices.ru
-    if (choices.en) enVoiceRef.current = choices.en
+  const confirmVoiceDownload = (choices: Partial<ReadVoices>): void => {
+    voicesRef.current = { ...voicesRef.current, ...choices }
     const stillMissing = consentLangs.some((lang) => {
       const voice = voiceFor(lang)
       return voice !== 'system' && !downloadedVoices().includes(voice.id)

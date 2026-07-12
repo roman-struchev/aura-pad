@@ -43,11 +43,21 @@ export const THEME_MODES: ThemeMode[] = ['dark', 'light', 'system', 'monokai', '
 export const VOICE_MODELS: VoiceModel[] = ['tiny', 'base', 'small', 'turbo']
 // Read-aloud voices, one per language: either a Piper neural voice (the
 // mapping to full Piper ids lives in useReadAloud's catalog) or 'system' -
-// the OS's built-in synthesis, which needs no download.
-export type ReadVoiceRu = 'irina' | 'dmitri' | 'denis' | 'ruslan' | 'system'
-export type ReadVoiceEn = 'hfc_female' | 'hfc_male' | 'lessac' | 'ryan' | 'system'
-export const READ_VOICES_RU: ReadVoiceRu[] = ['irina', 'dmitri', 'denis', 'ruslan', 'system']
-export const READ_VOICES_EN: ReadVoiceEn[] = ['hfc_female', 'hfc_male', 'lessac', 'ryan', 'system']
+// the OS's built-in synthesis, which needs no download. To add a language:
+// add a field here, an entry in READ_LANGS and READ_VOICE_KEYS, and a
+// matching catalog + display label in the renderer (useReadAloud.ts's
+// VOICE_CATALOG, ReadAloudModal.tsx's LANG_TITLES).
+export interface ReadVoiceKeysByLang {
+  ru: 'ruslan' | 'irina' | 'dmitri' | 'denis' | 'system'
+  en: 'ryan' | 'hfc_female' | 'hfc_male' | 'lessac' | 'system'
+}
+export type ReadLang = keyof ReadVoiceKeysByLang
+export type ReadVoices = { [L in ReadLang]: ReadVoiceKeysByLang[L] }
+export const READ_LANGS: ReadLang[] = ['en', 'ru']
+export const READ_VOICE_KEYS: { [L in ReadLang]: ReadVoiceKeysByLang[L][] } = {
+  ru: ['ruslan', 'irina', 'dmitri', 'denis', 'system'],
+  en: ['ryan', 'hfc_female', 'hfc_male', 'lessac', 'system']
+}
 
 export const VOICE_LANGUAGES: VoiceLanguage[] = [
   'auto',
@@ -78,8 +88,7 @@ export interface AppSettings {
   lineNumbersEnabled: boolean
   voiceModel: VoiceModel
   voiceLanguage: VoiceLanguage
-  readVoiceRu: ReadVoiceRu
-  readVoiceEn: ReadVoiceEn
+  readVoices: ReadVoices
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -94,6 +103,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lineNumbersEnabled: true,
   voiceModel: 'base',
   voiceLanguage: 'auto',
-  readVoiceRu: 'irina',
-  readVoiceEn: 'hfc_female'
+  readVoices: { ru: 'ruslan', en: 'ryan' }
 }

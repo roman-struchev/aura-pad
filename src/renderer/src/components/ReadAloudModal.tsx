@@ -1,43 +1,32 @@
 import React, { useState } from 'react'
 import clsx from 'clsx'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { Modal } from './Modal'
 import {
-  EN_VOICES,
-  RU_VOICES,
+  VOICE_CATALOG,
   downloadedVoices,
   type ReadLang,
   type ReadVoiceInfo
 } from '../hooks/useReadAloud'
-import {
-  READ_VOICES_EN,
-  READ_VOICES_RU,
-  type ReadVoiceEn,
-  type ReadVoiceRu
-} from '../../../shared/settings'
+import { READ_VOICE_KEYS, type ReadVoices } from '../../../shared/settings'
 
 interface ReadAloudModalProps {
   langs: ReadLang[]
-  currentRu: ReadVoiceRu
-  currentEn: ReadVoiceEn
+  current: ReadVoices
   downloading: boolean
   progress: number | null
   // 'consent' = opened by pressing Read Aloud (confirm starts reading);
   // 'settings' = opened from Settings (confirm just saves/downloads).
   mode: 'consent' | 'settings'
-  onConfirm: (choices: { ru?: ReadVoiceRu; en?: ReadVoiceEn }) => void
+  onConfirm: (choices: Partial<ReadVoices>) => void
   onDeleteVoice: (voiceId: string) => Promise<void>
   onClose: () => void
 }
 
 const LANG_TITLES: Record<ReadLang, string> = { ru: 'Russian voice', en: 'English voice' }
 
-const voiceInfo = (lang: ReadLang, key: ReadVoiceRu | ReadVoiceEn): ReadVoiceInfo | null => {
-  if (key === 'system') return null
-  return lang === 'ru'
-    ? RU_VOICES[key as Exclude<ReadVoiceRu, 'system'>]
-    : EN_VOICES[key as Exclude<ReadVoiceEn, 'system'>]
-}
+const voiceInfo = (lang: ReadLang, key: string): ReadVoiceInfo | null =>
+  key === 'system' ? null : (VOICE_CATALOG[lang] as Record<string, ReadVoiceInfo>)[key]
 
 // First-use read-aloud dialog, mirroring the dictation model dialog: a radio
 // list of voices per language the text needs - the OS's basic voice is one of
@@ -45,8 +34,7 @@ const voiceInfo = (lang: ReadLang, key: ReadVoiceRu | ReadVoiceEn): ReadVoiceInf
 // voices fetch. The selection is saved to Settings by the confirm handler.
 export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   langs,
-  currentRu,
-  currentEn,
+  current,
   downloading,
   progress,
   mode,
@@ -54,8 +42,10 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   onDeleteVoice,
   onClose
 }) => {
-  const [ru, setRu] = useState<ReadVoiceRu>(currentRu)
-  const [en, setEn] = useState<ReadVoiceEn>(currentEn)
+  const [voices, setVoices] = useState<ReadVoices>(current)
+  // Which language's voice list is open; starts on the first one so it's
+  // immediately visible instead of a fully collapsed accordion.
+  const [expanded, setExpanded] = useState<ReadLang>(langs[0])
   // Bumped after a deletion so the "downloaded" marks re-read localStorage.
   const [, setDeletedCount] = useState(0)
   const downloaded = downloadedVoices()
@@ -68,13 +58,13 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   }
 
   const needsDownload = langs.some((lang) => {
-    const info = voiceInfo(lang, lang === 'ru' ? ru : en)
+    const info = voiceInfo(lang, voices[lang])
     return info !== null && !downloaded.includes(info.id)
   })
 
   const renderOption = (
     lang: ReadLang,
-    key: ReadVoiceRu | ReadVoiceEn,
+    key: string,
     selected: boolean,
     onSelect: () => void
   ): React.ReactElement => {
@@ -126,18 +116,36 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
         and stored locally. The choice is remembered in Settings.
       </div>
 
-      {langs.map((lang) => (
-        <div key={lang} className="mb-3">
-          <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5">
-            {LANG_TITLES[lang]}
+      {langs.map((lang) => {
+        const isOpen = expanded === lang
+        const selectedInfo = voiceInfo(lang, voices[lang])
+        return (
+          <div key={lang} className="mb-2 rounded border border-fleet-border overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-fleet-active"
+              onClick={() => setExpanded(lang)}
+            >
+              {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <span className="flex-1 text-[11px] uppercase tracking-wide text-gray-500">
+                {LANG_TITLES[lang]}
+              </span>
+              <span className="text-xs text-fleet-text">
+                {selectedInfo ? selectedInfo.label : 'System voice'}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="flex flex-col gap-1.5 px-2.5 pt-1 pb-2.5">
+                {READ_VOICE_KEYS[lang].map((key) =>
+                  renderOption(lang, key, voices[lang] === key, () =>
+                    setVoices((v) => ({ ...v, [lang]: key }))
+                  )
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            {lang === 'ru'
-              ? READ_VOICES_RU.map((key) => renderOption(lang, key, ru === key, () => setRu(key)))
-              : READ_VOICES_EN.map((key) => renderOption(lang, key, en === key, () => setEn(key)))}
-          </div>
-        </div>
-      ))}
+        )
+      })}
 
       {downloading && (
         <div className="mt-1 mb-1">
@@ -164,12 +172,7 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
         <button
           className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           disabled={downloading}
-          onClick={() =>
-            onConfirm({
-              ru: langs.includes('ru') ? ru : undefined,
-              en: langs.includes('en') ? en : undefined
-            })
-          }
+          onClick={() => onConfirm(Object.fromEntries(langs.map((lang) => [lang, voices[lang]])))}
         >
           {needsDownload ? 'Download' : mode === 'consent' ? 'Read' : 'Use Model'}
         </button>

@@ -20,7 +20,8 @@ import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
-import { useReadAloud, RU_VOICES, EN_VOICES, downloadedVoices } from './hooks/useReadAloud'
+import { useReadAloud, VOICE_CATALOG, downloadedVoices } from './hooks/useReadAloud'
+import { READ_LANGS } from '../../shared/settings'
 import { VoiceModelModal } from './components/VoiceModelModal'
 import { ReadAloudModal } from './components/ReadAloudModal'
 import { VoiceLevelMeter } from './components/VoiceLevelMeter'
@@ -172,7 +173,7 @@ function App() {
     else term.setShowTerminal(!term.showTerminal)
   }
 
-  const readAloud = useReadAloud(settings.readVoiceRu, settings.readVoiceEn)
+  const readAloud = useReadAloud(settings.readVoices)
   const readAloudRef = useRef(readAloud)
   useEffect(() => {
     readAloudRef.current = readAloud
@@ -1019,21 +1020,27 @@ function App() {
 
       {(readAloud.modalPhase !== null || showReadAloudConfig) && (
         <ReadAloudModal
-          langs={showReadAloudConfig ? ['ru', 'en'] : readAloud.consentLangs}
-          currentRu={settings.readVoiceRu}
-          currentEn={settings.readVoiceEn}
+          langs={showReadAloudConfig ? READ_LANGS : readAloud.consentLangs}
+          current={settings.readVoices}
           downloading={readAloud.modalPhase === 'downloading'}
           progress={readAloud.downloadProgress}
           mode={showReadAloudConfig ? 'settings' : 'consent'}
           onConfirm={(choices) => {
-            if (choices.ru) updateSetting('readVoiceRu', choices.ru)
-            if (choices.en) updateSetting('readVoiceEn', choices.en)
+            updateSetting('readVoices', { ...settings.readVoices, ...choices })
             if (showReadAloudConfig) {
               // Settings flow: download anything newly selected, no reading.
-              const missing = [
-                choices.ru && choices.ru !== 'system' ? RU_VOICES[choices.ru].id : null,
-                choices.en && choices.en !== 'system' ? EN_VOICES[choices.en].id : null
-              ].filter((id): id is string => !!id && !downloadedVoices().includes(id))
+              const missing = Object.entries(choices)
+                .map(([lang, key]) =>
+                  key && key !== 'system'
+                    ? (
+                        VOICE_CATALOG[lang as keyof typeof VOICE_CATALOG] as Record<
+                          string,
+                          { id: string }
+                        >
+                      )[key].id
+                    : null
+                )
+                .filter((id): id is string => !!id && !downloadedVoices().includes(id))
               if (missing.length > 0) readAloud.predownloadVoices(missing)
               else setShowReadAloudConfig(false)
             } else {

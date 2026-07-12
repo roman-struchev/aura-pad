@@ -131,7 +131,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex flex-col min-w-0">
             <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Read Aloud</span>
             <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-              Voices: {settings.readVoiceRu} / {settings.readVoiceEn.replace('_', ' ')}
+              Voices: {settings.readVoices.en.replace('_', ' ')} / {settings.readVoices.ru}
             </span>
           </div>
           <button
