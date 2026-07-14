@@ -13,6 +13,11 @@ export type OpenTab = {
 
 const CLOSED_STACK_LIMIT = 10
 
+// A jump target inside a file: a bare line (cursor goes to its start), or -
+// when coming from search - the exact matched range, which gets selected so
+// the user sees what they searched for.
+export type JumpTarget = { line: number; col?: number; matchLen?: number }
+
 // Manages the set of open files (tab-bar style): opening/closing/saving,
 // autosave, reacting to external changes on disk, and keeping tab paths in
 // sync when a file is renamed/moved/deleted elsewhere (the file tree).
@@ -22,7 +27,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const tabsRef = useRef<OpenTab[]>([])
-  const pendingJumpLine = useRef<number | null>(null)
+  const pendingJump = useRef<JumpTarget | null>(null)
   const closedStackRef = useRef<string[]>([])
   // Guards the persistence effect below from firing (and overwriting the
   // saved session with an empty one) before the restore-on-mount effect has
@@ -49,33 +54,52 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, ...patch } : t)))
   }
 
-  const scrollToLine = (line: number): void => {
-    if (editorRef.current) {
-      editorRef.current.revealLineInCenter(line)
-      editorRef.current.setPosition({ lineNumber: line, column: 1 })
-      editorRef.current.focus()
+  const scrollToTarget = (target: JumpTarget): void => {
+    const editor = editorRef.current
+    if (!editor) return
+    const { line, col, matchLen } = target
+    if (col && matchLen) {
+      const range = new monaco.Range(line, col, line, col + matchLen)
+      editor.setSelection(range)
+      editor.revealRangeInCenter(range)
+    } else {
+      editor.revealLineInCenter(line)
+      editor.setPosition({ lineNumber: line, column: 1 })
     }
+    editor.focus()
   }
 
   // Jump to a specific line once the editor is showing the right content,
   // whether that's from opening a search result or switching tabs. Uses a
-  // ref (not state) for the pending line so consuming it doesn't itself
+  // ref (not state) for the pending target so consuming it doesn't itself
   // trigger a state update from inside this effect.
   useEffect(() => {
-    if (pendingJumpLine.current !== null) {
-      scrollToLine(pendingJumpLine.current)
-      pendingJumpLine.current = null
+    if (pendingJump.current !== null) {
+      scrollToTarget(pendingJump.current)
+      pendingJump.current = null
     }
   }, [fileContent])
 
-  const openTab = async (filePath: string, line?: number): Promise<void> => {
+  const openTab = async (
+    filePath: string,
+    line?: number,
+    highlight?: { col: number; matchLen: number }
+  ): Promise<void> => {
     // Checked against the ref (not the `tabs` state closure) so a second
     // concurrent call - e.g. dropping several files from Finder at once, or
     // two open-file requests arriving back to back - sees any tab the first
     // call has already committed, not a stale snapshot from render time.
     if (tabsRef.current.some((t) => t.path === filePath)) {
       setActiveTabPath(filePath)
-      if (line) pendingJumpLine.current = line
+      if (line) {
+        const target = { line, ...highlight }
+        // If the editor is already showing this very file, `fileContent`
+        // won't change and the pending-jump effect above would never fire -
+        // jump right away instead.
+        if (editorRef.current?.getModel()?.uri.toString() === monaco.Uri.parse(filePath).toString())
+          scrollToTarget(target)
+        else pendingJump.current = target
+      }
       return
     }
 
@@ -120,11 +144,21 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       return tabsEnabled ? [...prev, newTab] : [newTab]
     })
     setActiveTabPath(filePath)
-    if (line) pendingJumpLine.current = line
+    if (line) pendingJump.current = { line, ...highlight }
   }
 
   const handleEditorDidMount = (editor: monaco.editor.IStandaloneCodeEditor): void => {
     editorRef.current = editor
+  }
+
+  // What's currently selected in the editor, '' when nothing is. Feeds the
+  // IDEA-style "open search prefilled with the selection" behavior.
+  const getSelectedText = (): string => {
+    const editor = editorRef.current
+    const model = editor?.getModel()
+    const selection = editor?.getSelection()
+    if (!model || !selection || selection.isEmpty()) return ''
+    return model.getValueInRange(selection)
   }
 
   // Voice dictation lands here: replace the current selection (or insert at
@@ -212,7 +246,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       const next = filtered[idx] ?? filtered[idx - 1] ?? null
       setActiveTabPath(next ? next.path : null)
     }
-    pendingJumpLine.current = null
+    pendingJump.current = null
   }
 
   const handleCloseFile = (): void => {
@@ -227,7 +261,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       if (await confirmCanClose(tab)) removeTabFromState(tab.path)
     }
     setActiveTabPath(keepPath)
-    pendingJumpLine.current = null
+    pendingJump.current = null
   }
 
   const closeAllTabs = async (): Promise<void> => {
@@ -241,7 +275,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
       else survivors.push(tab.path)
     }
     setActiveTabPath(survivors.length > 0 ? survivors[survivors.length - 1] : null)
-    pendingJumpLine.current = null
+    pendingJump.current = null
   }
 
   // Cmd+Shift+T: reopen the most recently closed tab, browser-style.
@@ -449,6 +483,7 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     handleEditorChange,
     insertTextAtCursor,
     handleEditorDidMount,
+    getSelectedText,
     reloadFromDisk,
     remapTabPaths,
     closeTabsUnder

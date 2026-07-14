@@ -252,6 +252,22 @@ function App() {
 
   // Search / settings overlay state
   const [showSearch, setShowSearch] = useState(false)
+  // Survives the overlay unmounting so reopening Cmd+Shift+F restores the
+  // last query. A ref (not state): it changes on every keystroke in the
+  // overlay and nothing should re-render on that. Its value is snapshotted
+  // into searchInitialQuery state at open time (refs can't be read during
+  // render).
+  const lastSearchQueryRef = useRef('')
+  const [searchInitialQuery, setSearchInitialQuery] = useState('')
+  // IDEA-style: opening search with text selected in the editor prefills the
+  // query with that selection; otherwise the previous query is shown again.
+  // Either way the overlay pre-selects it, so typing starts a fresh query.
+  const openGlobalSearch = (): void => {
+    const selected = tabsRef.current.getSelectedText()
+    if (selected && !selected.includes('\n')) lastSearchQueryRef.current = selected
+    setSearchInitialQuery(lastSearchQueryRef.current)
+    setShowSearch(true)
+  }
   const [showFileSearch, setShowFileSearch] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   // The dictation/read-aloud dialogs double as their Settings pages -
@@ -388,7 +404,7 @@ function App() {
           setShowFileSearch((prev) => !prev)
           break
         case 'find-in-files':
-          setShowSearch(true)
+          openGlobalSearch()
           break
         case 'toggle-git-panel':
           setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
@@ -660,7 +676,7 @@ function App() {
         </div>
         <div className="flex items-center gap-1 no-drag-region shrink-0">
           <ToolbarButton
-            onClick={() => setShowSearch(true)}
+            onClick={openGlobalSearch}
             title="Global Search (Cmd+Shift+F)"
             tooltipAlign="right"
             colorClassName="text-gray-400 hover:text-white"
@@ -890,7 +906,21 @@ function App() {
         </div>
       </div>
 
-      {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={tabs.openTab} />}
+      {showSearch && (
+        <GlobalSearch
+          onClose={() => setShowSearch(false)}
+          initialQuery={searchInitialQuery}
+          onQueryChange={(q) => {
+            lastSearchQueryRef.current = q
+          }}
+          onSelect={(path, line, highlight) => {
+            // Picking a result is a "go there" action: dismiss the overlay so
+            // the editor (with the match selected) is immediately usable.
+            setShowSearch(false)
+            tabs.openTab(path, line, highlight)
+          }}
+        />
+      )}
       {showFileSearch && (
         <FileSearch
           onClose={() => setShowFileSearch(false)}

@@ -1,18 +1,40 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Search as SearchIcon, X, FileText } from 'lucide-react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Search as SearchIcon, X, FileText, ChevronDown, ChevronRight } from 'lucide-react'
 import type { SearchResult } from '../../../shared/searchResult'
 
 interface GlobalSearchProps {
   onClose: () => void
-  onSelect: (path: string, line?: number) => void
+  onSelect: (path: string, line?: number, highlight?: { col: number; matchLen: number }) => void
+  // IDEA-style query persistence: the query this overlay opens with (last
+  // session query, or the editor selection), reported back on every change
+  // so the next opening can restore it.
+  initialQuery?: string
+  onQueryChange?: (query: string) => void
 }
 
-export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose, onSelect }) => {
-  const [query, setQuery] = useState('')
+interface FileGroup {
+  path: string
+  file: string
+  matches: SearchResult[]
+}
+
+// The keyboard/mouse-navigable rows: a collapsible per-file header followed by
+// its matches (omitted while the file is collapsed).
+type VisibleItem = { kind: 'file'; group: FileGroup } | { kind: 'match'; result: SearchResult }
+
+export const GlobalSearch: React.FC<GlobalSearchProps> = ({
+  onClose,
+  onSelect,
+  initialQuery,
+  onQueryChange
+}) => {
+  const [query, setQuery] = useState(initialQuery ?? '')
   const [results, setResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
+  const selectedRowRef = useRef<HTMLDivElement>(null)
   // `results`/`isSearching` can briefly hold stale data from an abandoned
   // search (e.g. right after the query shrinks back below 2 characters,
   // before this becomes false) - gating every render branch on it, rather
@@ -21,33 +43,96 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose, onSelect })
   // of its own.
   const hasQuery = query.length >= 2
 
+  const groups = useMemo<FileGroup[]>(() => {
+    const byPath = new Map<string, FileGroup>()
+    for (const res of results) {
+      let group = byPath.get(res.path)
+      if (!group) {
+        group = { path: res.path, file: res.file, matches: [] }
+        byPath.set(res.path, group)
+      }
+      group.matches.push(res)
+    }
+    return [...byPath.values()]
+  }, [results])
+
+  const visibleItems = useMemo<VisibleItem[]>(() => {
+    const items: VisibleItem[] = []
+    for (const group of groups) {
+      items.push({ kind: 'file', group })
+      if (!collapsedPaths.has(group.path)) {
+        for (const result of group.matches) items.push({ kind: 'match', result })
+      }
+    }
+    return items
+  }, [groups, collapsedPaths])
+
+  // Collapsing a group can shrink the list below the current selection.
+  const selIndex = Math.min(selectedIndex, Math.max(visibleItems.length - 1, 0))
+
   const activateResult = useCallback(
-    (res: SearchResult): void => onSelect(res.path, res.line),
+    (res: SearchResult): void =>
+      onSelect(res.path, res.line, { col: res.col, matchLen: res.matchLen }),
     [onSelect]
   )
 
+  const toggleCollapsed = useCallback((path: string): void => {
+    setCollapsedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     inputRef.current?.focus()
+    // Pre-select any restored query so just starting to type replaces it,
+    // while Enter/arrows still work with it as-is.
+    inputRef.current?.select()
   }, [])
+
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selIndex, visibleItems])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1))
+        setSelectedIndex(Math.min(selIndex + 1, Math.max(visibleItems.length - 1, 0)))
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedIndex((prev) => Math.max(prev - 1, 0))
+        setSelectedIndex(Math.max(selIndex - 1, 0))
       }
-      if (e.key === 'Enter' && hasQuery && results[selectedIndex]) {
-        activateResult(results[selectedIndex])
+      const item = hasQuery ? visibleItems[selIndex] : undefined
+      if (!item) return
+      if (e.key === 'Enter') {
+        if (item.kind === 'match') activateResult(item.result)
+        else toggleCollapsed(item.group.path)
+      }
+      if (e.key === 'ArrowRight' && item.kind === 'file' && collapsedPaths.has(item.group.path)) {
+        e.preventDefault()
+        toggleCollapsed(item.group.path)
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        if (item.kind === 'file') {
+          if (!collapsedPaths.has(item.group.path)) toggleCollapsed(item.group.path)
+        } else {
+          // Jump from a match back up to its file header.
+          const headerIndex = visibleItems.findIndex(
+            (v) => v.kind === 'file' && v.group.path === item.result.path
+          )
+          if (headerIndex !== -1) setSelectedIndex(headerIndex)
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, results, selectedIndex, hasQuery, activateResult])
+  }, [onClose, visibleItems, selIndex, hasQuery, activateResult, toggleCollapsed, collapsedPaths])
 
   useEffect(() => {
     if (!hasQuery) return undefined
@@ -59,6 +144,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose, onSelect })
       if (cancelled) return
       setResults(searchResults)
       setSelectedIndex(0)
+      setCollapsedPaths(new Set())
       setIsSearching(false)
     }, 300)
 
@@ -80,7 +166,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose, onSelect })
             placeholder="Search in all projects..."
             className="flex-1 bg-transparent border-none outline-none text-fleet-text text-lg"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              onQueryChange?.(e.target.value)
+            }}
           />
           <button onClick={onClose} className="p-1 hover:bg-fleet-active rounded text-gray-500">
             <X size={18} />
@@ -93,28 +182,57 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose, onSelect })
             <div className="p-8 text-center text-gray-500 text-sm animate-pulse">Searching...</div>
           )}
 
-          {hasQuery && !isSearching && results.length > 0 && (
+          {hasQuery && !isSearching && visibleItems.length > 0 && (
             <div className="py-2">
-              {results.map((res, i) => (
-                <div
-                  key={`${res.path}-${res.line}-${i}`}
-                  className={`px-4 py-2 cursor-pointer group ${selectedIndex === i ? 'bg-fleet-active' : 'hover:bg-fleet-active'}`}
-                  onClick={() => activateResult(res)}
-                  onMouseEnter={() => setSelectedIndex(i)}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2 text-blue-400 text-sm font-medium">
-                      <FileText size={14} />
-                      <span>{res.file}</span>
-                      <span className="text-gray-600 font-normal">:{res.line}</span>
+              {visibleItems.map((item, i) => {
+                const rowRef = i === selIndex ? selectedRowRef : undefined
+                const rowBg = selIndex === i ? 'bg-fleet-active' : 'hover:bg-fleet-active'
+                if (item.kind === 'file') {
+                  const isCollapsed = collapsedPaths.has(item.group.path)
+                  return (
+                    <div
+                      key={item.group.path}
+                      ref={rowRef}
+                      className={`px-3 py-1.5 cursor-pointer select-none flex items-center gap-2 ${rowBg}`}
+                      onClick={() => {
+                        setSelectedIndex(i)
+                        toggleCollapsed(item.group.path)
+                      }}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight size={14} className="text-gray-500 shrink-0" />
+                      ) : (
+                        <ChevronDown size={14} className="text-gray-500 shrink-0" />
+                      )}
+                      <FileText size={14} className="text-blue-400 shrink-0" />
+                      <span className="text-blue-400 text-sm font-medium truncate">
+                        {item.group.file}
+                      </span>
+                      <span className="text-[10px] text-gray-600 truncate flex-1">
+                        {item.group.path}
+                      </span>
+                      <span className="text-[10px] text-gray-500 bg-fleet-header rounded-full px-2 py-0.5 shrink-0">
+                        {item.group.matches.length}
+                      </span>
                     </div>
-                    <div className="text-[10px] text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity truncate ml-4 max-w-[250px]">
-                      {res.path}
-                    </div>
+                  )
+                }
+                return (
+                  <div
+                    key={`${item.result.path}-${item.result.line}-${i}`}
+                    ref={rowRef}
+                    className={`pl-12 pr-4 py-1 cursor-pointer flex items-baseline gap-3 ${rowBg}`}
+                    onClick={() => activateResult(item.result)}
+                  >
+                    <span className="text-[10px] text-gray-600 shrink-0 w-8 text-right">
+                      {item.result.line}
+                    </span>
+                    <span className="text-xs text-gray-400 font-mono truncate">
+                      {item.result.content}
+                    </span>
                   </div>
-                  <div className="text-xs text-gray-400 font-mono truncate pl-6">{res.content}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -133,8 +251,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onClose, onSelect })
 
         {/* Footer */}
         <div className="px-4 py-2 bg-fleet-header border-t border-fleet-border text-[10px] text-gray-600 flex justify-between">
-          <span>{hasQuery ? results.length : 0} matches found</span>
-          <span>ESC to close • ENTER to open</span>
+          <span>
+            {hasQuery ? `${results.length} matches in ${groups.length} files` : '0 matches found'}
+          </span>
+          <span>ESC to close • ENTER to open • ←/→ to fold</span>
         </div>
       </div>
     </div>

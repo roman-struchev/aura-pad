@@ -118,8 +118,16 @@ const MAX_SEARCHABLE_FILE_BYTES = 2 * 1024 * 1024
 // Signals "stop, the global cap was hit" up through the recursive walk -
 // lighter than threading a mutable "stop" flag through every call and check.
 class SearchCapReached extends Error {}
+class SearchSuperseded extends Error {}
+
+// Each keystroke in the search UI (after its debounce) starts a fresh
+// full-workspace scan while the renderer just discards the previous call's
+// promise - without this counter the abandoned scans would keep walking the
+// disk to completion, stacking up and starving every other IPC call.
+let searchGeneration = 0
 
 export async function searchInWorkspaces(query: string): Promise<SearchResult[]> {
+  const generation = ++searchGeneration
   const workspacePaths = loadWorkspaces()
   const results: SearchResult[] = []
   if (!query || query.length < 2) return results
@@ -139,6 +147,7 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
     }
 
     for (const file of files) {
+      if (generation !== searchGeneration) throw new SearchSuperseded()
       if (isIgnored(file)) continue
 
       const fullPath = path.join(currentPath, file)
@@ -166,8 +175,16 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
         const lines = content.split('\n')
         let matchesInFile = 0
         for (let index = 0; index < lines.length; index++) {
-          if (!lines[index].toLowerCase().includes(queryLower)) continue
-          results.push({ file, path: fullPath, line: index + 1, content: lines[index].trim() })
+          const colIdx = lines[index].toLowerCase().indexOf(queryLower)
+          if (colIdx === -1) continue
+          results.push({
+            file,
+            path: fullPath,
+            line: index + 1,
+            col: colIdx + 1,
+            matchLen: queryLower.length,
+            content: lines[index].trim()
+          })
           matchesInFile++
           if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
           if (matchesInFile >= MAX_RESULTS_PER_FILE) break
@@ -183,6 +200,7 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
     try {
       await searchDir(rootPath, loadGitignore(rootPath), rootPath)
     } catch (e) {
+      if (e instanceof SearchSuperseded) return []
       if (e instanceof SearchCapReached) break
     }
   }
