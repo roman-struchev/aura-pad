@@ -8,6 +8,7 @@ import type { LintMarker } from '../shared/lint'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
 import type { MenuAction } from '../shared/menuAction'
+import type { UpdateNotification } from '../shared/updateNotification'
 
 declare global {
   interface Window {
@@ -61,6 +62,9 @@ declare global {
       confirmClose: () => void
       notifyRendererReady: () => void
       onMenuAction: (callback: (action: MenuAction) => void) => () => void
+
+      onUpdateNotification: (callback: (update: UpdateNotification) => void) => () => void
+      applyUpdate: () => void
 
       createPty: (cwd?: string) => Promise<string>
       destroyPty: (termId: string) => void

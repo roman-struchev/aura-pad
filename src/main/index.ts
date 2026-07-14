@@ -43,6 +43,7 @@ import {
   pull as gitPull
 } from './git'
 import { lintPython, lintEslint } from './lint'
+import { initAutoUpdater, applyUpdate } from './updater'
 import type { AppSettings } from '../shared/settings'
 import type { OpenTabsState } from '../shared/openTabsState'
 
@@ -209,6 +210,7 @@ app.whenReady().then(() => {
 
   createWindow()
   setupWatchers()
+  initAutoUpdater()
 
   const initialFilePath = getFilePathFromArgv(process.argv)
   if (initialFilePath) openFileInApp(initialFilePath)
@@ -288,6 +290,8 @@ ipcMain.handle('save-file', async (_, filePath, content) => {
   if (result.success) recordSelfWrite(filePath, content)
   return result
 })
+
+ipcMain.on('apply-update', () => applyUpdate())
 
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors)
 

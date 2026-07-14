@@ -1,5 +1,11 @@
 appId: com.struchev.aurapad
 productName: AuraPad
+# Where electron-updater looks for new versions (latest*.yml + artifacts).
+# With this set, the CI release build also uploads those metadata files.
+publish:
+  provider: github
+  owner: roman-struchev
+  repo: editor
 directories:
   buildResources: build
 files:

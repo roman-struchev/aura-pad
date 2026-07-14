@@ -22,6 +22,7 @@ import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { useReadAloud, VOICE_CATALOG, downloadedVoices } from './hooks/useReadAloud'
 import { READ_LANGS } from '../../shared/settings'
+import type { UpdateNotification } from '../../shared/updateNotification'
 import { VoiceModelModal } from './components/VoiceModelModal'
 import { ReadAloudModal } from './components/ReadAloudModal'
 import { VoiceLevelMeter } from './components/VoiceLevelMeter'
@@ -275,6 +276,10 @@ function App() {
   const [showDictationConfig, setShowDictationConfig] = useState(false)
   const [showReadAloudConfig, setShowReadAloudConfig] = useState(false)
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
+  // A new app version: either downloaded and ready to install (restart), or -
+  // where this build can't self-update - available for manual download.
+  const [updateNotification, setUpdateNotification] = useState<UpdateNotification | null>(null)
+  useEffect(() => window.api.onUpdateNotification(setUpdateNotification), [])
 
   const lastShiftTime = useRef<number>(0)
   // Tracks whether some other key fired between the last lone Shift press and
@@ -921,6 +926,31 @@ function App() {
           }}
         />
       )}
+      {updateNotification && (
+        <div className="fixed bottom-4 right-4 z-[90] flex items-center gap-4 bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl px-4 py-3 text-xs text-fleet-text">
+          <span>
+            {updateNotification.mode === 'install'
+              ? `AuraPad ${updateNotification.version} is ready to install.`
+              : `AuraPad ${updateNotification.version} is available.`}
+          </span>
+          <button
+            className="underline text-blue-400 hover:text-blue-300"
+            onClick={() => {
+              window.api.applyUpdate()
+              setUpdateNotification(null)
+            }}
+          >
+            {updateNotification.mode === 'install' ? 'Restart' : 'Download'}
+          </button>
+          <button
+            className="underline text-gray-500 hover:text-gray-400"
+            onClick={() => setUpdateNotification(null)}
+          >
+            Later
+          </button>
+        </div>
+      )}
+
       {showFileSearch && (
         <FileSearch
           onClose={() => setShowFileSearch(false)}

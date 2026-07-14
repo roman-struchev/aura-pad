@@ -7,6 +7,7 @@ import type { GitRepoStatus } from '../shared/gitStatus'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
 import type { MenuAction } from '../shared/menuAction'
+import type { UpdateNotification } from '../shared/updateNotification'
 
 const api = {
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
@@ -79,6 +80,13 @@ const api = {
     ipcRenderer.on('menu-action', listener)
     return () => ipcRenderer.removeListener('menu-action', listener)
   },
+
+  onUpdateNotification: (callback: (update: UpdateNotification) => void) => {
+    const listener = (_, update: UpdateNotification) => callback(update)
+    ipcRenderer.on('update-notification', listener)
+    return () => ipcRenderer.removeListener('update-notification', listener)
+  },
+  applyUpdate: () => ipcRenderer.send('apply-update'),
 
   createPty: (cwd?: string) => ipcRenderer.invoke('create-pty', cwd),
   destroyPty: (termId: string) => ipcRenderer.send('destroy-pty', termId),
