@@ -47,6 +47,7 @@ import {
   Play,
   AlignLeft,
   Search,
+  Crosshair,
   Eye,
   Code2,
   GitBranch,
@@ -680,6 +681,23 @@ function App() {
           )}
         </div>
         <div className="flex items-center gap-1 no-drag-region shrink-0">
+          {tabs.selectedPath &&
+            isUnderAnyRoot(
+              tabs.selectedPath,
+              tree.rootNodes.map((r) => r.path)
+            ) && (
+              <ToolbarButton
+                onClick={() => {
+                  setSidebarView('files')
+                  if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
+                }}
+                title="Select Opened File in Tree"
+                tooltipAlign="right"
+                colorClassName="text-gray-400 hover:text-white"
+              >
+                <Crosshair size={16} />
+              </ToolbarButton>
+            )}
           <ToolbarButton
             onClick={openGlobalSearch}
             title="Global Search (Cmd+Shift+F)"
@@ -888,7 +906,7 @@ function App() {
             recentExternalFiles={recentExternalFiles.entries.map((e) => e.path)}
             onRemoveRecentExternalFile={handleRemoveRecentExternalFile}
             selectedPath={tabs.selectedPath}
-            revealPath={tree.revealPath}
+            revealRequest={tree.revealRequest}
             onSelect={tabs.openTab}
             onContextMenu={tree.handleContextMenu}
             onCreateNew={tree.startCreate}

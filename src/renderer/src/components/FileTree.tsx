@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { FilePlus, FolderPlus, Play, Eye } from 'lucide-react'
 import clsx from 'clsx'
 import type { FileNode } from '../../../shared/fileNode'
@@ -6,6 +6,13 @@ import type { GitFileState } from '../../../shared/gitStatus'
 import { getFileIcon } from '../lib/fileIcon'
 
 export type { FileNode }
+
+// A request to expand the tree down to (and scroll to) a path. `seq` makes
+// every request unique, so revealing the same path again still re-triggers.
+export interface RevealRequest {
+  path: string
+  seq: number
+}
 
 interface FileTreeProps {
   node: FileNode
@@ -17,7 +24,7 @@ interface FileTreeProps {
   onRunPython: (node: FileNode) => void
   onPreviewMarkdown: (node: FileNode) => void
   selectedPath: string | null
-  revealPath?: string | null
+  revealRequest?: RevealRequest | null
   rowPadding?: string
   gitStatus?: Record<string, GitFileState>
   level?: number
@@ -44,13 +51,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
   onRunPython,
   onPreviewMarkdown,
   selectedPath,
-  revealPath,
+  revealRequest,
   rowPadding = 'py-1',
   gitStatus,
   level = 0
 }) => {
   const [expanded, setExpanded] = useState<boolean>(level === 0)
-  const [lastRevealTarget, setLastRevealTarget] = useState<string | null>(null)
+  const [lastRevealKey, setLastRevealKey] = useState<string | null>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const isSelected = selectedPath === node.path
@@ -62,16 +70,28 @@ export const FileTree: React.FC<FileTreeProps> = ({
   // Auto-expand (once) if the selected/revealed path is this directory or a
   // descendant of it. Adjusting state directly during render - rather than
   // in a useEffect - lets the user still manually collapse it afterward
-  // without it being immediately forced back open on the next render.
-  const revealTarget = revealPath || selectedPath || null
+  // without it being immediately forced back open on the next render. The
+  // seq in the key re-arms this for every explicit reveal request, even one
+  // for the same path.
+  const revealTarget = revealRequest?.path || selectedPath || null
+  const revealKey = revealRequest ? `${revealRequest.seq}:${revealRequest.path}` : selectedPath
   const isRevealTarget =
     !!revealTarget &&
     isDirectory &&
     (revealTarget === node.path || revealTarget.startsWith(node.path + '/'))
-  if (isRevealTarget && revealTarget !== lastRevealTarget) {
-    setLastRevealTarget(revealTarget)
+  if (isRevealTarget && revealKey !== lastRevealKey) {
+    setLastRevealKey(revealKey)
     if (!expanded) setExpanded(true)
   }
+
+  // Bring the reveal target itself into view. Runs after the render in which
+  // the ancestors above expanded, so the row exists by now; also covers the
+  // "just mounted because a parent expanded" case, since the effect fires on
+  // mount too.
+  const isRevealedNode = revealRequest?.path === node.path
+  useEffect(() => {
+    if (isRevealedNode) rowRef.current?.scrollIntoView({ block: 'center' })
+  }, [revealRequest, isRevealedNode])
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -128,6 +148,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   return (
     <div className="select-none font-sans">
       <div
+        ref={rowRef}
         className={clsx(
           'group flex items-center px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400/60',
           rowPadding,
@@ -230,7 +251,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
               onRunPython={onRunPython}
               onPreviewMarkdown={onPreviewMarkdown}
               selectedPath={selectedPath}
-              revealPath={revealPath}
+              revealRequest={revealRequest}
               rowPadding={rowPadding}
               gitStatus={gitStatus}
               level={level + 1}

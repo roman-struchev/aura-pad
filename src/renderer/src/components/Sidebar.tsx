@@ -1,7 +1,7 @@
 import React from 'react'
 import { Files, GitBranch, X } from 'lucide-react'
 import clsx from 'clsx'
-import { FileTree, type FileNode } from './FileTree'
+import { FileTree, type FileNode, type RevealRequest } from './FileTree'
 import { GitPanel } from './GitPanel'
 import { getFileIcon } from '../lib/fileIcon'
 import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
@@ -16,7 +16,7 @@ interface SidebarProps {
   recentExternalFiles: string[]
   onRemoveRecentExternalFile: (path: string) => void
   selectedPath: string | null
-  revealPath: string | null
+  revealRequest: RevealRequest | null
   onSelect: (path: string) => void
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   recentExternalFiles,
   onRemoveRecentExternalFile,
   selectedPath,
-  revealPath,
+  revealRequest,
   onSelect,
   onContextMenu,
   onCreateNew,
@@ -143,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onRunPython={onRunPython}
                   onPreviewMarkdown={onPreviewMarkdown}
                   selectedPath={selectedPath}
-                  revealPath={revealPath}
+                  revealRequest={revealRequest}
                   rowPadding={rowPadding}
                   gitStatus={gitFileStates}
                 />

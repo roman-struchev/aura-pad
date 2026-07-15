@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { FileNode } from '../../../shared/fileNode'
+import type { RevealRequest } from '../components/FileTree'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 
 interface UseWorkspaceTreeCallbacks {
@@ -24,7 +25,14 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   const { renameInputRef, createInputRef } = callbacks
 
   const [rootNodes, setRootNodes] = useState<FileNode[]>([])
-  const [revealPath, setRevealPath] = useState<string | null>(null)
+  // Each reveal carries a fresh seq so revealing the same path twice (e.g.
+  // the "select opened file" button after the user collapsed folders) still
+  // re-expands and re-scrolls - the tree reacts to a *change* of the request.
+  const [revealRequest, setRevealRequest] = useState<RevealRequest | null>(null)
+  const revealSeqRef = useRef(0)
+  const setRevealPath = (path: string | null): void => {
+    setRevealRequest(path ? { path, seq: ++revealSeqRef.current } : null)
+  }
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileNode } | null>(
     null
@@ -181,7 +189,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
 
   return {
     rootNodes,
-    revealPath,
+    revealRequest,
     setRevealPath,
     contextMenu,
     setContextMenu,
