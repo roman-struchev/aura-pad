@@ -60,6 +60,9 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
 
     window.addEventListener('resize', handleResize)
 
+    const resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(terminalRef.current)
+
     // Initial fit
     if (isActive) {
       setTimeout(() => {
@@ -70,6 +73,7 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      resizeObserver.disconnect()
       cleanupData()
       cleanupExit()
       term.dispose()
