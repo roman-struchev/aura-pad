@@ -146,7 +146,11 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
           disabled={downloading}
           onClick={() => onConfirm(selected, pair)}
         >
-          {selected === 'google-web' || isDownloaded(selected, pair) ? 'Use Model' : 'Download'}
+          {selected === 'google-web'
+            ? 'Use Google Translate'
+            : isDownloaded(selected, pair)
+              ? 'Use Model'
+              : 'Download'}
         </button>
       </div>
     </Modal>

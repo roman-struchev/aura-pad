@@ -134,5 +134,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceLanguage: 'auto',
   readVoices: { ru: 'ruslan', en: 'ryan' },
   translatePair: 'en-ru',
-  translateModel: 'nllb-600m'
+  // Online engine by default: first translation works instantly, no ~850 MB
+  // download gate. Only affects fresh installs - saved settings win.
+  translateModel: 'google-web'
 }
