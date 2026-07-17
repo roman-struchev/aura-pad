@@ -224,6 +224,48 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
         `Language not recognized — translating ${from.toUpperCase()} → ${to.toUpperCase()}`
       )
     if (req.truncNotice) notices.push(req.truncNotice)
+
+    // The online engine: one request for the whole selection via the main
+    // process (no worker, no chunking - Google takes multi-sentence input
+    // fine and the selection is already capped at MAX_SELECTION_CHARS).
+    // No streaming either: the popup opens in its 'streaming' spinner state
+    // and fills in with the full text when the response lands.
+    if (targetModel === 'google-web') {
+      const id = ++requestSeqRef.current
+      requestIdRef.current = id
+      sepsRef.current = []
+      chunkIndexRef.current = 0
+      setPopup({
+        from,
+        to,
+        sourceRange: req.range,
+        anchor: req.anchor,
+        text: '',
+        streaming: true,
+        notice: notices.length > 0 ? notices.join(' · ') : null
+      })
+      setStatus('translating')
+      statusRef.current = 'translating'
+      window.api.translateGoogleWeb(req.text, from, to).then((res) => {
+        // Stale id = the popup was closed while the request was in flight.
+        if (requestIdRef.current !== id) return
+        requestIdRef.current = null
+        setStatus('idle')
+        statusRef.current = 'idle'
+        if (res.success && res.text !== undefined) {
+          const text = res.text
+          setPopup((p) => (p ? { ...p, text, streaming: false } : p))
+        } else {
+          setPopup(null)
+          alertDialog(
+            `Translation failed: ${res.error ?? 'unknown error'}. ` +
+              'Google Translate needs an internet connection - the local models in Settings work offline.'
+          )
+        }
+      })
+      return
+    }
+
     const chunks = chunkSentences(req.text, CHUNK_MAX_CHARS, NEVER_MERGE)
     if (chunks.length === 0) {
       setStatus('idle')
@@ -285,6 +327,18 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     }
     const targetModel = modelRef.current
     const targetPair = pairRef.current
+    // Online engine: nothing to download or load, but the first use goes
+    // through the same consent dialog - here it's consent to sending the
+    // selection to Google rather than to a download.
+    if (targetModel === 'google-web') {
+      if (isDownloaded(targetModel, targetPair)) {
+        beginRequest(targetModel, targetPair, req)
+      } else {
+        pendingRef.current = req
+        setStatus('consent')
+      }
+      return
+    }
     if (readyKeyRef.current === downloadKey(targetModel, targetPair)) {
       beginRequest(targetModel, targetPair, req)
     } else if (isDownloaded(targetModel, targetPair)) {
@@ -331,6 +385,19 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
   // have picked a different model/pair than the ones the selection was
   // captured under; beginRequest re-detects against what 'ready' reports.
   const confirmDownload = (targetModel: TranslateModel, targetPair: TranslatePair): void => {
+    // Online engine: nothing to download - record the consent and, if a
+    // selection was waiting on the dialog, translate it right away.
+    if (targetModel === 'google-web') {
+      markDownloaded(targetModel, targetPair)
+      const pending = pendingRef.current
+      if (pending) {
+        pendingRef.current = null
+        beginRequest(targetModel, targetPair, pending)
+      } else {
+        setStatus('idle')
+      }
+      return
+    }
     setStatus('downloading')
     loadUnit(targetModel, targetPair, 'idle')
   }

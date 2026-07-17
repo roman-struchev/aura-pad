@@ -77,10 +77,16 @@ export interface TranslateModelInfo {
 }
 
 export const TRANSLATE_MODEL_CATALOG: Record<TranslateModel, TranslateModelInfo> = {
+  'google-web': {
+    id: 'google-web',
+    label: TRANSLATE_MODEL_LABELS['google-web'],
+    quality: 'Best quality, sends the selected text to Google',
+    approxDownload: () => 'no download'
+  },
   'nllb-600m': {
     id: 'nllb-600m',
     label: TRANSLATE_MODEL_LABELS['nllb-600m'],
-    quality: 'Best quality, one download covers all pairs',
+    quality: 'Best local quality, one download covers all pairs',
     approxDownload: () => '~850 MB'
   },
   'opus-mt': {
@@ -95,10 +101,15 @@ export const TRANSLATE_MODEL_CATALOG: Record<TranslateModel, TranslateModelInfo>
 // is one unit per pair. The '-q8' suffix retires markers set by the brief
 // q4f16/WebGPU build - those weights are different files, so trusting the
 // old marker would silently re-download ~850 MB with no progress dialog.
-export const downloadKey = (model: TranslateModel, pair: TranslatePair): string =>
-  model === 'nllb-600m' ? 'nllb-600m-q8' : `opus-mt:${pair}`
+// 'google-web' downloads nothing; its marker records that the user accepted
+// (once, for every pair) that selections are sent to Google.
+export const downloadKey = (model: TranslateModel, pair: TranslatePair): string => {
+  if (model === 'google-web') return 'google-web'
+  return model === 'nllb-600m' ? 'nllb-600m-q8' : `opus-mt:${pair}`
+}
 
 const repos = (model: TranslateModel, pair: TranslatePair): string[] => {
+  if (model === 'google-web') return []
   if (model === 'nllb-600m') return [NLLB_REPO]
   const info = TRANSLATE_CATALOG[pair]
   return [info.opusRepoAB, info.opusRepoBA]

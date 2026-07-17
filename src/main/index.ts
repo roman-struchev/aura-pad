@@ -43,6 +43,7 @@ import {
   pull as gitPull
 } from './git'
 import { lintPython, lintEslint } from './lint'
+import { googleWebTranslate } from './translate'
 import { initAutoUpdater, applyUpdate } from './updater'
 import type { AppSettings } from '../shared/settings'
 import type { OpenTabsState } from '../shared/openTabsState'
@@ -396,3 +397,7 @@ ipcMain.handle('lint-eslint', async (_, absPath: string, workspaceRoot: string) 
   if (!loadSettings().diagnosticsEnabled) return []
   return lintEslint(absPath, workspaceRoot)
 })
+
+ipcMain.handle('translate-google-web', (_, text: string, from: string, to: string) =>
+  googleWebTranslate(text, from, to)
+)

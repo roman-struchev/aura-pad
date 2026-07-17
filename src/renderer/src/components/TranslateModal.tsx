@@ -49,15 +49,18 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
     <Modal onClose={onClose} width="w-[26rem]">
       <div className="text-sm font-medium text-fleet-text mb-1">Translation</div>
       <div className="text-xs text-gray-400 mb-3">
-        Translation runs entirely on this computer - text never leaves it. Models download once from
-        huggingface.co and are stored locally. The direction is picked automatically from the
-        selected text&apos;s language.
+        {selected === 'google-web'
+          ? 'Google Translate is an online service: the selected text is sent to Google on every translation. Nothing is downloaded or stored.'
+          : 'Local models run entirely on this computer - text never leaves it. They download once from huggingface.co and are stored locally.'}{' '}
+        The direction is picked automatically from the selected text&apos;s language.
       </div>
 
       <div className="flex flex-col gap-1.5">
         {TRANSLATE_MODELS.map((id) => {
           const info = TRANSLATE_MODEL_CATALOG[id]
-          const downloaded = isDownloaded(id, pair)
+          // The online engine's marker is consent, not bytes on disk - no
+          // "downloaded" badge or trash icon for it.
+          const downloaded = id !== 'google-web' && isDownloaded(id, pair)
           return (
             <label
               key={id}
@@ -143,7 +146,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
           disabled={downloading}
           onClick={() => onConfirm(selected, pair)}
         >
-          {isDownloaded(selected, pair) ? 'Use Model' : 'Download'}
+          {selected === 'google-web' || isDownloaded(selected, pair) ? 'Use Model' : 'Download'}
         </button>
       </div>
     </Modal>

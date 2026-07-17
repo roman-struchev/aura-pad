@@ -129,6 +129,9 @@ const api = {
   lintEslint: (absPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke('lint-eslint', absPath, workspaceRoot),
 
+  translateGoogleWeb: (text: string, from: string, to: string) =>
+    ipcRenderer.invoke('translate-google-web', text, from, to),
+
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }
 

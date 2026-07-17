@@ -50,14 +50,18 @@ export const TRANSLATE_PAIR_LABELS: Record<TranslatePair, string> = {
   'en-fr': 'English ↔ French',
   'en-es': 'English ↔ Spanish'
 }
-// The translation model: NLLB-200 is one multilingual model covering every
+// The translation engine: NLLB-200 is one multilingual model covering every
 // pair (better quality, bigger and slower); Opus-MT is a small fast model
-// per direction, downloaded per pair.
-export type TranslateModel = 'nllb-600m' | 'opus-mt'
-export const TRANSLATE_MODELS: TranslateModel[] = ['nllb-600m', 'opus-mt']
+// per direction, downloaded per pair. 'google-web' is the online alternative:
+// no download, best quality, but the selected text is sent to Google (the
+// unofficial keyless web endpoint, proxied through the main process).
+export type TranslateModel = 'nllb-600m' | 'opus-mt' | 'google-web'
+// Dialog display order: the online engine first, then the local models.
+export const TRANSLATE_MODELS: TranslateModel[] = ['google-web', 'nllb-600m', 'opus-mt']
 export const TRANSLATE_MODEL_LABELS: Record<TranslateModel, string> = {
   'nllb-600m': 'NLLB-200 (600M)',
-  'opus-mt': 'Opus-MT'
+  'opus-mt': 'Opus-MT',
+  'google-web': 'Google Translate (online)'
 }
 
 export const UI_MODES: UiMode[] = ['micro', 'compact', 'normal', 'large']

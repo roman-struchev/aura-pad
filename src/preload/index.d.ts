@@ -103,6 +103,12 @@ declare global {
       lintPython: (absPath: string) => Promise<LintMarker | null>
       lintEslint: (absPath: string, workspaceRoot: string) => Promise<LintMarker[]>
 
+      translateGoogleWeb: (
+        text: string,
+        from: string,
+        to: string
+      ) => Promise<{ success: boolean; text?: string; error?: string }>
+
       getPathForFile: (file: File) => string
     }
   }
