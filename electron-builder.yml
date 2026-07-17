@@ -5,7 +5,7 @@ productName: AuraPad
 publish:
   provider: github
   owner: roman-struchev
-  repo: editor
+  repo: aura-pad
 directories:
   buildResources: build
 files:
