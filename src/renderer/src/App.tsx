@@ -360,6 +360,27 @@ function App() {
     return () => observer.disconnect()
   }, [])
 
+  // The Find/Replace widget's own buttons (close, next/previous match,
+  // replace, case-sensitive/whole-word/regex toggles) don't use a native
+  // title="" at all - they use Monaco's custom IHoverService overlay, whose
+  // "(Escape)"-style label is what actually clashes visually (the
+  // title-stripping observer above never touched it, since there's no title
+  // to strip). That overlay is a real, absolutely-positioned DOM node
+  // appended outside the widget, and it can end up rendering on top of the
+  // close button itself, swallowing clicks meant for it. Monaco shows the
+  // hover from a plain (non-capturing) mouseover listener on each button, so
+  // a capture-phase listener higher up the tree that stops the event before
+  // it reaches the button prevents the hover from ever appearing.
+  useEffect(() => {
+    const suppressFindWidgetHover = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest?.('.find-widget')) {
+        e.stopPropagation()
+      }
+    }
+    document.addEventListener('mouseover', suppressFindWidgetHover, true)
+    return () => document.removeEventListener('mouseover', suppressFindWidgetHover, true)
+  }, [])
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Escape with the translation popup open: dismiss it. Checked first -
