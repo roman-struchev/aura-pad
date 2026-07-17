@@ -358,11 +358,23 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
   const closeTabsUnder = (deletedPath: string, isDirectory: boolean): void => {
     const isAffected = (p: string) =>
       p === deletedPath || (isDirectory && p.startsWith(deletedPath + '/'))
-    const remaining = tabs.filter((t) => !isAffected(t.path))
-    setTabs(remaining)
-    if (activeTabPath && isAffected(activeTabPath)) {
-      setActiveTabPath(remaining.length > 0 ? remaining[remaining.length - 1].path : null)
+    // Ref + functional updates, like every other bulk close: the tree's
+    // deletion callback can fire from a stale render's closure, and acting on
+    // that snapshot would resurrect tabs closed (or drop ones opened) since.
+    const closing = tabsRef.current.filter((t) => isAffected(t.path))
+    setTabs((prev) => prev.filter((t) => !isAffected(t.path)))
+    // The paths are gone from disk: free their Monaco models (same policy as
+    // removeTabFromState) and drop them from the reopen stack, where they
+    // could only fail to reopen.
+    for (const tab of closing) {
+      monaco.editor.getModel(monaco.Uri.parse(tab.path))?.dispose()
     }
+    closedStackRef.current = closedStackRef.current.filter((p) => !isAffected(p))
+    setActiveTabPath((prev) => {
+      if (!prev || !isAffected(prev)) return prev
+      const remaining = tabsRef.current.filter((t) => !isAffected(t.path))
+      return remaining.length > 0 ? remaining[remaining.length - 1].path : null
+    })
   }
 
   // Autosave: after a short pause in typing, save automatically (unless disabled in Settings).

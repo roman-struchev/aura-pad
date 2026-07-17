@@ -73,6 +73,7 @@ const api = {
     return () => ipcRenderer.removeListener('request-close', listener)
   },
   confirmClose: () => ipcRenderer.send('confirm-close'),
+  declineClose: () => ipcRenderer.send('decline-close'),
   notifyRendererReady: () => ipcRenderer.send('renderer-ready'),
 
   onMenuAction: (callback: (action: MenuAction) => void) => {

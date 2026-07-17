@@ -536,6 +536,10 @@ function App() {
         ))
       ) {
         window.api.confirmClose()
+      } else {
+        // Declined: main must forget a pending Cmd+Q, or the next plain
+        // window close would quit the whole app with it.
+        window.api.declineClose()
       }
     })
     return unsubscribe

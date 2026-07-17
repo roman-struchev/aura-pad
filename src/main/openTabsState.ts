@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { writeConfigFile } from './configFile'
 import type { OpenTabsState } from '../shared/openTabsState'
 
 const openTabsConfigPath = path.join(app.getPath('userData'), 'openTabs.json')
@@ -19,9 +20,5 @@ export function loadOpenTabsState(): OpenTabsState {
 }
 
 export function saveOpenTabsState(state: OpenTabsState): void {
-  try {
-    fs.writeFileSync(openTabsConfigPath, JSON.stringify(state))
-  } catch (e) {
-    console.warn('Failed to save openTabs.json:', e)
-  }
+  writeConfigFile(openTabsConfigPath, state)
 }

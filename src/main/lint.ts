@@ -42,18 +42,21 @@ export function lintPython(absPath: string): Promise<LintMarker | null> {
 // unrelated project.
 export function lintEslint(absPath: string, workspaceRoot: string): Promise<LintMarker[]> {
   return new Promise((resolve) => {
-    const binPath = path.join(
-      workspaceRoot,
-      'node_modules',
-      '.bin',
-      process.platform === 'win32' ? 'eslint.cmd' : 'eslint'
-    )
-    if (!fs.existsSync(binPath)) return resolve([])
+    // Runs the package's own JS entry through Electron-as-Node rather than
+    // the node_modules/.bin shim: on Windows the shim is a .cmd file, which
+    // execFile refuses to spawn without shell:true (CVE-2024-27980), and
+    // shell:true would mean quoting user-controlled paths for cmd.exe.
+    const eslintJs = path.join(workspaceRoot, 'node_modules', 'eslint', 'bin', 'eslint.js')
+    if (!fs.existsSync(eslintJs)) return resolve([])
 
     execFile(
-      binPath,
-      ['--format', 'json', '--no-color', absPath],
-      { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 },
+      process.execPath,
+      [eslintJs, '--format', 'json', '--no-color', absPath],
+      {
+        cwd: workspaceRoot,
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+      },
       (_error, stdout) => {
         try {
           const results = JSON.parse(stdout || '[]') as Array<{

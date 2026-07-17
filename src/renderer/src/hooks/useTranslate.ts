@@ -428,6 +428,16 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
       workerRef.current?.terminate()
       workerRef.current = null
       readyKeyRef.current = null
+      // The worker may have been mid-translate (the settings dialog stays
+      // reachable while the popup streams) - its 'done' will never arrive
+      // now, so close the popup and free the status here or
+      // translateSelection stays blocked forever.
+      if (statusRef.current === 'translating') {
+        requestIdRef.current = null
+        setPopup(null)
+        setStatus('idle')
+        statusRef.current = 'idle'
+      }
     }
     await deleteDownload(targetModel, targetPair)
   }

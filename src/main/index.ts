@@ -67,6 +67,25 @@ const windowsAllowedToClose = new WeakSet<BrowserWindow>()
 // user tried to open. Queuing until the renderer actively asks for pending
 // opens removes that race entirely.
 let rendererReady = false
+// Set while a quit (Cmd+Q / menu Quit / updater) is in progress. The window
+// 'close' event a quit triggers gets prevented like any other while the
+// renderer checks for unsaved tabs - and preventing it makes Electron abort
+// the whole quit sequence. 'confirm-close' must therefore resume the quit
+// instead of just closing the window, or Quit on macOS (where
+// window-all-closed doesn't quit) silently degrades into "close window".
+let quitRequested = false
+app.on('before-quit', () => {
+  quitRequested = true
+})
+
+// Only protocols that open in a browser or mail client - renderer content
+// (e.g. a link in a previewed Markdown file from an untrusted repo) must not
+// be able to launch arbitrary protocol handlers (file:, smb:, vscode:, ...).
+function openExternalSafe(url: string): void {
+  if (/^(https?|mailto):/i.test(url)) {
+    shell.openExternal(url).catch(() => {})
+  }
+}
 
 function flushPendingFileOpens(): void {
   if (!mainWindowRef || mainWindowRef.isDestroyed()) return
@@ -156,8 +175,17 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // A renderer reload (View > Reload / Cmd+R) wipes the page's terminal state
+  // and pty-data listeners, but the shells in the ptys map would keep running
+  // headless forever - kill them whenever the main frame navigates, same as
+  // when the last window closes. The initial load also fires this, when the
+  // map is still empty.
+  mainWindow.webContents.on('did-navigate', () => {
+    killAllPtys()
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    openExternalSafe(details.url)
     return { action: 'deny' }
   })
 
@@ -169,8 +197,13 @@ function createWindow(): void {
   // that should open in the OS browser instead, with the app's own window
   // left in place.
   mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Dev-mode full reloads (vite's location.reload() when HMR can't patch)
+    // navigate back to the dev server's own URL - those must go through,
+    // everything else opens externally.
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    if (is.dev && devUrl && url.startsWith(devUrl)) return
     event.preventDefault()
-    shell.openExternal(url)
+    openExternalSafe(url)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -184,7 +217,21 @@ ipcMain.on('confirm-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (!win) return
   windowsAllowedToClose.add(win)
-  win.close()
+  if (quitRequested) {
+    // Re-enter the quit that the prevented 'close' aborted - this time the
+    // window is allowed to close, so the quit runs to completion (and
+    // autoInstallOnAppQuit updates actually get applied).
+    app.quit()
+  } else {
+    win.close()
+  }
+})
+
+// The renderer's unsaved-changes prompt was declined - the user kept working.
+// A quit that was pending must be forgotten, or the next plain window close
+// would wrongly quit the whole app.
+ipcMain.on('decline-close', () => {
+  quitRequested = false
 })
 
 // App.tsx sends this right after mounting and subscribing to

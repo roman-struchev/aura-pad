@@ -304,16 +304,35 @@ export function useVoiceInput(
       workerRef.current?.terminate()
       workerRef.current = null
       readyModelRef.current = null
+      // The worker may have been mid-transcribe (the model dialog stays
+      // reachable while a take is processing) - its 'result' will never
+      // arrive now, so the status must be reset here or toggle() stays
+      // blocked forever. A live recording is discarded the usual way.
+      if (statusRef.current === 'recording') {
+        cancelRecording()
+      } else if (statusRef.current !== 'idle') {
+        setStatus('idle')
+        statusRef.current = 'idle'
+      }
     }
     await deleteModelDownload(target)
   }
 
   useEffect(() => {
     return () => {
+      // Stop a live recording so the microphone (the MediaStream's tracks,
+      // released in the recorder's onstop) actually turns off - nothing else
+      // here touches it. discardRef makes onstop throw the take away instead
+      // of posting a transcribe to the just-terminated worker.
+      if (recorderRef.current?.state === 'recording') {
+        discardRef.current = true
+        recorderRef.current.stop()
+      }
       workerRef.current?.terminate()
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
       if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
       levelCtxRef.current?.close()
+      levelCtxRef.current = null
     }
   }, [])
 

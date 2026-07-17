@@ -1,17 +1,14 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { writeConfigFile } from './configFile'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const recentFilesConfigPath = path.join(app.getPath('userData'), 'recentExternalFiles.json')
 
 function saveRecentExternalFiles(entries: RecentExternalFile[]): void {
-  try {
-    fs.writeFileSync(recentFilesConfigPath, JSON.stringify(entries))
-  } catch (e) {
-    console.warn('Failed to save recentExternalFiles.json:', e)
-  }
+  writeConfigFile(recentFilesConfigPath, entries)
 }
 
 // Entries older than the retention window are dropped on every read, so

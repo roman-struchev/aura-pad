@@ -271,7 +271,12 @@ export function useReadAloud(voices: ReadVoices) {
     if (!workerRef.current) {
       const worker = new TtsWorker()
       worker.onmessage = (e: MessageEvent<TtsWorkerResponse>) => handleWorkerMessage(e.data)
+      // Terminate and drop the broken worker (as dictation/translate do) -
+      // keeping it cached would make every later read-aloud post messages
+      // into a dead worker and hang in 'speaking' forever.
       worker.onerror = () => {
+        worker.terminate()
+        workerRef.current = null
         stop()
         alertDialog('Read aloud failed to start (see DevTools).')
       }
@@ -293,8 +298,13 @@ export function useReadAloud(voices: ReadVoices) {
     }
     bufferRef.current.clear()
     playingRef.current = false
-    audioRef.current?.pause()
-    audioRef.current = null
+    if (audioRef.current) {
+      audioRef.current.pause()
+      // onended never fires after pause(), so the playing chunk's blob URL
+      // must be revoked here - the loop above only covers queued ones.
+      URL.revokeObjectURL(audioRef.current.src)
+      audioRef.current = null
+    }
     speechSynthesis.cancel()
     scheduleIdleUnload()
   }
@@ -427,6 +437,8 @@ export function useReadAloud(voices: ReadVoices) {
     return () => {
       workerRef.current?.terminate()
       if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
+      // A detached HTMLAudioElement keeps playing after unmount - silence it.
+      audioRef.current?.pause()
       speechSynthesis.cancel()
     }
   }, [])

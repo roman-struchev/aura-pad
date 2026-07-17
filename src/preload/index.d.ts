@@ -60,6 +60,7 @@ declare global {
       onOpenFileRequest: (callback: (path: string) => void) => () => void
       onRequestClose: (callback: () => void) => () => void
       confirmClose: () => void
+      declineClose: () => void
       notifyRendererReady: () => void
       onMenuAction: (callback: (action: MenuAction) => void) => () => void
 

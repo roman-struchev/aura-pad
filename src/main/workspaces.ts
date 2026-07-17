@@ -2,6 +2,7 @@ import { app, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import ignore, { type Ignore } from 'ignore'
+import { writeConfigFile } from './configFile'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
 
@@ -19,11 +20,7 @@ export function loadWorkspaces(): string[] {
 }
 
 export function saveWorkspaces(paths: string[]): void {
-  try {
-    fs.writeFileSync(workspacesConfigPath, JSON.stringify(paths))
-  } catch (e) {
-    console.warn('Failed to save workspaces.json:', e)
-  }
+  writeConfigFile(workspacesConfigPath, paths)
 }
 
 // Ignore hidden files/folders (starting with .) and common system/build folders

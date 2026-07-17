@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { writeConfigFile } from './configFile'
 import { type AppSettings, DEFAULT_SETTINGS } from '../shared/settings'
 
 const settingsConfigPath = path.join(app.getPath('userData'), 'settings.json')
@@ -17,9 +18,5 @@ export function loadSettings(): AppSettings {
 }
 
 export function saveSettings(settings: AppSettings): void {
-  try {
-    fs.writeFileSync(settingsConfigPath, JSON.stringify(settings))
-  } catch (e) {
-    console.warn('Failed to save settings.json:', e)
-  }
+  writeConfigFile(settingsConfigPath, settings)
 }
