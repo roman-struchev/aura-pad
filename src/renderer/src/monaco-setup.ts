@@ -19,6 +19,12 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco })
 
+// Monaco measures glyph widths once per font config, and the JetBrains Mono
+// webfont (plus its lazily-loaded Cyrillic subsets - @fontsource splits by
+// unicode-range) may finish loading after that measurement, which would leave
+// the cursor misaligned. Re-measure whenever any font load completes.
+document.fonts.addEventListener('loadingdone', () => monaco.editor.remeasureFonts())
+
 // Cmd+D belongs to voice dictation (a native menu accelerator, see menu.ts).
 // Monaco binds it to "add selection to next find match" and preventDefaults
 // it, and on macOS focused web content sees the key before the menu does -

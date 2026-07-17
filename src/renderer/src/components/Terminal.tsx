@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { MONO_FONT_FAMILY } from '../lib/fonts'
 
 interface TerminalProps {
   termId: string
@@ -25,7 +26,7 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
         cursor: '#FFFFFF',
         selectionBackground: '#5c5c5c'
       },
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontFamily: MONO_FONT_FAMILY,
       fontSize,
       cursorBlink: true,
       allowProposedApi: true

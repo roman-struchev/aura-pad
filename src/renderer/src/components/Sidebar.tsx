@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   key={path}
                   className={clsx(
-                    'group flex items-center px-2 cursor-pointer text-sm hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
+                    'group flex items-center px-2 cursor-pointer leading-tight hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
                     rowPadding,
                     selectedPath === path && 'bg-fleet-active text-fleet-textHover'
                   )}

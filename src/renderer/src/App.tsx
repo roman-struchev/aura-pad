@@ -38,6 +38,7 @@ import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
 import { prettyPrintMarkup } from './lib/formatMarkup'
 import { quoteForShell } from './lib/shellQuote'
+import { MONO_FONT_FAMILY } from './lib/fonts'
 import Editor from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import clsx from 'clsx'
@@ -864,6 +865,7 @@ function App() {
                   onMount={handleEditorMount}
                   options={{
                     minimap: { enabled: false },
+                    fontFamily: MONO_FONT_FAMILY,
                     fontSize: density.editorFontSize,
                     wordWrap: 'on',
                     padding: { top: 6 },
@@ -955,7 +957,7 @@ function App() {
             'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
             settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
           )}
-          style={{ width: `${sidebarWidth.width}px` }}
+          style={{ width: `${sidebarWidth.width}px`, fontSize: density.uiFontSize }}
         >
           <div
             className={clsx(

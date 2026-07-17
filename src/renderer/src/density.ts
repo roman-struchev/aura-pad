@@ -4,6 +4,10 @@ export type { UiMode }
 
 export interface DensityPreset {
   editorFontSize: number
+  // Sidebar/tree text. Kept at or below editorFontSize: UI text larger than
+  // the editor text reads as inverted hierarchy (Fleet/VS Code both keep
+  // UI <= editor).
+  uiFontSize: number
   treeRowPadding: string
   tabBarHeight: string
   terminalFontSize: number
@@ -13,6 +17,7 @@ export interface DensityPreset {
 
 export const DENSITY: Record<UiMode, DensityPreset> = {
   micro: {
+    uiFontSize: 11,
     editorFontSize: 11,
     treeRowPadding: 'py-0.5',
     tabBarHeight: 'h-7',
@@ -21,6 +26,7 @@ export const DENSITY: Record<UiMode, DensityPreset> = {
     settingsDescriptionClass: 'text-[10px]'
   },
   compact: {
+    uiFontSize: 12,
     editorFontSize: 12,
     treeRowPadding: 'py-1',
     tabBarHeight: 'h-8',
@@ -29,6 +35,7 @@ export const DENSITY: Record<UiMode, DensityPreset> = {
     settingsDescriptionClass: 'text-xs'
   },
   normal: {
+    uiFontSize: 13,
     editorFontSize: 13,
     treeRowPadding: 'py-1.5',
     tabBarHeight: 'h-9',
@@ -37,6 +44,7 @@ export const DENSITY: Record<UiMode, DensityPreset> = {
     settingsDescriptionClass: 'text-sm'
   },
   large: {
+    uiFontSize: 14,
     editorFontSize: 15,
     treeRowPadding: 'py-2',
     tabBarHeight: 'h-10',
