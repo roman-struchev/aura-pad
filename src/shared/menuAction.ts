@@ -7,6 +7,7 @@ export type MenuAction =
   | 'find-in-files'
   | 'toggle-git-panel'
   | 'toggle-dictation'
+  | 'translate-selection'
   | 'format-document'
   | 'toggle-preview'
   | 'toggle-terminal'

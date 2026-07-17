@@ -2,7 +2,13 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import type { AppSettings } from '../../../shared/settings'
-import { SIDEBAR_POSITIONS, THEME_MODES, UI_MODES } from '../../../shared/settings'
+import {
+  SIDEBAR_POSITIONS,
+  THEME_MODES,
+  TRANSLATE_MODEL_LABELS,
+  TRANSLATE_PAIR_LABELS,
+  UI_MODES
+} from '../../../shared/settings'
 import type { DensityPreset } from '../density'
 import { Modal } from './Modal'
 import { SettingToggle } from './SettingToggle'
@@ -14,6 +20,7 @@ interface SettingsModalProps {
   density: DensityPreset
   onConfigureDictation: () => void
   onConfigureReadAloud: () => void
+  onConfigureTranslate: () => void
   onClose: () => void
 }
 
@@ -23,6 +30,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⇧⌘T', description: 'Reopen closed tab' },
   { keys: '⌘K', description: 'Toggle the Git sidebar tab' },
   { keys: '⌘D', description: 'Start/stop voice dictation' },
+  { keys: '⌥⌘T', description: 'Translate the selected text' },
   { keys: '⌥⌘L', description: 'Format document (JSON/HTML/XML)' },
   { keys: '⇧⌘P', description: 'Toggle Markdown/HTML preview' },
   { keys: '⌃`', description: 'Toggle the terminal' },
@@ -30,7 +38,11 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: 'Shift Shift', description: 'Quick open a file or folder' },
   { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
   { keys: 'Delete', description: 'Delete in the file tree (row focused)' },
-  { keys: 'Esc', description: 'Close a dialog / discard a dictation take / stop reading aloud' }
+  {
+    keys: 'Esc',
+    description:
+      'Close a dialog or the translation popup / discard a dictation take / stop reading aloud'
+  }
 ]
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -39,6 +51,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   density,
   onConfigureDictation,
   onConfigureReadAloud,
+  onConfigureTranslate,
   onClose
 }) => {
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -137,6 +150,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
             onClick={onConfigureReadAloud}
+          >
+            Configure…
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col min-w-0">
+            <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Translation</span>
+            <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+              {TRANSLATE_MODEL_LABELS[settings.translateModel]} ·{' '}
+              {TRANSLATE_PAIR_LABELS[settings.translatePair]}
+            </span>
+          </div>
+          <button
+            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
+            onClick={onConfigureTranslate}
           >
             Configure…
           </button>

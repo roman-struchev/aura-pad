@@ -4,6 +4,8 @@ import TtsWorker from '../lib/tts/piperWorker?worker'
 import type { TtsWorkerResponse } from '../lib/tts/piperWorker'
 import { download as piperDownload, remove as piperRemove } from '@mintplex-labs/piper-tts-web'
 import { alertDialog } from '../lib/dialogs'
+import { detectReadLang as detectLang } from '../lib/langDetect'
+import { chunkSentences } from '../lib/sentenceChunks'
 import { type ReadLang, type ReadVoiceKeysByLang, type ReadVoices } from '../../../shared/settings'
 export type { ReadLang } from '../../../shared/settings'
 
@@ -66,35 +68,13 @@ const markdownToPlainText = (md: string): string => {
   return doc.body.textContent ?? ''
 }
 
-const detectLang = (text: string): ReadLang => {
-  const cyrillic = (text.match(/[а-яё]/gi) ?? []).length
-  const latin = (text.match(/[a-z]/gi) ?? []).length
-  return cyrillic > latin ? 'ru' : 'en'
-}
-
-// Split into sentences, then merge neighbors that speak the same language
-// into chunks of a comfortable size.
-const chunkText = (text: string): string[] => {
-  const sentences = text
-    .split(/\n+/)
-    .flatMap((line) => line.split(/(?<=[.!?…])\s+/))
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const chunks: string[] = []
-  for (const sentence of sentences) {
-    const last = chunks[chunks.length - 1]
-    if (
-      last &&
-      last.length + sentence.length < MAX_CHUNK_CHARS &&
-      detectLang(last) === detectLang(sentence)
-    ) {
-      chunks[chunks.length - 1] = `${last} ${sentence}`
-    } else {
-      chunks.push(sentence)
-    }
-  }
-  return chunks
-}
+// Sentences merge into chunks while they speak the same language (language
+// switching happens on chunk boundaries); the shared chunker also breaks
+// chunks at line breaks - natural pause points.
+const chunkText = (text: string): string[] =>
+  chunkSentences(text, MAX_CHUNK_CHARS, (a, b) => detectLang(a) === detectLang(b)).map(
+    (c) => c.text
+  )
 
 export const downloadedVoices = (): string[] => {
   try {

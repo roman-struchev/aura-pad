@@ -72,6 +72,15 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           click: () => sendAction('toggle-dictation')
         },
         {
+          // Alt+Cmd+T is unbound in Monaco, so no unbind in monaco-setup.ts
+          // (unlike Cmd+D). On some Linux desktops Ctrl+Alt+T is the OS
+          // "open terminal" shortcut and may shadow this; the editor's
+          // right-click menu still has the action there.
+          label: 'Translate Selection',
+          accelerator: 'Alt+CmdOrCtrl+T',
+          click: () => sendAction('translate-selection')
+        },
+        {
           label: 'Format Document',
           accelerator: 'Alt+CmdOrCtrl+L',
           click: () => sendAction('format-document')

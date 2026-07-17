@@ -21,10 +21,13 @@ import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { useReadAloud, VOICE_CATALOG, downloadedVoices } from './hooks/useReadAloud'
+import { useTranslate } from './hooks/useTranslate'
 import { READ_LANGS } from '../../shared/settings'
 import type { UpdateNotification } from '../../shared/updateNotification'
 import { VoiceModelModal } from './components/VoiceModelModal'
 import { ReadAloudModal } from './components/ReadAloudModal'
+import { TranslateModal } from './components/TranslateModal'
+import { TranslatePopup } from './components/TranslatePopup'
 import { VoiceLevelMeter } from './components/VoiceLevelMeter'
 import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
@@ -183,6 +186,26 @@ function App() {
   // The live Monaco instance, captured on mount - needed here (not just
   // inside useTabs) so read-aloud can start from the selection/cursor.
   const editorInstanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  // The same instance mirrored into state, so the translation popup (which
+  // must be conditionally *rendered* with it) doesn't read a ref mid-render.
+  const [mountedEditor, setMountedEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(
+    null
+  )
+
+  const translate = useTranslate(settings.translateModel, settings.translatePair)
+  const translateRef = useRef(translate)
+  useEffect(() => {
+    translateRef.current = translate
+  })
+  // Translation acts on the editor selection, so preview mode (no editor
+  // mounted, nothing selected) is a no-op - unlike dictation, there's no
+  // sensible fallback to flip to.
+  const startTranslate = (): void => {
+    if (tabsRef.current.showMarkdownPreview) return
+    const editor = editorInstanceRef.current
+    if (!editor) return
+    translateRef.current.translateSelection(editor)
+  }
 
   // Reads the selection if there is one; otherwise from the cursor to the end
   // of the file, falling back to the whole file if the cursor is already at
@@ -215,6 +238,11 @@ function App() {
   const handleEditorMount = (editor: monaco.editor.IStandaloneCodeEditor): void => {
     tabs.handleEditorDidMount(editor)
     editorInstanceRef.current = editor
+    setMountedEditor(editor)
+    // The editor unmounts (and is disposed) when the last tab closes or the
+    // preview takes over; drop the state mirror so nothing renders against a
+    // disposed instance.
+    editor.onDidDispose(() => setMountedEditor((cur) => (cur === editor ? null : cur)))
     // Right-click -> Read Aloud, for the selection (or from the cursor).
     editor.addAction({
       id: 'aurapad.read-aloud',
@@ -222,6 +250,19 @@ function App() {
       contextMenuGroupId: '9_aurapad',
       contextMenuOrder: 1,
       run: () => startReadAloud()
+    })
+    // Right-click -> Translate Selection; grayed out with nothing selected.
+    // The keybinding here handles Option+Cmd+T while the editor has focus
+    // (focused web content sees the key before the native menu on macOS);
+    // the Edit-menu accelerator (menu.ts) covers every other focus state.
+    editor.addAction({
+      id: 'aurapad.translate',
+      label: 'Translate Selection',
+      contextMenuGroupId: '9_aurapad',
+      contextMenuOrder: 2,
+      precondition: 'editorHasSelection',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT],
+      run: () => startTranslate()
     })
   }
   const git = useGitStatus(settings.gitEnabled)
@@ -276,6 +317,7 @@ function App() {
   // "Configure…" opens them on top of the Settings modal.
   const [showDictationConfig, setShowDictationConfig] = useState(false)
   const [showReadAloudConfig, setShowReadAloudConfig] = useState(false)
+  const [showTranslateConfig, setShowTranslateConfig] = useState(false)
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
   // A new app version: either downloaded and ready to install (restart), or -
   // where this build can't self-update - available for manual download.
@@ -320,6 +362,12 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape with the translation popup open: dismiss it. Checked first -
+      // the popup sits on top of whatever else is going on.
+      if (e.key === 'Escape' && translateRef.current.popup) {
+        translateRef.current.closePopup()
+        return
+      }
       // Escape during dictation: stop recording and throw the take away
       // (nothing gets transcribed or inserted).
       if (e.key === 'Escape' && voiceRef.current.status === 'recording') {
@@ -417,6 +465,9 @@ function App() {
           break
         case 'toggle-dictation':
           toggleDictation()
+          break
+        case 'translate-selection':
+          startTranslate()
           break
         case 'format-document':
           formatActiveDocument()
@@ -1069,7 +1120,42 @@ function App() {
           density={density}
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
+          onConfigureTranslate={() => setShowTranslateConfig(true)}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {translate.popup && mountedEditor && (
+        <TranslatePopup
+          editor={mountedEditor}
+          popup={translate.popup}
+          onReplace={() => translateRef.current.replaceSelection(mountedEditor)}
+          onClose={() => translateRef.current.closePopup()}
+        />
+      )}
+
+      {(translate.status === 'consent' ||
+        translate.status === 'downloading' ||
+        showTranslateConfig) && (
+        <TranslateModal
+          defaultModel={settings.translateModel}
+          defaultPair={settings.translatePair}
+          downloading={translate.status === 'downloading'}
+          progress={translate.progress}
+          onConfirm={(model, pair) => {
+            updateSetting('translateModel', model)
+            updateSetting('translatePair', pair)
+            setShowTranslateConfig(false)
+            // Also warms/downloads the model; harmless when opened from
+            // Settings - the modal stays visible through 'downloading'.
+            translate.confirmDownload(model, pair)
+          }}
+          onDeleteUnit={translate.deleteUnit}
+          onClose={() => {
+            setShowTranslateConfig(false)
+            if (translate.status === 'downloading') translate.cancelDownload()
+            else translate.dismissConsent()
+          }}
         />
       )}
 

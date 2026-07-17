@@ -37,6 +37,29 @@ export type VoiceLanguage =
   | 'japanese'
   | 'korean'
 
+// Translation language pair: which way a given selection gets translated is
+// auto-detected from its language, the pair defines the two candidates.
+// Like VoiceModel, only the keys and display labels live here - Hugging Face
+// repos, download sizes and dtype choices are in the renderer's catalog
+// (lib/translate/models.ts); nothing in main needs them.
+export type TranslatePair = 'en-ru' | 'en-de' | 'en-fr' | 'en-es'
+export const TRANSLATE_PAIRS: TranslatePair[] = ['en-ru', 'en-de', 'en-fr', 'en-es']
+export const TRANSLATE_PAIR_LABELS: Record<TranslatePair, string> = {
+  'en-ru': 'English ↔ Russian',
+  'en-de': 'English ↔ German',
+  'en-fr': 'English ↔ French',
+  'en-es': 'English ↔ Spanish'
+}
+// The translation model: NLLB-200 is one multilingual model covering every
+// pair (better quality, bigger and slower); Opus-MT is a small fast model
+// per direction, downloaded per pair.
+export type TranslateModel = 'nllb-600m' | 'opus-mt'
+export const TRANSLATE_MODELS: TranslateModel[] = ['nllb-600m', 'opus-mt']
+export const TRANSLATE_MODEL_LABELS: Record<TranslateModel, string> = {
+  'nllb-600m': 'NLLB-200 (600M)',
+  'opus-mt': 'Opus-MT'
+}
+
 export const UI_MODES: UiMode[] = ['micro', 'compact', 'normal', 'large']
 export const SIDEBAR_POSITIONS: SidebarPosition[] = ['left', 'right']
 export const THEME_MODES: ThemeMode[] = ['dark', 'light', 'system', 'monokai', 'solarized']
@@ -89,6 +112,8 @@ export interface AppSettings {
   voiceModel: VoiceModel
   voiceLanguage: VoiceLanguage
   readVoices: ReadVoices
+  translatePair: TranslatePair
+  translateModel: TranslateModel
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -103,5 +128,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lineNumbersEnabled: true,
   voiceModel: 'base',
   voiceLanguage: 'auto',
-  readVoices: { ru: 'ruslan', en: 'ryan' }
+  readVoices: { ru: 'ruslan', en: 'ryan' },
+  translatePair: 'en-ru',
+  translateModel: 'nllb-600m'
 }
