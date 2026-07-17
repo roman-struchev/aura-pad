@@ -1009,7 +1009,11 @@ function App() {
               setUpdateNotification(null)
             }}
           >
-            {updateNotification.mode === 'install' ? 'Restart' : 'Download'}
+            {updateNotification.mode === 'install'
+              ? 'Restart'
+              : updateNotification.mode === 'script'
+                ? 'Install'
+                : 'Download'}
           </button>
           <button
             className="underline text-gray-500 hover:text-gray-400"

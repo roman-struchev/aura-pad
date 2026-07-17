@@ -8,22 +8,17 @@ accounts, no telemetry: even voice dictation and read-aloud run entirely on your
 
 ## Download & Install
 
-**macOS / Linux** — paste this into a terminal; it downloads the latest release, installs it
-(into `/Applications` on macOS, as an AppImage with a launcher entry on Linux), and starts it.
-Running it again later updates an existing copy:
+**macOS / Linux** — one command installs (or updates) the latest release and starts it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/scripts/install.sh | bash
 ```
 
-**Windows** — grab the `-setup.exe` installer from the
-[latest release](https://github.com/roman-struchev/aura-pad/releases/latest)
-(`.deb` for Debian/Ubuntu is also available there if you prefer it over the AppImage).
+**Windows** — download the `-setup.exe` from the
+[latest release](https://github.com/roman-struchev/aura-pad/releases/latest).
 
-> **Note for macOS:** builds are not yet notarized with Apple, so a `.dmg` downloaded in a
-> browser is blocked by Gatekeeper with an "AuraPad is damaged" message. Either use the install
-> command above (not affected), or clear the quarantine flag after copying the app:
-> `xattr -cr /Applications/AuraPad.app`.
+> **macOS:** a `.dmg` downloaded in a browser shows "AuraPad is damaged" (builds aren't
+> notarized yet). Use the command above instead, or run `xattr -cr /Applications/AuraPad.app`.
 
 ## Highlights
 
@@ -48,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Error checking for TypeScript, JavaScript, and Python; uses your project's own ESLint
   setup if it has one.
 - One-click Markdown and HTML preview.
-- Dark, light, or system theme; adjustable UI density and editor look.
+- Themes: dark, light, system, Monokai, and Solarized; adjustable UI density and editor look.
 
 **Voice & language**
 
@@ -87,7 +82,7 @@ The full list of keyboard shortcuts is available in the app under Settings.
 
 ## Development
 
-Built with Electron, React, and Monaco.
+Install deps and run in dev mode.
 
 ```bash
 npm install
@@ -100,8 +95,8 @@ Build for your platform:
 npm run build:mac
 ```
 
-Install the freshly built app into `/Applications`, replacing any existing copy:
+Release a new version (bumps the minor version, tags, and pushes — CI builds and publishes):
 
 ```bash
-rm -rf /Applications/AuraPad.app && cp -R dist/mac-arm64/AuraPad.app /Applications/
+npm run release
 ```

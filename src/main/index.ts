@@ -90,6 +90,10 @@ function openFileInApp(filePath: string): void {
 function getFilePathFromArgv(argv: string[]): string | null {
   const candidate = argv[argv.length - 1]
   if (!candidate || candidate.startsWith('-')) return null
+  // A bare launch (Dock/Finder, or a second instance started without a file)
+  // has the executable itself as the only argument - never treat the app
+  // binary as a document the user asked to open.
+  if (argv.length < 2 || candidate === process.execPath) return null
   try {
     return fs.statSync(candidate).isFile() ? candidate : null
   } catch (e) {
