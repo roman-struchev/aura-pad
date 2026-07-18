@@ -72,7 +72,7 @@ let gitStatusDebounceTimer: NodeJS.Timeout | null = null
 // as its own debounce (rather than piggybacking on the structural-change one
 // above) since it must also fire for plain content edits, not just renames.
 function scheduleGitStatusRefresh(): void {
-  if (!loadSettings().gitEnabled) return
+  if (!loadSettings().extensions.git.enabled) return
   if (gitStatusDebounceTimer) clearTimeout(gitStatusDebounceTimer)
   gitStatusDebounceTimer = setTimeout(async () => {
     gitStatusDebounceTimer = null

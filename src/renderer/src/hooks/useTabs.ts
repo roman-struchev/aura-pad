@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as monaco from 'monaco-editor'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
+import { isExtensionPath } from '../../../shared/extensionTab'
 
 export type OpenTab = {
   path: string
@@ -112,10 +113,18 @@ export function useTabs(tabsEnabled: boolean) {
       }
     }
 
-    const result = await window.api.readFile(filePath)
-    if (!result.success) {
-      await alertDialog(result.error || 'Failed to open file.')
-      return
+    // Extension tabs (ext://...) have no file behind them - nothing to read
+    // from disk. Everything downstream is already safe for them: autosave is
+    // gated on isSaved (always true here), the watcher only ever reports real
+    // paths, and disposing a monaco model for an ext:// URI is a no-op.
+    let content = ''
+    if (!isExtensionPath(filePath)) {
+      const result = await window.api.readFile(filePath)
+      if (!result.success) {
+        await alertDialog(result.error || 'Failed to open file.')
+        return
+      }
+      content = result.content || ''
     }
 
     // Only once the new file has actually been read: the replaced tab also
@@ -129,7 +138,7 @@ export function useTabs(tabsEnabled: boolean) {
 
     const newTab: OpenTab = {
       path: filePath,
-      content: result.content || '',
+      content,
       isSaved: true,
       externalChangeAvailable: false,
       showPreview: false
@@ -423,11 +432,19 @@ export function useTabs(tabsEnabled: boolean) {
       const restored: OpenTab[] = []
       for (const p of pathsToRestore) {
         if (tabsRef.current.some((t) => t.path === p)) continue
-        const result = await window.api.readFile(p)
-        if (!result.success) continue
+        // Extension tabs are recreated as-is; whether the extension id still
+        // resolves to anything is the renderer's problem (unknown ids just
+        // render an empty state), same spirit as silently skipping deleted
+        // files below.
+        let content = ''
+        if (!isExtensionPath(p)) {
+          const result = await window.api.readFile(p)
+          if (!result.success) continue
+          content = result.content || ''
+        }
         restored.push({
           path: p,
-          content: result.content || '',
+          content,
           isSaved: true,
           externalChangeAvailable: false,
           showPreview: false,

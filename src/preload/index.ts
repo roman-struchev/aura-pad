@@ -8,6 +8,7 @@ import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
 import type { MenuAction } from '../shared/menuAction'
 import type { UpdateNotification } from '../shared/updateNotification'
+import type { GTaskInput } from '../shared/googleTasks'
 
 const api = {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
@@ -126,6 +127,21 @@ const api = {
     ipcRenderer.invoke('git-log', root, limit, skip),
   gitBranches: (root: string) => ipcRenderer.invoke('git-branches', root),
   gitCheckout: (root: string, branch: string) => ipcRenderer.invoke('git-checkout', root, branch),
+  gtasksAccounts: () => ipcRenderer.invoke('gtasks-accounts'),
+  gtasksAddAccount: () => ipcRenderer.invoke('gtasks-add-account'),
+  gtasksRemoveAccount: (email: string) => ipcRenderer.invoke('gtasks-remove-account', email),
+  gtasksLists: (email: string) => ipcRenderer.invoke('gtasks-lists', email),
+  gtasksTasks: (email: string, listId: string) => ipcRenderer.invoke('gtasks-tasks', email, listId),
+  gtasksCreateTask: (email: string, listId: string, input: GTaskInput) =>
+    ipcRenderer.invoke('gtasks-create-task', email, listId, input),
+  gtasksUpdateTask: (
+    email: string,
+    listId: string,
+    taskId: string,
+    input: Partial<GTaskInput> & { status?: 'needsAction' | 'completed' }
+  ) => ipcRenderer.invoke('gtasks-update-task', email, listId, taskId, input),
+  gtasksMoveTask: (email: string, listId: string, taskId: string, previousTaskId?: string) =>
+    ipcRenderer.invoke('gtasks-move-task', email, listId, taskId, previousTaskId),
   onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => {
     const listener = (_, statuses: GitRepoStatus[]) => callback(statuses)
     ipcRenderer.on('git-status-changed', listener)

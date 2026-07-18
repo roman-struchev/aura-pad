@@ -45,6 +45,17 @@ import {
   getBranches,
   checkoutBranch
 } from './git'
+import {
+  listAccounts as gtasksListAccounts,
+  addAccount as gtasksAddAccount,
+  removeAccount as gtasksRemoveAccount,
+  listTaskLists as gtasksListTaskLists,
+  listTasks as gtasksListTasks,
+  createTask as gtasksCreateTask,
+  updateTask as gtasksUpdateTask,
+  moveTask as gtasksMoveTask
+} from './googleTasks'
+import type { GTaskInput } from '../shared/googleTasks'
 import { lintPython, lintEslint } from './lint'
 import { googleWebTranslate } from './translate'
 import { initAutoUpdater, applyUpdate } from './updater'
@@ -405,7 +416,7 @@ const refreshedStatuses = (): ReturnType<typeof getAllRepoStatuses> =>
   getAllRepoStatuses(loadWorkspaces())
 
 ipcMain.handle('git-status', async () => {
-  if (!loadSettings().gitEnabled) return []
+  if (!loadSettings().extensions.git.enabled) return []
   return refreshedStatuses()
 })
 
@@ -461,6 +472,38 @@ ipcMain.handle('git-checkout', async (_, root: string, branch: string) => {
   const result = await checkoutBranch(root, branch)
   return { ...result, statuses: await refreshedStatuses() }
 })
+
+// Google Tasks IPC Handlers
+ipcMain.handle('gtasks-accounts', () => gtasksListAccounts())
+
+ipcMain.handle('gtasks-add-account', () => gtasksAddAccount())
+
+ipcMain.handle('gtasks-remove-account', (_, email: string) => gtasksRemoveAccount(email))
+
+ipcMain.handle('gtasks-lists', (_, email: string) => gtasksListTaskLists(email))
+
+ipcMain.handle('gtasks-tasks', (_, email: string, listId: string) => gtasksListTasks(email, listId))
+
+ipcMain.handle('gtasks-create-task', (_, email: string, listId: string, input: GTaskInput) =>
+  gtasksCreateTask(email, listId, input)
+)
+
+ipcMain.handle(
+  'gtasks-update-task',
+  (
+    _,
+    email: string,
+    listId: string,
+    taskId: string,
+    input: Partial<GTaskInput> & { status?: 'needsAction' | 'completed' }
+  ) => gtasksUpdateTask(email, listId, taskId, input)
+)
+
+ipcMain.handle(
+  'gtasks-move-task',
+  (_, email: string, listId: string, taskId: string, previousTaskId?: string) =>
+    gtasksMoveTask(email, listId, taskId, previousTaskId)
+)
 
 // Diagnostics IPC Handlers
 ipcMain.handle('lint-python', async (_, absPath: string) => {

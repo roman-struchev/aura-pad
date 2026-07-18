@@ -8,30 +8,18 @@ import type {
   GitFileState,
   GitRepoStatus
 } from '../../../shared/gitStatus'
+import type { useGitStatus } from '../hooks/useGitStatus'
 import { BranchSelector } from './BranchSelector'
 import { Modal } from './Modal'
 import { getLanguage } from '../lib/language'
 
 interface GitPanelProps {
-  repos: GitRepoStatus[]
+  git: ReturnType<typeof useGitStatus>
   monacoTheme: string
-  onStage: (root: string, relPaths: string[]) => void
-  onUnstage: (root: string, relPaths: string[]) => void
-  onDiscard: (root: string, entry: GitFileEntry) => void
-  onCommit: (root: string, message: string, relPaths: string[], amend: boolean) => Promise<boolean>
-  onCommitAndPush: (
-    root: string,
-    message: string,
-    relPaths: string[],
-    amend: boolean
-  ) => Promise<boolean>
-  onPush: (root: string) => void
-  onPull: (root: string) => void
-  onDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
-  onLastCommitMessage: (root: string) => Promise<string>
-  onLog: (root: string, limit: number, skip: number) => Promise<GitCommit[]>
-  onBranches: (root: string) => Promise<string[]>
-  onCheckout: (root: string, branch: string) => Promise<boolean>
+  // Owned by the parent so the file tree's per-root branch badge can focus a
+  // specific repo when switching the sidebar to the Git view.
+  selectedRoot: string | null
+  onSelectRoot: (root: string) => void
 }
 
 // Status colors shared by both the letter and the filename, matching the
@@ -151,6 +139,7 @@ const GroupCheckbox: React.FC<GroupCheckboxProps> = ({ checked, indeterminate, o
 interface FileRowProps {
   entry: MergedEntry
   showCheckbox: boolean
+  selected?: boolean
   onToggle: () => void
   onClick: () => void
   onDiscard: () => void
@@ -160,6 +149,7 @@ interface FileRowProps {
 const FileRow: React.FC<FileRowProps> = ({
   entry,
   showCheckbox,
+  selected,
   onToggle,
   onClick,
   onDiscard,
@@ -169,7 +159,10 @@ const FileRow: React.FC<FileRowProps> = ({
   const style = STATUS_STYLE[entry.state]
   return (
     <div
-      className="group flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-fleet-active cursor-pointer text-xs"
+      className={clsx(
+        'group flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-fleet-active cursor-pointer text-xs',
+        selected && 'bg-fleet-active'
+      )}
       title={dir ? `${dir}/${name}` : name}
       onClick={onClick}
     >
@@ -327,43 +320,32 @@ const HistoryList: React.FC<HistoryListProps> = ({ repo, onLog }) => {
   )
 }
 
-// JetBrains-style commit tool window: one "Changes" list with checkboxes
-// (checked = will be committed), an "Unversioned Files" group, a commit box
-// pinned to the bottom, and ahead/behind on the branch row. Staging is an
-// implementation detail here - checking a row stages it, unchecking unstages
-// it, and Commit re-adds every checked path first so edits made after staging
-// are swept in too.
+// Commit-message drafts survive the panel being unmounted (switching the
+// sidebar back to Files) - keyed by root so each repo keeps its own.
+const draftMessages = new Map<string, string>()
+
+// JetBrains-style commit tool window in the sidebar: one "Changes" list with
+// checkboxes (checked = will be committed), an "Unversioned Files" group, a
+// commit box pinned to the bottom, a branch selector with ahead/behind, and a
+// History view with the linear log. The selected repo is owned by the parent
+// so the file tree's per-root badge can focus a specific repo.
 export const GitPanel: React.FC<GitPanelProps> = ({
-  repos,
+  git,
   monacoTheme,
-  onStage,
-  onUnstage,
-  onDiscard,
-  onCommit,
-  onCommitAndPush,
-  onPush,
-  onPull,
-  onDiff,
-  onLastCommitMessage,
-  onLog,
-  onBranches,
-  onCheckout
+  selectedRoot,
+  onSelectRoot
 }) => {
-  const [messages, setMessages] = useState<Record<string, string>>({})
-  const [amendByRoot, setAmendByRoot] = useState<Record<string, boolean>>({})
+  const repos = git.repos
   const [busy, setBusy] = useState(false)
+  const [amendByRoot, setAmendByRoot] = useState<Record<string, boolean>>({})
+  const [view, setView] = useState<'commit' | 'history'>('commit')
   const [diffTarget, setDiffTarget] = useState<{
     relPath: string
     original: string
     modified: string
   } | null>(null)
-  const [selectedRoot, setSelectedRoot] = useState<string | null>(null)
-  const [view, setView] = useState<'commit' | 'history'>('commit')
-
-  const openDiff = async (root: string, relPath: string): Promise<void> => {
-    const { original, modified } = await onDiff(root, relPath)
-    setDiffTarget({ relPath, original, modified })
-  }
+  // Mirrors draftMessages so typing re-renders; the map is the durable copy.
+  const [, setDraftTick] = useState(0)
 
   // Falls back to the first repo if nothing's selected yet, or the
   // previously selected root disappeared (workspace closed).
@@ -382,8 +364,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({
     return <div className="text-center mt-10 text-gray-500 text-sm p-4">No git repository.</div>
   }
 
-  const message = messages[repo.root] || ''
+  const message = draftMessages.get(repo.root) ?? ''
   const amend = !!amendByRoot[repo.root]
+
+  const setMessage = (value: string): void => {
+    draftMessages.set(repo.root, value)
+    setDraftTick((t) => t + 1)
+  }
+
+  const openDiff = async (relPath: string): Promise<void> => {
+    const { original, modified } = await git.diff(repo.root, relPath)
+    setDiffTarget({ relPath, original, modified })
+  }
 
   const checkedRelPaths = [...changes, ...unversioned]
     .filter((e) => e.checked)
@@ -393,31 +385,28 @@ export const GitPanel: React.FC<GitPanelProps> = ({
   const someChangesChecked = changes.some((e) => e.checked)
 
   const toggleEntry = (entry: MergedEntry): void => {
-    if (entry.checked) onUnstage(repo.root, [entry.relPath])
-    else onStage(repo.root, [entry.relPath])
+    if (entry.checked) git.unstage(repo.root, [entry.relPath])
+    else git.stage(repo.root, [entry.relPath])
   }
 
   const toggleChangesGroup = (): void => {
     if (allChangesChecked)
-      onUnstage(
+      git.unstage(
         repo.root,
         changes.map((e) => e.relPath)
       )
     else
-      onStage(
+      git.stage(
         repo.root,
         changes.filter((e) => !e.checked).map((e) => e.relPath)
       )
   }
 
-  const setMessage = (value: string): void =>
-    setMessages((prev) => ({ ...prev, [repo.root]: value }))
-
   const toggleAmend = async (): Promise<void> => {
     const next = !amend
     setAmendByRoot((prev) => ({ ...prev, [repo.root]: next }))
     if (next && !message.trim()) {
-      const prevMessage = await onLastCommitMessage(repo.root)
+      const prevMessage = await git.lastCommitMessage(repo.root)
       if (prevMessage) setMessage(prevMessage)
     }
   }
@@ -428,7 +417,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
     if (!canCommit) return
     setBusy(true)
     try {
-      const action = andPush ? onCommitAndPush : onCommit
+      const action = andPush ? git.commitAndPush : git.commit
       const ok = await action(repo.root, message.trim(), checkedRelPaths, amend)
       if (ok) {
         setMessage('')
@@ -460,7 +449,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                   ? 'bg-fleet-active text-fleet-textHover'
                   : 'text-gray-400 hover:bg-fleet-active hover:text-gray-200'
               )}
-              onClick={() => setSelectedRoot(r.root)}
+              onClick={() => onSelectRoot(r.root)}
             >
               {r.root.split('/').pop()}
             </button>
@@ -473,8 +462,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({
           key={repo.root}
           root={repo.root}
           branch={repo.branch}
-          onBranches={onBranches}
-          onCheckout={onCheckout}
+          onBranches={git.branches}
+          onCheckout={git.checkout}
           triggerClassName="-mx-1"
         />
         {!!repo.ahead && <span className="text-[10px] text-gray-500">↑{repo.ahead}</span>}
@@ -483,14 +472,14 @@ export const GitPanel: React.FC<GitPanelProps> = ({
         <button
           className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-white"
           title="Pull"
-          onClick={() => onPull(repo.root)}
+          onClick={() => git.pull(repo.root)}
         >
           <ArrowDownToLine size={13} />
         </button>
         <button
           className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-white"
           title="Push"
-          onClick={() => onPush(repo.root)}
+          onClick={() => git.push(repo.root)}
         >
           <ArrowUpFromLine size={13} />
         </button>
@@ -515,7 +504,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
 
       <div className="flex-1 overflow-y-auto min-h-0">
         {view === 'history' ? (
-          <HistoryList key={repo.root} repo={repo} onLog={onLog} />
+          <HistoryList key={repo.root} repo={repo} onLog={git.log} />
         ) : (
           <>
             {changes.length > 0 && (
@@ -536,8 +525,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                     entry={entry}
                     showCheckbox
                     onToggle={() => toggleEntry(entry)}
-                    onClick={() => openDiff(repo.root, entry.relPath)}
-                    onDiscard={() => onDiscard(repo.root, entry.discardEntry)}
+                    onClick={() => openDiff(entry.relPath)}
+                    onDiscard={() => git.discard(repo.root, entry.discardEntry)}
                     discardTitle="Discard changes"
                   />
                 ))}
@@ -555,8 +544,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                     entry={entry}
                     showCheckbox
                     onToggle={() => toggleEntry(entry)}
-                    onClick={() => openDiff(repo.root, entry.relPath)}
-                    onDiscard={() => onDiscard(repo.root, entry.discardEntry)}
+                    onClick={() => openDiff(entry.relPath)}
+                    onDiscard={() => git.discard(repo.root, entry.discardEntry)}
                     discardTitle="Delete"
                   />
                 ))}

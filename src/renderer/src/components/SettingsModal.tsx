@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import clsx from 'clsx'
 import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
-import type { AppSettings } from '../../../shared/settings'
+import type { AppSettings, ExtensionSettings } from '../../../shared/settings'
 import type { UpdateNotification } from '../../../shared/updateNotification'
 import {
   SIDEBAR_POSITIONS,
@@ -26,6 +26,7 @@ interface SettingsModalProps {
   onConfigureDictation: () => void
   onConfigureReadAloud: () => void
   onConfigureTranslate: () => void
+  onConfigureGoogleTasks: () => void
   onClose: () => void
 }
 
@@ -33,7 +34,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⌘S', description: 'Save file' },
   { keys: '⌘W', description: 'Close tab' },
   { keys: '⇧⌘T', description: 'Reopen closed tab' },
-  { keys: '⌘K', description: 'Toggle the Git sidebar tab' },
+  { keys: '⌘K', description: 'Open the Git tab for the current project' },
   { keys: '⌘D', description: 'Start/stop voice dictation' },
   { keys: '⌥⌘T', description: 'Translate the selected text' },
   { keys: '⌥⌘L', description: 'Format document (JSON/HTML/XML)' },
@@ -61,9 +62,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onConfigureDictation,
   onConfigureReadAloud,
   onConfigureTranslate,
+  onConfigureGoogleTasks,
   onClose
 }) => {
   const [showShortcuts, setShowShortcuts] = useState(false)
+
+  // Extension settings are namespaced (settings.extensions.<id>.<key>) so
+  // each extension owns its block; this patches one block without the
+  // callers having to rebuild the whole extensions object.
+  const updateExtension = <K extends keyof ExtensionSettings>(
+    id: K,
+    patch: Partial<ExtensionSettings[K]>
+  ): void =>
+    updateSetting('extensions', {
+      ...settings.extensions,
+      [id]: { ...settings.extensions[id], ...patch }
+    })
 
   return (
     <Modal onClose={onClose} width="w-[30rem]">
@@ -88,7 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         />
         <SettingSelect
           label="Sidebar"
-          description="Which side the file tree/git panel sits on"
+          description="Which side the file tree sits on"
           value={settings.sidebarPosition}
           options={SIDEBAR_POSITIONS}
           onChange={(v) => updateSetting('sidebarPosition', v)}
@@ -111,14 +125,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
-        <SettingToggle
-          label="Git"
-          description="Show git status badges and the Git panel for repositories"
-          checked={settings.gitEnabled}
-          onChange={(v) => updateSetting('gitEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
+        <div className="border-t border-fleet-border pt-3 flex flex-col gap-4">
+          <span
+            className={clsx(
+              density.settingsDescriptionClass,
+              'uppercase tracking-wider text-gray-500'
+            )}
+          >
+            Extensions
+          </span>
+          <SettingToggle
+            label="Git"
+            description="Status badges in the file tree and the per-project Git tab"
+            checked={settings.extensions.git.enabled}
+            onChange={(v) => updateExtension('git', { enabled: v })}
+            labelClassName={density.settingsLabelClass}
+            descriptionClassName={density.settingsDescriptionClass}
+          />
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col min-w-0">
+              <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>
+                Google Tasks
+              </span>
+              <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+                {settings.extensions.googleTasks.enabled ? 'Enabled' : 'Disabled'} · accounts and
+                OAuth client
+              </span>
+            </div>
+            <button
+              className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
+              onClick={onConfigureGoogleTasks}
+            >
+              Configure…
+            </button>
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col min-w-0">
             <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Dictation</span>
@@ -204,8 +245,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               v{appVersion}
             </a>
           )}
-          {updateNotification && !updateNotification.failed && (
-            updateInstalling ? (
+          {updateNotification &&
+            !updateNotification.failed &&
+            (updateInstalling ? (
               <span className="flex items-center gap-1.5 text-[11px] text-blue-400">
                 <Loader2 size={12} className="animate-spin" />
                 Installing…
@@ -221,8 +263,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     ? 'Install update'
                     : 'Download update'}
               </button>
-            )
-          )}
+            ))}
         </div>
         <button
           className="px-4 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"

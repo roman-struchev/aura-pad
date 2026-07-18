@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { X, Pin, PinOff } from 'lucide-react'
 import type { OpenTab } from '../hooks/useTabs'
 import { TabContextMenu } from './TabContextMenu'
+import { extensionTabInfo } from '../lib/extensions'
 
 interface TabBarProps {
   tabs: OpenTab[]
@@ -89,7 +90,16 @@ export const TabBar: React.FC<TabBarProps> = ({
             draggedTab === tab.path && 'opacity-40'
           )}
         >
-          <span className="truncate">{tab.path.split('/').pop()}</span>
+          {(() => {
+            const ext = extensionTabInfo(tab.path)
+            if (!ext) return <span className="truncate">{tab.path.split('/').pop()}</span>
+            return (
+              <>
+                <ext.icon size={12} className="shrink-0 opacity-70" />
+                <span className="truncate">{ext.label}</span>
+              </>
+            )
+          })()}
           {!tab.isSaved && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
           {tab.pinned ? (
             <Pin

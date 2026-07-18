@@ -4,12 +4,8 @@ import clsx from 'clsx'
 import { FileTree, type FileNode, type RevealRequest } from './FileTree'
 import { GitPanel } from './GitPanel'
 import { getFileIcon } from '../lib/fileIcon'
-import type {
-  GitCommit,
-  GitFileEntry,
-  GitFileState,
-  GitRepoStatus
-} from '../../../shared/gitStatus'
+import type { GitRepoStatus } from '../../../shared/gitStatus'
+import type { useGitStatus } from '../hooks/useGitStatus'
 
 interface SidebarProps {
   monacoTheme: string
@@ -29,31 +25,12 @@ interface SidebarProps {
   onFocusNode: (node: FileNode) => void
   onRunPython: (node: FileNode) => void
   onPreviewMarkdown: (node: FileNode) => void
-  gitFileStates: Record<string, GitFileState>
-  // Git panel
-  gitRepos: GitRepoStatus[]
-  onGitStage: (root: string, relPaths: string[]) => void
-  onGitUnstage: (root: string, relPaths: string[]) => void
-  onGitDiscard: (root: string, entry: GitFileEntry) => void
-  onGitCommit: (
-    root: string,
-    message: string,
-    relPaths: string[],
-    amend: boolean
-  ) => Promise<boolean>
-  onGitCommitAndPush: (
-    root: string,
-    message: string,
-    relPaths: string[],
-    amend: boolean
-  ) => Promise<boolean>
-  onGitPush: (root: string) => void
-  onGitPull: (root: string) => void
-  onGitDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
-  onGitLastCommitMessage: (root: string) => Promise<string>
-  onGitLog: (root: string, limit: number, skip: number) => Promise<GitCommit[]>
-  onGitBranches: (root: string) => Promise<string[]>
-  onGitCheckout: (root: string, branch: string) => Promise<boolean>
+  // Git: the whole hook is passed down rather than a dozen callbacks - the
+  // panel is the hook's only consumer besides the tree badges.
+  git: ReturnType<typeof useGitStatus>
+  gitPanelRoot: string | null
+  onSelectGitRoot: (root: string) => void
+  onOpenGit: (root: string) => void
 }
 
 // The sidebar's own content (the outer w-64/border chrome stays in App.tsx,
@@ -77,24 +54,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onFocusNode,
   onRunPython,
   onPreviewMarkdown,
-  gitFileStates,
-  gitRepos,
-  onGitStage,
-  onGitUnstage,
-  onGitDiscard,
-  onGitCommit,
-  onGitCommitAndPush,
-  onGitPush,
-  onGitPull,
-  onGitDiff,
-  onGitLastCommitMessage,
-  onGitLog,
-  onGitBranches,
-  onGitCheckout
+  git,
+  gitPanelRoot,
+  onSelectGitRoot,
+  onOpenGit
 }) => {
+  // Same repo-for-root lookup as the window header: the repo usually *is*
+  // the workspace root, but a repo nested one level under it also counts.
+  const repoForRoot = (rootPath: string): GitRepoStatus | undefined =>
+    git.repos.find((r) => r.root === rootPath || r.root.startsWith(rootPath + '/'))
+
   return (
     <>
-      {gitRepos.length > 0 && (
+      {git.repos.length > 0 && (
         <div className="px-2 pt-2 shrink-0">
           <div className="flex gap-0.5 bg-fleet-bg rounded-md p-0.5 text-xs">
             <button
@@ -122,46 +94,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       )}
-      {sidebarView === 'git' && gitRepos.length > 0 ? (
+      {sidebarView === 'git' && git.repos.length > 0 ? (
         <div className="flex-1 flex flex-col min-h-0 p-2 pt-3">
           <GitPanel
-            repos={gitRepos}
+            git={git}
             monacoTheme={monacoTheme}
-            onStage={onGitStage}
-            onUnstage={onGitUnstage}
-            onDiscard={onGitDiscard}
-            onCommit={onGitCommit}
-            onCommitAndPush={onGitCommitAndPush}
-            onPush={onGitPush}
-            onPull={onGitPull}
-            onDiff={onGitDiff}
-            onLastCommitMessage={onGitLastCommitMessage}
-            onLog={onGitLog}
-            onBranches={onGitBranches}
-            onCheckout={onGitCheckout}
+            selectedRoot={gitPanelRoot}
+            onSelectRoot={onSelectGitRoot}
           />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-3">
           {rootNodes.length > 0 ? (
             <div className="flex flex-col gap-2">
-              {rootNodes.map((rootNode) => (
-                <FileTree
-                  key={rootNode.path}
-                  node={rootNode}
-                  onSelect={onSelect}
-                  onContextMenu={onContextMenu}
-                  onCreateNew={onCreateNew}
-                  onMove={onMove}
-                  onFocusNode={onFocusNode}
-                  onRunPython={onRunPython}
-                  onPreviewMarkdown={onPreviewMarkdown}
-                  selectedPath={selectedPath}
-                  revealRequest={revealRequest}
-                  rowPadding={rowPadding}
-                  gitStatus={gitFileStates}
-                />
-              ))}
+              {rootNodes.map((rootNode) => {
+                const repo = repoForRoot(rootNode.path)
+                return (
+                  <FileTree
+                    key={rootNode.path}
+                    node={rootNode}
+                    onSelect={onSelect}
+                    onContextMenu={onContextMenu}
+                    onCreateNew={onCreateNew}
+                    onMove={onMove}
+                    onFocusNode={onFocusNode}
+                    onRunPython={onRunPython}
+                    onPreviewMarkdown={onPreviewMarkdown}
+                    selectedPath={selectedPath}
+                    revealRequest={revealRequest}
+                    rowPadding={rowPadding}
+                    gitStatus={git.fileStates}
+                    rootBranch={repo?.branch}
+                    onOpenGit={repo ? () => onOpenGit(repo.root) : undefined}
+                  />
+                )
+              })}
             </div>
           ) : recentExternalFiles.length === 0 ? (
             <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>

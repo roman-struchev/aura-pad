@@ -4,6 +4,7 @@ import type { OpenTabsState } from '../shared/openTabsState'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
 import type { GitCommit, GitRepoStatus } from '../shared/gitStatus'
+import type { GTask, GTaskInput, GTaskList } from '../shared/googleTasks'
 import type { LintMarker } from '../shared/lint'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
@@ -107,6 +108,33 @@ declare global {
         root: string,
         branch: string
       ) => Promise<{ success: boolean; output: string; statuses: GitRepoStatus[] }>
+      gtasksAccounts: () => Promise<string[]>
+      gtasksAddAccount: () => Promise<{ success: boolean; email?: string; error?: string }>
+      gtasksRemoveAccount: (email: string) => Promise<void>
+      gtasksLists: (
+        email: string
+      ) => Promise<{ success: true; data: GTaskList[] } | { success: false; error: string }>
+      gtasksTasks: (
+        email: string,
+        listId: string
+      ) => Promise<{ success: true; data: GTask[] } | { success: false; error: string }>
+      gtasksCreateTask: (
+        email: string,
+        listId: string,
+        input: GTaskInput
+      ) => Promise<{ success: true; data: GTask } | { success: false; error: string }>
+      gtasksUpdateTask: (
+        email: string,
+        listId: string,
+        taskId: string,
+        input: Partial<GTaskInput> & { status?: 'needsAction' | 'completed' }
+      ) => Promise<{ success: true; data: GTask } | { success: false; error: string }>
+      gtasksMoveTask: (
+        email: string,
+        listId: string,
+        taskId: string,
+        previousTaskId?: string
+      ) => Promise<{ success: true; data: GTask } | { success: false; error: string }>
       onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => () => void
 
       lintPython: (absPath: string) => Promise<LintMarker | null>

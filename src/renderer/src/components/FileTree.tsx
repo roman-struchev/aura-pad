@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { FilePlus, FolderPlus, Play, Eye } from 'lucide-react'
+import { FilePlus, FolderPlus, Play, Eye, GitBranch } from 'lucide-react'
 import clsx from 'clsx'
 import type { FileNode } from '../../../shared/fileNode'
 import type { GitFileState } from '../../../shared/gitStatus'
@@ -27,6 +27,10 @@ interface FileTreeProps {
   revealRequest?: RevealRequest | null
   rowPadding?: string
   gitStatus?: Record<string, GitFileState>
+  // Current branch of the repo this root belongs to; shown as a badge on the
+  // root row (the per-project git entry point). Only set on root instances.
+  rootBranch?: string
+  onOpenGit?: () => void
   level?: number
 }
 
@@ -54,6 +58,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
   revealRequest,
   rowPadding = 'py-1',
   gitStatus,
+  rootBranch,
+  onOpenGit,
   level = 0
 }) => {
   const [expanded, setExpanded] = useState<boolean>(level === 0)
@@ -172,6 +178,19 @@ export const FileTree: React.FC<FileTreeProps> = ({
           {getFileIcon(node.name, node.type, expanded)}
         </span>
         <span className="truncate flex-1">{node.name}</span>
+        {node.isRoot && rootBranch && (
+          <button
+            className="ml-1 shrink-0 flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-200 px-1 py-px rounded hover:bg-fleet-border max-w-[45%]"
+            title={`Open Git — ${rootBranch}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenGit?.()
+            }}
+          >
+            <GitBranch size={10} className="shrink-0" />
+            <span className="truncate">{rootBranch}</span>
+          </button>
+        )}
         {!isDirectory && (
           <div className="ml-1 shrink-0 flex items-center">
             {gitStatus?.[node.path] && (

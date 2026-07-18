@@ -9,6 +9,9 @@ import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
 import { BranchSelector } from './components/BranchSelector'
+import { GoogleTasksTab } from './components/GoogleTasksTab'
+import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
+import { makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
@@ -54,6 +57,7 @@ import {
   Crosshair,
   Eye,
   Code2,
+  SquareCheckBig,
   Settings as SettingsIcon,
   Mic,
   Loader2,
@@ -265,7 +269,7 @@ function App() {
       run: () => startTranslate()
     })
   }
-  const git = useGitStatus(settings.gitEnabled)
+  const git = useGitStatus(settings.extensions.git.enabled)
   useDiagnostics(tabs.selectedPath, tabs.isSaved, tree.rootNodes)
   const recentExternalFiles = useRecentExternalFiles()
 
@@ -318,7 +322,10 @@ function App() {
   const [showDictationConfig, setShowDictationConfig] = useState(false)
   const [showReadAloudConfig, setShowReadAloudConfig] = useState(false)
   const [showTranslateConfig, setShowTranslateConfig] = useState(false)
+  const [showGoogleTasksConfig, setShowGoogleTasksConfig] = useState(false)
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
+  // Which repo the git panel shows; set by the file tree's per-root badge.
+  const [gitPanelRoot, setGitPanelRoot] = useState<string | null>(null)
   // A new app version: either downloaded and ready to install (restart), or -
   // where this build can't self-update - available for manual download.
   const [updateNotification, setUpdateNotification] = useState<UpdateNotification | null>(null)
@@ -603,27 +610,40 @@ function App() {
     }
   }
 
+  // An extension tab's synthetic path never matches a workspace root, so for
+  // the breadcrumb/branch logic below its bound project (if any) stands in
+  // for the "selected file". Google Tasks has no root - it falls through to
+  // the no-selection defaults.
+  const activeExt = tabs.selectedPath ? parseExtensionPath(tabs.selectedPath) : null
+  const breadcrumbPath = activeExt ? activeExt.root : tabs.selectedPath
   // Show just the workspace the active file belongs to, not every open
   // workspace - the breadcrumb should say where you are, not list everything
   // that happens to be open.
-  const activeRoot = tabs.selectedPath
+  const activeRoot = breadcrumbPath
     ? tree.rootNodes.find(
-        (r) => tabs.selectedPath === r.path || tabs.selectedPath!.startsWith(r.path + '/')
+        (r) => breadcrumbPath === r.path || breadcrumbPath.startsWith(r.path + '/')
       )
     : null
   // A file open from outside every workspace (the "Recently Opened" list)
   // isn't part of any of them, so it should show neither - not fall back to
   // listing every open workspace, which was just as misleading.
-  const projectLabel = tabs.selectedPath
+  const projectLabel = breadcrumbPath
     ? (activeRoot?.name ?? 'AuraPad')
     : tree.rootNodes.length > 0
       ? tree.rootNodes.map((r) => r.name).join(', ')
       : 'AuraPad'
-  const headerRepo = tabs.selectedPath
+  const headerRepo = breadcrumbPath
     ? activeRoot &&
       git.repos.find((r) => activeRoot.path === r.root || r.root.startsWith(activeRoot.path + '/'))
     : git.repos[0]
-  const hasFileActions = !!tabs.selectedPath
+  const hasFileActions = !!tabs.selectedPath && !activeExt
+
+  // Entry point from the file tree's per-root branch badge: focus that repo
+  // in the git panel and reveal the panel.
+  const openGitPanel = (root: string): void => {
+    setGitPanelRoot(root)
+    setSidebarView('git')
+  }
   const voiceBusy = voice.status === 'downloading' || voice.status === 'transcribing'
 
   return (
@@ -805,6 +825,17 @@ function App() {
           >
             <FolderOpen size={16} />
           </ToolbarButton>
+          {settings.extensions.googleTasks.enabled && (
+            <ToolbarButton
+              onClick={() => tabs.openTab(makeExtensionPath('google-tasks'))}
+              active={activeExt?.id === 'google-tasks'}
+              title="Google Tasks"
+              tooltipAlign="right"
+              colorClassName="text-gray-400 hover:text-white"
+            >
+              <SquareCheckBig size={16} />
+            </ToolbarButton>
+          )}
           <div className="w-px h-4 bg-fleet-border mx-1" />
           <ToolbarButton
             onClick={toggleTerminal}
@@ -867,7 +898,15 @@ function App() {
           )}
 
           <div className="flex-1 overflow-hidden">
-            {tabs.selectedPath ? (
+            {activeExt ? (
+              activeExt.id === 'google-tasks' ? (
+                <GoogleTasksTab settings={settings} updateSetting={updateSetting} />
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                  Unknown extension: {activeExt.id}
+                </div>
+              )
+            ) : tabs.selectedPath ? (
               tabs.showMarkdownPreview && tabs.selectedPath.endsWith('.md') ? (
                 <MarkdownPreview content={tabs.fileContent} />
               ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
@@ -1006,20 +1045,10 @@ function App() {
             onFocusNode={tree.handleFocusNode}
             onRunPython={(node) => runPythonFile(node.path)}
             onPreviewMarkdown={previewMarkdown}
-            gitFileStates={git.fileStates}
-            gitRepos={git.repos}
-            onGitStage={git.stage}
-            onGitUnstage={git.unstage}
-            onGitDiscard={git.discard}
-            onGitCommit={git.commit}
-            onGitCommitAndPush={git.commitAndPush}
-            onGitPush={git.push}
-            onGitPull={git.pull}
-            onGitDiff={git.diff}
-            onGitLastCommitMessage={git.lastCommitMessage}
-            onGitLog={git.log}
-            onGitBranches={git.branches}
-            onGitCheckout={git.checkout}
+            git={git}
+            gitPanelRoot={gitPanelRoot}
+            onSelectGitRoot={setGitPanelRoot}
+            onOpenGit={openGitPanel}
           />
         </div>
       </div>
@@ -1198,7 +1227,17 @@ function App() {
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
           onConfigureTranslate={() => setShowTranslateConfig(true)}
+          onConfigureGoogleTasks={() => setShowGoogleTasksConfig(true)}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showGoogleTasksConfig && (
+        <GoogleTasksConfigModal
+          settings={settings}
+          updateSetting={updateSetting}
+          density={density}
+          onClose={() => setShowGoogleTasksConfig(false)}
         />
       )}
 

@@ -103,11 +103,28 @@ export const VOICE_LANGUAGES: VoiceLanguage[] = [
   'korean'
 ]
 
+// Per-extension settings, one namespace per built-in extension (see
+// renderer/lib/extensions.ts). Every extension owns an `enabled` flag plus
+// whatever configuration it needs; adding an extension means adding a block
+// here and a section in SettingsModal.
+export interface ExtensionSettings {
+  git: {
+    enabled: boolean
+  }
+  googleTasks: {
+    enabled: boolean
+    // OAuth "Desktop app" client from Google Cloud Console. For installed
+    // apps the secret is not actually confidential - it's still required by
+    // Google's token endpoint for desktop-type clients.
+    clientId: string
+    clientSecret: string
+  }
+}
+
 export interface AppSettings {
   theme: ThemeMode
   tabsEnabled: boolean
   uiMode: UiMode
-  gitEnabled: boolean
   sidebarPosition: SidebarPosition
   sidebarWidth: number
   lineNumbersEnabled: boolean
@@ -116,6 +133,7 @@ export interface AppSettings {
   readVoices: ReadVoices
   translatePair: TranslatePair
   translateModel: TranslateModel
+  extensions: ExtensionSettings
 }
 
 // Autosave and inline diagnostics used to be settings; they're now always on
@@ -124,7 +142,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   tabsEnabled: true,
   uiMode: 'compact',
-  gitEnabled: true,
   sidebarPosition: 'left',
   sidebarWidth: 256,
   lineNumbersEnabled: true,
@@ -134,5 +151,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   translatePair: 'en-ru',
   // Online engine by default: first translation works instantly, no ~850 MB
   // download gate. Only affects fresh installs - saved settings win.
-  translateModel: 'google-web'
+  translateModel: 'google-web',
+  extensions: {
+    git: { enabled: true },
+    // Off by default: it needs a one-time OAuth client setup before it can
+    // do anything, so it starts hidden until configured.
+    googleTasks: { enabled: false, clientId: '', clientSecret: '' }
+  }
 }
