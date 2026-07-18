@@ -50,6 +50,16 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
       </button>
       <button
         className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
+        onClick={() => run(() => window.api.revealInFinder(node.path))}
+      >
+        {window.electron.process.platform === 'darwin'
+          ? 'Open in Finder'
+          : window.electron.process.platform === 'win32'
+            ? 'Reveal in File Explorer'
+            : 'Reveal in Files'}
+      </button>
+      <button
+        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
         onClick={() => run(() => onCreateNew(node, 'file'))}
       >
         New File

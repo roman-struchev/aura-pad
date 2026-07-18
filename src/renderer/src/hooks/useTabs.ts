@@ -21,7 +21,7 @@ export type JumpTarget = { line: number; col?: number; matchLen?: number }
 // Manages the set of open files (tab-bar style): opening/closing/saving,
 // autosave, reacting to external changes on disk, and keeping tab paths in
 // sync when a file is renamed/moved/deleted elsewhere (the file tree).
-export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
+export function useTabs(tabsEnabled: boolean) {
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
 
@@ -377,15 +377,14 @@ export function useTabs(tabsEnabled: boolean, autosaveEnabled: boolean) {
     })
   }
 
-  // Autosave: after a short pause in typing, save automatically (unless disabled in Settings).
+  // Autosave: after a short pause in typing, save automatically.
   useEffect(() => {
-    if (!autosaveEnabled) return
     if (!activeTabPath || isSaved || externalChangeAvailable) return
     const timer = setTimeout(() => {
       handleSave()
     }, 1200)
     return () => clearTimeout(timer)
-  }, [fileContent, activeTabPath, isSaved, externalChangeAvailable, autosaveEnabled])
+  }, [fileContent, activeTabPath, isSaved, externalChangeAvailable])
 
   // React to a file changing on disk from outside the app (another editor,
   // git, another window of this app). If we have no local edits it's safe to

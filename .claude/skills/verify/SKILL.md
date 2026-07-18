@@ -12,7 +12,14 @@ npm run dev -- -- --remote-debugging-port=9222
 ```
 
 - Must run **unsandboxed** (Bash sandbox blocks `~/Library/Application Support/AuraPad/SingletonLock` and mach ports — the app dies instantly inside it).
-- Single-instance lock: a running AuraPad (dev or installed) blocks a new one. Check with `curl -s http://127.0.0.1:9222/json/version` and `ps`. Quit the old one gracefully via CDP `Browser.close` — never `kill` blindly: dev and prod share the same userData profile and the user's real session/tabs.
+- Single-instance lock: a running AuraPad (dev or installed) blocks a new one, and the loser exits **silently with code 0** right after the "DevTools listening" banner — looks like a mystery crash. The user often has the installed app open (`ps` for `/Applications/AuraPad.app`, not just the dev binary). Don't fight over the profile — run isolated:
+
+  ```bash
+  AURAPAD_USER_DATA_DIR=/tmp/claude/aura-verify-profile npm run dev -- -- --remote-debugging-port=9223 --inspect=9229
+  ```
+
+  (`AURAPAD_USER_DATA_DIR` is honored by `src/main/appIdentity.ts`; fresh profile = no workspaces/tabs, fine for UI tests. Delete the dir afterwards.) Only fall back to quitting the running instance via CDP `Browser.close` when the test *needs* the real profile — never `kill` blindly: it holds the user's real session/tabs.
+- `--inspect=9229` opens a Node inspector into the **main process**: `Runtime.evaluate` with `require("electron")` can stub IPC handlers (e.g. neuter `apply-update` so the Install button doesn't run the real `curl | bash` installer) and `webContents.send(...)` fakes main→renderer events (updater notifications etc.) for end-to-end UI testing.
 - Main-process changes need an app restart (`electron-vite dev` here runs without `--watch`); renderer changes hot-reload.
 
 ## Drive via CDP (no OS UI scripting on this machine)
@@ -24,6 +31,7 @@ Node 22 has a built-in WebSocket — no deps needed. Page target: `GET /json`, f
 - Dirty-tab indicator: `span` with classes `bg-blue-500` + `rounded-full` in the tab bar.
 - Tree vs tab nodes with the same filename: scope queries to the sidebar (element whose `innerText` starts with `"Files\nGit"`).
 - App dialogs are in-DOM (buttons `Cancel`/`Confirm`), not native — clickable via evaluate.
+- Terminal I/O checks: xterm renders to DOM here — read `.xterm-rows` innerText. `window.api.ptyWrite("term-0", "cat -v\r")` gives visible echo of control bytes (ESC shows as `^[`); real keystrokes go through `Input.dispatchKeyEvent` (modifiers: Shift=8) after focusing the xterm textarea.
 - Quit = browser-level socket (`/json/version` → `webSocketDebuggerUrl`) + `Browser.close`; goes through the app's own unsaved-changes flow.
 
 ## Gotchas

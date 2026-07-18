@@ -106,10 +106,8 @@ export const VOICE_LANGUAGES: VoiceLanguage[] = [
 export interface AppSettings {
   theme: ThemeMode
   tabsEnabled: boolean
-  autosaveEnabled: boolean
   uiMode: UiMode
   gitEnabled: boolean
-  diagnosticsEnabled: boolean
   sidebarPosition: SidebarPosition
   sidebarWidth: number
   lineNumbersEnabled: boolean
@@ -120,13 +118,13 @@ export interface AppSettings {
   translateModel: TranslateModel
 }
 
+// Autosave and inline diagnostics used to be settings; they're now always on
+// (stale keys in an existing settings.json are simply ignored on load).
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   tabsEnabled: true,
-  autosaveEnabled: true,
   uiMode: 'compact',
   gitEnabled: true,
-  diagnosticsEnabled: true,
   sidebarPosition: 'left',
   sidebarWidth: 256,
   lineNumbersEnabled: true,

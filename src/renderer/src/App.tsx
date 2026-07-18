@@ -46,7 +46,6 @@ import {
   FolderOpen,
   X,
   Terminal as TerminalIcon,
-  Save,
   Plus,
   Play,
   AlignLeft,
@@ -81,7 +80,7 @@ function App() {
   const density = DENSITY[settings.uiMode]
 
   const terminal = useTerminals()
-  const tabs = useTabs(settings.tabsEnabled, settings.autosaveEnabled)
+  const tabs = useTabs(settings.tabsEnabled)
   // useTabs (like most of this file's hooks) returns a fresh object literal
   // every render, so effects that only need to *call* something on it (not
   // react to one of its values changing) read it through this ref instead of
@@ -267,7 +266,7 @@ function App() {
     })
   }
   const git = useGitStatus(settings.gitEnabled)
-  useDiagnostics(settings.diagnosticsEnabled, tabs.selectedPath, tabs.isSaved, tree.rootNodes)
+  useDiagnostics(tabs.selectedPath, tabs.isSaved, tree.rootNodes)
   const recentExternalFiles = useRecentExternalFiles()
 
   // Record every open tab that falls outside all workspace roots, so it
@@ -323,7 +322,18 @@ function App() {
   // A new app version: either downloaded and ready to install (restart), or -
   // where this build can't self-update - available for manual download.
   const [updateNotification, setUpdateNotification] = useState<UpdateNotification | null>(null)
-  useEffect(() => window.api.onUpdateNotification(setUpdateNotification), [])
+  // True from clicking Install/Restart until the app restarts itself - or
+  // until main reports a failed attempt (a fresh notification with `failed`
+  // set), which must drop the spinner and show the retry state instead.
+  const [updateInstalling, setUpdateInstalling] = useState(false)
+  useEffect(
+    () =>
+      window.api.onUpdateNotification((update) => {
+        setUpdateNotification(update)
+        setUpdateInstalling(false)
+      }),
+    []
+  )
 
   const lastShiftTime = useRef<number>(0)
   // Tracks whether some other key fired between the last lone Shift press and
@@ -471,7 +481,14 @@ function App() {
           tabsRef.current.handleSave()
           break
         case 'close-tab':
-          tabsRef.current.handleCloseFile()
+          // Context-sensitive: with focus inside the terminal panel (xterm
+          // keeps it on a textarea within .xterm) Cmd+W closes the active
+          // terminal, not the file tab hidden underneath it.
+          if (document.activeElement?.closest('.xterm')) {
+            terminalRef.current.closeActiveTerminal()
+          } else {
+            tabsRef.current.handleCloseFile()
+          }
           break
         case 'reopen-tab':
           tabsRef.current.reopenClosedTab()
@@ -622,19 +639,6 @@ function App() {
           {hasFileActions && (
             <div className="flex items-center gap-1 no-drag-region shrink-0">
               <div className="w-px h-4 bg-fleet-border mx-1" />
-              {/* With autosave on, the file is only ever "dirty" for the ~1.2s
-                  debounce window, so a Save button is dead weight - Cmd+S in
-                  the menu still works for the impatient. */}
-              {!settings.autosaveEnabled && (
-                <ToolbarButton
-                  onClick={tabs.handleSave}
-                  disabled={tabs.isSaved}
-                  colorClassName={!tabs.isSaved ? 'text-blue-400' : 'text-gray-500'}
-                  title="Save (Cmd+S)"
-                >
-                  <Save size={16} />
-                </ToolbarButton>
-              )}
               {tabs.selectedPath?.endsWith('.py') && (
                 <ToolbarButton
                   onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
@@ -1024,30 +1028,51 @@ function App() {
       )}
       {updateNotification && (
         <div className="fixed bottom-4 right-4 z-[90] flex items-center gap-4 bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl px-4 py-3 text-xs text-fleet-text">
-          <span>
-            {updateNotification.mode === 'install'
-              ? `AuraPad ${updateNotification.version} is ready to install.`
-              : `AuraPad ${updateNotification.version} is available.`}
-          </span>
-          <button
-            className="underline text-blue-400 hover:text-blue-300"
-            onClick={() => {
-              window.api.applyUpdate()
-              setUpdateNotification(null)
-            }}
-          >
-            {updateNotification.mode === 'install'
-              ? 'Restart'
-              : updateNotification.mode === 'script'
-                ? 'Install'
-                : 'Download'}
-          </button>
-          <button
-            className="underline text-gray-500 hover:text-gray-400"
-            onClick={() => setUpdateNotification(null)}
-          >
-            Later
-          </button>
+          {updateInstalling ? (
+            <>
+              <Loader2 size={14} className="animate-spin text-blue-400 shrink-0" />
+              <span>
+                {updateNotification.mode === 'install'
+                  ? 'Restarting to install the update…'
+                  : `Installing AuraPad ${updateNotification.version}… the app will restart itself.`}
+              </span>
+            </>
+          ) : (
+            <>
+              <span>
+                {updateNotification.failed
+                  ? 'Update failed — check your connection and try again.'
+                  : updateNotification.mode === 'install'
+                    ? `AuraPad ${updateNotification.version} is ready to install.`
+                    : `AuraPad ${updateNotification.version} is available.`}
+              </span>
+              <button
+                className="underline text-blue-400 hover:text-blue-300"
+                onClick={() => {
+                  window.api.applyUpdate()
+                  // 'manual' just opens the releases page - nothing to wait
+                  // for. The self-applying modes keep the toast up as a
+                  // progress indicator until the app restarts itself.
+                  if (updateNotification.mode === 'manual') setUpdateNotification(null)
+                  else setUpdateInstalling(true)
+                }}
+              >
+                {updateNotification.failed
+                  ? 'Retry'
+                  : updateNotification.mode === 'install'
+                    ? 'Restart'
+                    : updateNotification.mode === 'script'
+                      ? 'Install'
+                      : 'Download'}
+              </button>
+              <button
+                className="underline text-gray-500 hover:text-gray-400"
+                onClick={() => setUpdateNotification(null)}
+              >
+                Later
+              </button>
+            </>
+          )}
         </div>
       )}
 

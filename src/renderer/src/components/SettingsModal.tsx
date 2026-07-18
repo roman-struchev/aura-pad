@@ -77,20 +77,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
-        <SettingToggle
-          label="Line Numbers"
-          description="Show line numbers in the editor"
-          checked={settings.lineNumbersEnabled}
-          onChange={(v) => updateSetting('lineNumbersEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
         <SettingSelect
           label="Sidebar"
           description="Which side the file tree/git panel sits on"
           value={settings.sidebarPosition}
           options={SIDEBAR_POSITIONS}
           onChange={(v) => updateSetting('sidebarPosition', v)}
+          labelClassName={density.settingsLabelClass}
+          descriptionClassName={density.settingsDescriptionClass}
+        />
+        <SettingToggle
+          label="Line Numbers"
+          description="Show line numbers in the editor"
+          checked={settings.lineNumbersEnabled}
+          onChange={(v) => updateSetting('lineNumbersEnabled', v)}
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />
@@ -103,26 +103,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           descriptionClassName={density.settingsDescriptionClass}
         />
         <SettingToggle
-          label="Autosave"
-          description="Save automatically a moment after you stop typing"
-          checked={settings.autosaveEnabled}
-          onChange={(v) => updateSetting('autosaveEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingToggle
           label="Git"
           description="Show git status badges and the Git panel for repositories"
           checked={settings.gitEnabled}
           onChange={(v) => updateSetting('gitEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingToggle
-          label="Diagnostics"
-          description="Inline error checking for TypeScript, JavaScript and Python"
-          checked={settings.diagnosticsEnabled}
-          onChange={(v) => updateSetting('diagnosticsEnabled', v)}
           labelClassName={density.settingsLabelClass}
           descriptionClassName={density.settingsDescriptionClass}
         />

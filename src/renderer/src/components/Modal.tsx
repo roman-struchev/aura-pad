@@ -41,7 +41,7 @@ export const Modal: React.FC<ModalProps> = ({ onClose, children, width = 'w-80',
       onClick={onClose}
     >
       <div
-        className={`bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl p-4 flex flex-col ${width} ${height || ''}`}
+        className={`bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl p-4 flex flex-col max-h-[85vh] overflow-y-auto ${width} ${height || ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

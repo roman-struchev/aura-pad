@@ -84,11 +84,31 @@ export function applyUpdate(): void {
     // Hand the reinstall to the install script: it quits this app, swaps
     // /Applications/AuraPad.app for the new version, and relaunches it.
     // Detached + unref'd so it keeps running after this process exits.
-    spawn('/bin/bash', ['-c', `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`], {
+    const child = spawn('/bin/bash', ['-c', `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`], {
       detached: true,
       stdio: 'ignore'
-    }).unref()
+    })
+    // On success the script kills this process before these can fire, so
+    // they only ever report an early failure (offline, GitHub down) - the
+    // renderer's "Installing…" spinner would otherwise spin forever over
+    // nothing happening.
+    child.once('error', notifyApplyFailed)
+    child.once('exit', (code) => {
+      if (code !== 0) notifyApplyFailed()
+    })
+    child.unref()
     return
   }
   shell.openExternal(RELEASES_URL)
+}
+
+// Bypasses notify()'s once-per-version dedupe on purpose: a retry that fails
+// again must re-announce, or the toast stays stuck on its spinner.
+function notifyApplyFailed(): void {
+  const update: UpdateNotification = {
+    version: lastNotifiedVersion ?? '',
+    mode: 'script',
+    failed: true
+  }
+  broadcast('update-notification', update)
 }

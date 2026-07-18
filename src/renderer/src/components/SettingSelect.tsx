@@ -1,5 +1,6 @@
 import React from 'react'
 import clsx from 'clsx'
+import { ChevronDown } from 'lucide-react'
 
 interface SettingSelectProps<T extends string> {
   label: string
@@ -30,17 +31,26 @@ export function SettingSelect<T extends string>({
         <span className={clsx(labelClassName, 'text-fleet-text')}>{label}</span>
         <span className={clsx(descriptionClassName, 'text-gray-500')}>{description}</span>
       </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text outline-none focus:border-blue-500 capitalize shrink-0"
-      >
-        {options.map((opt) => (
-          <option key={opt} value={opt} className="capitalize">
-            {optionLabels?.[opt] ?? opt}
-          </option>
-        ))}
-      </select>
+      {/* appearance-none + own chevron: the native macOS select draws its
+          arrow flush against the border, which looks cramped next to the
+          app's other controls. */}
+      <div className="relative shrink-0">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value as T)}
+          className="appearance-none bg-fleet-bg border border-fleet-border rounded pl-2 pr-7 py-1 text-xs text-fleet-text outline-none focus:border-blue-500 capitalize"
+        >
+          {options.map((opt) => (
+            <option key={opt} value={opt} className="capitalize">
+              {optionLabels?.[opt] ?? opt}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={12}
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+        />
+      </div>
     </label>
   )
 }

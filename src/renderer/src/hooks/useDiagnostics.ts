@@ -11,20 +11,10 @@ import type { FileNode } from '../../../shared/fileNode'
 // save actually completes - not on every plain tab switch back to a file
 // that's already been checked and hasn't changed since.
 export function useDiagnostics(
-  diagnosticsEnabled: boolean,
   selectedPath: string | null,
   isSaved: boolean,
   rootNodes: FileNode[]
 ): void {
-  useEffect(() => {
-    const diagnosticsOptions = {
-      noSyntaxValidation: !diagnosticsEnabled,
-      noSemanticValidation: !diagnosticsEnabled
-    }
-    monaco.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticsOptions)
-    monaco.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticsOptions)
-  }, [diagnosticsEnabled])
-
   // Marks the active path as needing a re-check whenever it becomes unsaved,
   // so the next time it's saved (isSaved flips back to true) the check effect
   // below knows this is a fresh save rather than just switching back to an
@@ -35,7 +25,7 @@ export function useDiagnostics(
   }, [selectedPath, isSaved])
 
   useEffect(() => {
-    if (!diagnosticsEnabled || !selectedPath || !isSaved) return
+    if (!selectedPath || !isSaved) return
     const path = selectedPath
     // Defaults to true (needs a check) the first time a path is ever seen.
     if (needsCheckRef.current.get(path) === false) return
@@ -83,5 +73,5 @@ export function useDiagnostics(
       }
     }
     run()
-  }, [diagnosticsEnabled, selectedPath, isSaved, rootNodes])
+  }, [selectedPath, isSaved, rootNodes])
 }

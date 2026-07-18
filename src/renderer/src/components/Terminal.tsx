@@ -40,6 +40,20 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
+    // Shift+Enter sends ESC+CR - what iTerm2/VSCode send after Claude CLI's
+    // /terminal-setup - so TUIs (Claude Code, aider) insert a newline instead
+    // of submitting. xterm.js would otherwise send a plain CR, identical to
+    // Enter. Plain shells treat ESC+CR as accept-line, no worse than Enter.
+    // Blocks keypress/keyup for the same chord too, or xterm would still
+    // emit its own CR alongside ours.
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.key === 'Enter' && ev.shiftKey && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+        if (ev.type === 'keydown') window.api.ptyWrite(termId, '\x1b\r')
+        return false
+      }
+      return true
+    })
+
     term.onData((data) => {
       window.api.ptyWrite(termId, data)
     })

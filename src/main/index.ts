@@ -333,6 +333,12 @@ ipcMain.handle('remove-recent-external-file', (_, filePath) => removeRecentExter
 
 ipcMain.handle('list-path-matches', (_, rawInput) => listPathMatches(rawInput))
 
+// Tree context menu's "Open in Finder": reveals the file/folder selected in
+// its parent window (Finder / Explorer / the Linux file manager).
+ipcMain.on('reveal-in-finder', (_, targetPath: string) => {
+  shell.showItemInFolder(targetPath)
+})
+
 ipcMain.handle('read-file', async (_, filePath) => {
   return readFileContent(filePath)
 })
@@ -440,12 +446,10 @@ ipcMain.handle('git-pull', async (_, root: string) => {
 
 // Diagnostics IPC Handlers
 ipcMain.handle('lint-python', async (_, absPath: string) => {
-  if (!loadSettings().diagnosticsEnabled) return null
   return lintPython(absPath)
 })
 
 ipcMain.handle('lint-eslint', async (_, absPath: string, workspaceRoot: string) => {
-  if (!loadSettings().diagnosticsEnabled) return []
   return lintEslint(absPath, workspaceRoot)
 })
 

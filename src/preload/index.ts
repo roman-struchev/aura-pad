@@ -28,6 +28,7 @@ const api = {
   saveFile: (path: string, content: string) => ipcRenderer.invoke('save-file', path, content),
   renamePath: (oldPath: string, newName: string) =>
     ipcRenderer.invoke('rename-path', oldPath, newName),
+  revealInFinder: (path: string) => ipcRenderer.send('reveal-in-finder', path),
   createPath: (parentPath: string, name: string, type: 'file' | 'directory') =>
     ipcRenderer.invoke('create-path', parentPath, name, type),
   movePath: (sourcePath: string, targetDirPath: string) =>

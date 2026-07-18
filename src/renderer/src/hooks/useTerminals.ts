@@ -71,6 +71,15 @@ export function useTerminals() {
     removeTerminal(termId)
   }
 
+  // Cmd+W while focus is inside the terminal panel: close the active
+  // terminal, exactly like clicking its ✕ (see the menu-action dispatch in
+  // App.tsx, which routes close-tab here instead of to the file tabs).
+  const closeActiveTerminal = (): void => {
+    if (!activeTermId) return
+    window.api.destroyPty(activeTermId)
+    removeTerminal(activeTermId)
+  }
+
   // The shell process behind this tab exited on its own (typed `exit`, `^D`,
   // crashed, ...) - there's nothing left to destroy, just drop the now-dead
   // tab so it doesn't linger accepting input that goes nowhere.
@@ -88,6 +97,7 @@ export function useTerminals() {
     setActiveTermId,
     openNewTerminal,
     closeTerminal,
+    closeActiveTerminal,
     handleTerminalExit
   }
 }

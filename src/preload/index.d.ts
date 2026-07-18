@@ -30,6 +30,7 @@ declare global {
         oldPath: string,
         newName: string
       ) => Promise<{ success: boolean; newPath?: string; trees?: FileNode[]; error?: string }>
+      revealInFinder: (path: string) => void
       createPath: (
         parentPath: string,
         name: string,
