@@ -32,6 +32,8 @@ Node 22 has a built-in WebSocket — no deps needed. Page target: `GET /json`, f
 - Tree vs tab nodes with the same filename: scope queries to the sidebar (element whose `innerText` starts with `"Files\nGit"`).
 - App dialogs are in-DOM (buttons `Cancel`/`Confirm`), not native — clickable via evaluate.
 - Terminal I/O checks: xterm renders to DOM here — read `.xterm-rows` innerText. `window.api.ptyWrite("term-0", "cat -v\r")` gives visible echo of control bytes (ESC shows as `^[`); real keystrokes go through `Input.dispatchKeyEvent` (modifiers: Shift=8) after focusing the xterm textarea.
+- **Occluded-window rendering trap**: when the test window sits behind other windows, Chromium throttles rAF and Monaco stops repainting — `.view-lines` innerText goes stale even though the model/state updated fine. Never fail a test on view DOM alone: check ground truth via the module cache (`import("http://localhost:5173/@fs/<repo>/node_modules/.vite/deps/monaco-editor.js?v=<hash>")` — find the exact URL in `performance.getEntriesByType("resource")` — then `editor.getEditors()[0].getValue()`), or raise the window first (main inspector: `win.showInactive(); win.moveTop()`).
+- React state isn't reachable from the console, but state changes leak observable side effects — e.g. any tabs-state change rewrites `openTabs.json` (check its mtime) — useful to tell "handler didn't run" from "view didn't repaint".
 - Quit = browser-level socket (`/json/version` → `webSocketDebuggerUrl`) + `Browser.close`; goes through the app's own unsaved-changes flow.
 
 ## Gotchas

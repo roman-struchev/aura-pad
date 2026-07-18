@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron'
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import type { Ignore } from 'ignore'
@@ -14,11 +15,12 @@ import { loadSettings } from './settings'
 // - When the watcher reports a 'change' for that same path shortly after,
 //   we treat it as self-triggered and stay quiet (the renderer already has
 //   that content, since it's the one that wrote it).
-// - If the event arrives after the grace window - plausible with recursive
-//   fs.watch/FSEvents, which can batch or delay notifications well past a
-//   fixed cutoff - we fall back to comparing on-disk content against what we
-//   wrote. A match means it's still our own (late) write, not a real
-//   external change, so a slow filesystem can't produce a false positive.
+// - Any later event only counts as external if the file's content actually
+//   differs from what we last wrote (compared by hash). Sync daemons - iCloud's
+//   bird especially - rewrite metadata/xattrs *minutes* after a save, and
+//   fs.watch surfaces those as plain 'change' events; a time window alone,
+//   however generous, kept producing "edited outside the app" banners over
+//   files nobody touched.
 // - A structural change ('rename': create/delete/move) always triggers a
 //   debounced tree rebuild, since other files may be affected.
 const activeWatchers = new Map<string, fs.FSWatcher>()
@@ -27,20 +29,41 @@ const activeWatchers = new Map<string, fs.FSWatcher>()
 // since re-reading and re-parsing .gitignore on every single fs.watch
 // callback would defeat the point of filtering noise out early.
 const rootIgnores = new Map<string, Ignore>()
-const recentSelfWrites = new Map<string, { time: number; content: string }>()
+const recentSelfWrites = new Map<string, { time: number }>()
+// Hash of the last content we ourselves wrote to each path. Unlike
+// recentSelfWrites this never times out (a hash is cheap to keep, unlike the
+// full content the old implementation stored) - it's the ground truth for
+// "is this event a real external change or just our own write echoing back",
+// no matter how late the event arrives. Insertion-ordered with a size cap so
+// a very long session can't grow it unboundedly.
+const lastSelfWriteHashes = new Map<string, string>()
+const LAST_HASH_LIMIT = 1000
 const selfWriteCleanupTimers = new Map<string, NodeJS.Timeout>()
 const structureDebounceTimers = new Map<string, NodeJS.Timeout>()
 const SELF_WRITE_GRACE_MS = 1500
-// Upper bound on how long a self-write record is kept, to catch a `change`
-// event that fs.watch/FSEvents delivers late (batched past the grace window
-// above) - see the long comment at the top of this file. Also bounds
-// recentSelfWrites' memory: without this, an entry that never gets a
-// matching disk event again (e.g. an editor whose next external change never
-// comes) would otherwise sit in the map - full file content included -
-// forever.
+// recentSelfWrites only powers the read-free fast path within the grace
+// window; entries can be dropped shortly after.
 const SELF_WRITE_MAX_AGE_MS = 10_000
 const STRUCTURE_DEBOUNCE_MS = 300
 const GIT_STATUS_DEBOUNCE_MS = 500
+
+const contentHash = (content: string): string =>
+  crypto.createHash('sha256').update(content).digest('hex')
+
+// Both sides of the suppression check must agree on one key form. Saves come
+// in with the renderer's tab path - possibly through a symlink, possibly in a
+// different Unicode normalization than what FSEvents reports (macOS mixes
+// NFC/NFD freely, iCloud folders especially) - while events come in as
+// rootPath + event filename. Resolve symlinks and pin one normalization.
+function selfWriteKey(p: string): string {
+  let key = p
+  try {
+    key = fs.realpathSync(p)
+  } catch {
+    // New or already-deleted file - key by the given path.
+  }
+  return key.normalize('NFC')
+}
 
 let gitStatusDebounceTimer: NodeJS.Timeout | null = null
 
@@ -65,21 +88,29 @@ export function broadcast(channel: string, ...args: unknown[]): void {
 }
 
 export function recordSelfWrite(filePath: string, content: string): void {
-  recentSelfWrites.set(filePath, { time: Date.now(), content })
-  clearTimeout(selfWriteCleanupTimers.get(filePath))
+  const key = selfWriteKey(filePath)
+  recentSelfWrites.set(key, { time: Date.now() })
+  // Delete-then-set keeps the map insertion-ordered by most recent save, so
+  // the size cap below evicts the longest-untouched path first.
+  lastSelfWriteHashes.delete(key)
+  lastSelfWriteHashes.set(key, contentHash(content))
+  if (lastSelfWriteHashes.size > LAST_HASH_LIMIT) {
+    lastSelfWriteHashes.delete(lastSelfWriteHashes.keys().next().value!)
+  }
+  clearTimeout(selfWriteCleanupTimers.get(key))
   selfWriteCleanupTimers.set(
-    filePath,
+    key,
     setTimeout(() => {
-      selfWriteCleanupTimers.delete(filePath)
-      recentSelfWrites.delete(filePath)
+      selfWriteCleanupTimers.delete(key)
+      recentSelfWrites.delete(key)
     }, SELF_WRITE_MAX_AGE_MS)
   )
 }
 
-function forgetSelfWrite(filePath: string): void {
-  clearTimeout(selfWriteCleanupTimers.get(filePath))
-  selfWriteCleanupTimers.delete(filePath)
-  recentSelfWrites.delete(filePath)
+function forgetSelfWrite(key: string): void {
+  clearTimeout(selfWriteCleanupTimers.get(key))
+  selfWriteCleanupTimers.delete(key)
+  recentSelfWrites.delete(key)
 }
 
 // True if any path segment (not just the final component) is one of the
@@ -108,22 +139,34 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   scheduleGitStatusRefresh()
 
   const fullPath = path.join(rootPath, filename)
+  const key = selfWriteKey(fullPath)
+
+  // True when the file's current content is still exactly what we last wrote
+  // to it - i.e. the event is our own write echoing back, or a metadata-only
+  // touch (iCloud xattrs, mtime bumps), not a real external edit.
+  const matchesLastSelfWrite = (): boolean => {
+    const lastHash = lastSelfWriteHashes.get(key)
+    if (lastHash === undefined) return false
+    try {
+      return contentHash(fs.readFileSync(fullPath, 'utf-8')) === lastHash
+    } catch {
+      // Unreadable (deleted/moved/permissions) - treat as a real change and
+      // let the handlers below sort it out.
+      return false
+    }
+  }
 
   if (eventType === 'change') {
-    const selfWrite = recentSelfWrites.get(fullPath)
-    if (selfWrite) {
-      if (Date.now() - selfWrite.time < SELF_WRITE_GRACE_MS) return
-      try {
-        if (fs.readFileSync(fullPath, 'utf-8') === selfWrite.content) {
-          forgetSelfWrite(fullPath)
-          return
-        }
-      } catch {
-        // Unreadable (deleted/permissions/binary decode) - fall through and
-        // let the rename-watcher or a later change event sort it out.
-      }
-      forgetSelfWrite(fullPath)
+    const recent = recentSelfWrites.get(key)
+    if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return
+    if (matchesLastSelfWrite()) {
+      forgetSelfWrite(key)
+      return
     }
+    forgetSelfWrite(key)
+    // A real external change makes our last-write hash stale - drop it, so a
+    // later revert back to that exact content isn't mistaken for our own.
+    lastSelfWriteHashes.delete(key)
     broadcast('file-changed-externally', fullPath)
     return
   }
@@ -132,19 +175,12 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   // differ. Except when it's our own save: writeFileContent atomically
   // replaces the target via temp-file + rename, which surfaces here as a
   // 'rename' on the saved path, and rebuilding the whole tree on every
-  // (auto)save would be pure noise. Same grace-window/content fallback as
-  // the 'change' suppression above; the record is deliberately not forgotten
-  // here, since a 'change' event for the same write may still follow.
-  const selfWrite = recentSelfWrites.get(fullPath)
-  if (selfWrite) {
-    if (Date.now() - selfWrite.time < SELF_WRITE_GRACE_MS) return
-    try {
-      if (fs.readFileSync(fullPath, 'utf-8') === selfWrite.content) return
-    } catch {
-      // Unreadable means the entry really was deleted/moved - fall through
-      // to the structural rebuild.
-    }
-  }
+  // (auto)save would be pure noise. Same suppression as the 'change' branch;
+  // the record is deliberately not forgotten here, since a 'change' event
+  // for the same write may still follow.
+  const recent = recentSelfWrites.get(key)
+  if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return
+  if (matchesLastSelfWrite()) return
   clearTimeout(structureDebounceTimers.get(rootPath))
   structureDebounceTimers.set(
     rootPath,
