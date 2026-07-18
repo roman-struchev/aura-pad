@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
+import type {
+  GitCommit,
+  GitFileEntry,
+  GitFileState,
+  GitRepoStatus
+} from '../../../shared/gitStatus'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 
 // Owns git status for all open workspace roots: fetches it, subscribes to the
@@ -103,6 +108,24 @@ export function useGitStatus(enabled: boolean) {
   const diff = (root: string, relPath: string): Promise<{ original: string; modified: string }> =>
     window.api.getGitDiff(root, relPath)
 
+  const log = (root: string, limit: number, skip: number): Promise<GitCommit[]> =>
+    window.api.gitLog(root, limit, skip)
+
+  const branches = (root: string): Promise<string[]> => window.api.gitBranches(root)
+
+  // Success output ("Switched to branch 'x'") is not worth a dialog - the
+  // branch name in the panel header already reflects it. Refusals (dirty
+  // working tree, etc.) do get surfaced.
+  const checkout = async (root: string, branch: string): Promise<boolean> => {
+    const result = await window.api.gitCheckout(root, branch)
+    setRawRepos(result.statuses)
+    if (!result.success) {
+      await alertDialog(result.output || 'Checkout failed.')
+      return false
+    }
+    return true
+  }
+
   return {
     repos,
     fileStates,
@@ -115,6 +138,9 @@ export function useGitStatus(enabled: boolean) {
     lastCommitMessage,
     push,
     pull,
-    diff
+    diff,
+    log,
+    branches,
+    checkout
   }
 }

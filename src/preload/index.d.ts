@@ -3,7 +3,7 @@ import type { AppSettings } from '../shared/settings'
 import type { OpenTabsState } from '../shared/openTabsState'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
-import type { GitRepoStatus } from '../shared/gitStatus'
+import type { GitCommit, GitRepoStatus } from '../shared/gitStatus'
 import type { LintMarker } from '../shared/lint'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 import type { PathListingResult } from '../shared/pathMatch'
@@ -100,6 +100,12 @@ declare global {
       gitPush: (root: string) => Promise<{ success: boolean; output: string }>
       gitPull: (
         root: string
+      ) => Promise<{ success: boolean; output: string; statuses: GitRepoStatus[] }>
+      gitLog: (root: string, limit: number, skip: number) => Promise<GitCommit[]>
+      gitBranches: (root: string) => Promise<string[]>
+      gitCheckout: (
+        root: string,
+        branch: string
       ) => Promise<{ success: boolean; output: string; statuses: GitRepoStatus[] }>
       onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => () => void
 

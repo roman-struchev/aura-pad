@@ -1,7 +1,7 @@
 import { execFile } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import type { GitFileEntry, GitFileState, GitRepoStatus } from '../shared/gitStatus'
+import type { GitCommit, GitFileEntry, GitFileState, GitRepoStatus } from '../shared/gitStatus'
 
 export function isGitRepo(root: string): boolean {
   return fs.existsSync(path.join(root, '.git'))
@@ -301,4 +301,56 @@ export function push(root: string): Promise<{ success: boolean; output: string }
 
 export function pull(root: string): Promise<{ success: boolean; output: string }> {
   return runGitCombined(root, ['pull'])
+}
+
+// `-z` NUL-terminates each commit record; fields within a record are split on
+// \x01 (subjects can contain any printable character, so a printable separator
+// isn't safe - same reasoning as the -z parsing in getRepoStatus). Errors
+// (e.g. a repo with no commits yet) yield an empty list, like getRepoStatus.
+export async function getLog(root: string, limit: number, skip: number): Promise<GitCommit[]> {
+  try {
+    const stdout = await runGit(root, [
+      'log',
+      `--max-count=${limit}`,
+      `--skip=${skip}`,
+      '-z',
+      '--pretty=format:%H%x01%h%x01%an%x01%at%x01%s%x01%D'
+    ])
+    const commits: GitCommit[] = []
+    for (const record of stdout.split('\0')) {
+      const fields = record.split('\x01')
+      if (fields.length !== 6) continue
+      const [hash, shortHash, author, dateStr, subject, refs] = fields
+      commits.push({ hash, shortHash, author, date: parseInt(dateStr, 10), subject, refs })
+    }
+    return commits
+  } catch {
+    return []
+  }
+}
+
+// Local branches only. `for-each-ref` rather than `branch` so a detached HEAD
+// doesn't inject its synthetic "(HEAD detached at ...)" entry into the list.
+export async function getBranches(root: string): Promise<string[]> {
+  try {
+    const stdout = await runGit(root, [
+      'for-each-ref',
+      'refs/heads',
+      '--format=%(refname:short)',
+      '--sort=-committerdate'
+    ])
+    return stdout.split('\n').filter((b) => b.length > 0)
+  } catch {
+    return []
+  }
+}
+
+// Checkout output matters to the caller either way: git reports refusals
+// ("Your local changes ... would be overwritten") on stderr with a non-zero
+// exit, which runGitCombined folds into one message.
+export function checkoutBranch(
+  root: string,
+  branch: string
+): Promise<{ success: boolean; output: string }> {
+  return runGitCombined(root, ['checkout', branch])
 }

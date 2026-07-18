@@ -40,7 +40,10 @@ import {
   commit as gitCommit,
   lastCommitMessage,
   push as gitPush,
-  pull as gitPull
+  pull as gitPull,
+  getLog,
+  getBranches,
+  checkoutBranch
 } from './git'
 import { lintPython, lintEslint } from './lint'
 import { googleWebTranslate } from './translate'
@@ -443,6 +446,19 @@ ipcMain.handle('git-push', async (_, root: string) => {
 
 ipcMain.handle('git-pull', async (_, root: string) => {
   const result = await gitPull(root)
+  return { ...result, statuses: await refreshedStatuses() }
+})
+
+ipcMain.handle('git-log', async (_, root: string, limit: number, skip: number) => {
+  return getLog(root, limit, skip)
+})
+
+ipcMain.handle('git-branches', async (_, root: string) => {
+  return getBranches(root)
+})
+
+ipcMain.handle('git-checkout', async (_, root: string, branch: string) => {
+  const result = await checkoutBranch(root, branch)
   return { ...result, statuses: await refreshedStatuses() }
 })
 

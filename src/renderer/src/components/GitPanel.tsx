@@ -1,8 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { DiffEditor } from '@monaco-editor/react'
-import { GitBranch, ArrowUpFromLine, ArrowDownToLine, RotateCcw } from 'lucide-react'
+import { ArrowUpFromLine, ArrowDownToLine, RotateCcw } from 'lucide-react'
 import clsx from 'clsx'
-import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
+import type {
+  GitCommit,
+  GitFileEntry,
+  GitFileState,
+  GitRepoStatus
+} from '../../../shared/gitStatus'
+import { BranchSelector } from './BranchSelector'
 import { Modal } from './Modal'
 import { getLanguage } from '../lib/language'
 
@@ -23,6 +29,9 @@ interface GitPanelProps {
   onPull: (root: string) => void
   onDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
   onLastCommitMessage: (root: string) => Promise<string>
+  onLog: (root: string, limit: number, skip: number) => Promise<GitCommit[]>
+  onBranches: (root: string) => Promise<string[]>
+  onCheckout: (root: string, branch: string) => Promise<boolean>
 }
 
 // Status colors shared by both the letter and the filename, matching the
@@ -209,6 +218,115 @@ const FileRow: React.FC<FileRowProps> = ({
   )
 }
 
+function relativeTime(unixSeconds: number): string {
+  const diff = Math.floor(Date.now() / 1000 - unixSeconds)
+  if (diff < 60) return 'now'
+  const minutes = Math.floor(diff / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d`
+  return new Date(unixSeconds * 1000).toLocaleDateString()
+}
+
+const LOG_PAGE_SIZE = 50
+
+interface HistoryListProps {
+  repo: GitRepoStatus
+  onLog: (root: string, limit: number, skip: number) => Promise<GitCommit[]>
+}
+
+// Plain linear `git log` of HEAD - deliberately not a log viewer (no graph,
+// no filters, no per-commit diff). Click copies the full hash.
+const HistoryList: React.FC<HistoryListProps> = ({ repo, onLog }) => {
+  const [commits, setCommits] = useState<GitCommit[] | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [copiedHash, setCopiedHash] = useState<string | null>(null)
+
+  // `repo` is a fresh object on every status push (commit, pull, checkout,
+  // watcher events alike), so any change that could move HEAD lands here.
+  // Refetching the first page on each push is cheap; the previous list stays
+  // on screen until the new one arrives, so there's no flicker. Pagination
+  // depth intentionally resets - stale deep pages are worse than a rewind.
+  useEffect(() => {
+    let cancelled = false
+    onLog(repo.root, LOG_PAGE_SIZE, 0).then((page) => {
+      if (cancelled) return
+      setCommits(page)
+      setHasMore(page.length === LOG_PAGE_SIZE)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [repo])
+
+  const loadMore = async (): Promise<void> => {
+    if (!commits || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const page = await onLog(repo.root, LOG_PAGE_SIZE, commits.length)
+      setCommits([...commits, ...page])
+      setHasMore(page.length === LOG_PAGE_SIZE)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const copyHash = (commit: GitCommit): void => {
+    navigator.clipboard.writeText(commit.hash)
+    setCopiedHash(commit.hash)
+    setTimeout(() => setCopiedHash((prev) => (prev === commit.hash ? null : prev)), 1500)
+  }
+
+  if (commits === null) return null
+
+  if (commits.length === 0) {
+    return <div className="text-xs text-gray-500 italic px-1.5">No commits yet.</div>
+  }
+
+  return (
+    <div>
+      {commits.map((commit, index) => (
+        <div
+          key={commit.hash}
+          className="px-1.5 py-1 rounded hover:bg-fleet-active cursor-pointer text-xs"
+          title={`${commit.hash}\n${commit.author}\n${new Date(commit.date * 1000).toLocaleString()}${commit.refs ? `\n${commit.refs}` : ''}\n\nClick to copy hash`}
+          onClick={() => copyHash(commit)}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="flex-1 min-w-0 truncate text-fleet-text">{commit.subject}</span>
+            <span
+              className={clsx(
+                'text-[10px] font-mono shrink-0',
+                // The first `ahead` commits of the log are exactly the ones
+                // the upstream doesn't have yet.
+                index < repo.ahead ? 'text-green-500' : 'text-gray-500'
+              )}
+            >
+              {copiedHash === commit.hash ? 'copied' : commit.shortHash}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <span className="truncate">{commit.author}</span>
+            <span className="shrink-0 ml-auto">{relativeTime(commit.date)}</span>
+          </div>
+        </div>
+      ))}
+      {hasMore && (
+        <button
+          className="w-full mt-1 py-1 text-[10px] text-gray-400 hover:text-gray-200 hover:bg-fleet-active rounded disabled:opacity-40"
+          disabled={loadingMore}
+          onClick={loadMore}
+        >
+          {loadingMore ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 // JetBrains-style commit tool window: one "Changes" list with checkboxes
 // (checked = will be committed), an "Unversioned Files" group, a commit box
 // pinned to the bottom, and ahead/behind on the branch row. Staging is an
@@ -226,7 +344,10 @@ export const GitPanel: React.FC<GitPanelProps> = ({
   onPush,
   onPull,
   onDiff,
-  onLastCommitMessage
+  onLastCommitMessage,
+  onLog,
+  onBranches,
+  onCheckout
 }) => {
   const [messages, setMessages] = useState<Record<string, string>>({})
   const [amendByRoot, setAmendByRoot] = useState<Record<string, boolean>>({})
@@ -237,6 +358,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
     modified: string
   } | null>(null)
   const [selectedRoot, setSelectedRoot] = useState<string | null>(null)
+  const [view, setView] = useState<'commit' | 'history'>('commit')
 
   const openDiff = async (root: string, relPath: string): Promise<void> => {
     const { original, modified } = await onDiff(root, relPath)
@@ -347,8 +469,14 @@ export const GitPanel: React.FC<GitPanelProps> = ({
       )}
 
       <div className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0 mb-2">
-        <GitBranch size={12} />
-        <span className="truncate">{repo.branch}</span>
+        <BranchSelector
+          key={repo.root}
+          root={repo.root}
+          branch={repo.branch}
+          onBranches={onBranches}
+          onCheckout={onCheckout}
+          triggerClassName="-mx-1"
+        />
         {!!repo.ahead && <span className="text-[10px] text-gray-500">↑{repo.ahead}</span>}
         {!!repo.behind && <span className="text-[10px] text-gray-500">↓{repo.behind}</span>}
         <div className="flex-1" />
@@ -368,87 +496,112 @@ export const GitPanel: React.FC<GitPanelProps> = ({
         </button>
       </div>
 
+      <div className="flex gap-0.5 bg-fleet-bg rounded-md p-0.5 text-xs mb-2 shrink-0">
+        {(['commit', 'history'] as const).map((v) => (
+          <button
+            key={v}
+            className={clsx(
+              'flex-1 py-1 rounded transition-colors capitalize',
+              view === v
+                ? 'bg-fleet-active text-fleet-textHover'
+                : 'text-gray-400 hover:text-gray-200'
+            )}
+            onClick={() => setView(v)}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto min-h-0">
-        {changes.length > 0 && (
-          <div className="mb-2">
-            <div className="flex items-center gap-1.5 px-1.5 mb-1">
-              <GroupCheckbox
-                checked={allChangesChecked}
-                indeterminate={!allChangesChecked && someChangesChecked}
-                onChange={toggleChangesGroup}
-              />
-              <span className="text-[10px] uppercase tracking-wider text-gray-500">
-                Changes ({changes.length})
-              </span>
-            </div>
-            {changes.map((entry) => (
-              <FileRow
-                key={entry.relPath}
-                entry={entry}
-                showCheckbox
-                onToggle={() => toggleEntry(entry)}
-                onClick={() => openDiff(repo.root, entry.relPath)}
-                onDiscard={() => onDiscard(repo.root, entry.discardEntry)}
-                discardTitle="Discard changes"
-              />
-            ))}
-          </div>
-        )}
+        {view === 'history' ? (
+          <HistoryList key={repo.root} repo={repo} onLog={onLog} />
+        ) : (
+          <>
+            {changes.length > 0 && (
+              <div className="mb-2">
+                <div className="flex items-center gap-1.5 px-1.5 mb-1">
+                  <GroupCheckbox
+                    checked={allChangesChecked}
+                    indeterminate={!allChangesChecked && someChangesChecked}
+                    onChange={toggleChangesGroup}
+                  />
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500">
+                    Changes ({changes.length})
+                  </span>
+                </div>
+                {changes.map((entry) => (
+                  <FileRow
+                    key={entry.relPath}
+                    entry={entry}
+                    showCheckbox
+                    onToggle={() => toggleEntry(entry)}
+                    onClick={() => openDiff(repo.root, entry.relPath)}
+                    onDiscard={() => onDiscard(repo.root, entry.discardEntry)}
+                    discardTitle="Discard changes"
+                  />
+                ))}
+              </div>
+            )}
 
-        {unversioned.length > 0 && (
-          <div className="mb-2">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-1.5">
-              Unversioned Files ({unversioned.length})
-            </div>
-            {unversioned.map((entry) => (
-              <FileRow
-                key={entry.relPath}
-                entry={entry}
-                showCheckbox
-                onToggle={() => toggleEntry(entry)}
-                onClick={() => openDiff(repo.root, entry.relPath)}
-                onDiscard={() => onDiscard(repo.root, entry.discardEntry)}
-                discardTitle="Delete"
-              />
-            ))}
-          </div>
-        )}
+            {unversioned.length > 0 && (
+              <div className="mb-2">
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-1.5">
+                  Unversioned Files ({unversioned.length})
+                </div>
+                {unversioned.map((entry) => (
+                  <FileRow
+                    key={entry.relPath}
+                    entry={entry}
+                    showCheckbox
+                    onToggle={() => toggleEntry(entry)}
+                    onClick={() => openDiff(repo.root, entry.relPath)}
+                    onDiscard={() => onDiscard(repo.root, entry.discardEntry)}
+                    discardTitle="Delete"
+                  />
+                ))}
+              </div>
+            )}
 
-        {changes.length === 0 && unversioned.length === 0 && (
-          <div className="text-xs text-gray-500 italic px-1.5">No changes.</div>
+            {changes.length === 0 && unversioned.length === 0 && (
+              <div className="text-xs text-gray-500 italic px-1.5">No changes.</div>
+            )}
+          </>
         )}
       </div>
 
-      <div className="shrink-0 border-t border-fleet-border pt-2 mt-2 flex flex-col gap-1.5">
-        <textarea
-          className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-xs text-fleet-text outline-none focus:border-blue-500 resize-none"
-          rows={3}
-          placeholder="Commit message"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleMessageKeyDown}
-        />
-        <label className="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer select-none">
-          <input type="checkbox" checked={amend} onChange={toggleAmend} />
-          Amend
-        </label>
-        <div className="flex items-center gap-1.5">
-          <button
-            className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white"
-            disabled={!canCommit}
-            onClick={() => runCommit(false)}
-          >
-            Commit
-          </button>
-          <button
-            className="px-3 py-1.5 text-xs rounded border border-fleet-border hover:bg-fleet-active disabled:opacity-40 disabled:cursor-not-allowed text-fleet-text"
-            disabled={!canCommit}
-            onClick={() => runCommit(true)}
-          >
-            Commit & Push
-          </button>
+      {view === 'commit' && (
+        <div className="shrink-0 border-t border-fleet-border pt-2 mt-2 flex flex-col gap-1.5">
+          <textarea
+            className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-xs text-fleet-text outline-none focus:border-blue-500 resize-none"
+            rows={3}
+            placeholder="Commit message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleMessageKeyDown}
+          />
+          <label className="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer select-none">
+            <input type="checkbox" checked={amend} onChange={toggleAmend} />
+            Amend
+          </label>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white"
+              disabled={!canCommit}
+              onClick={() => runCommit(false)}
+            >
+              Commit
+            </button>
+            <button
+              className="px-3 py-1.5 text-xs rounded border border-fleet-border hover:bg-fleet-active disabled:opacity-40 disabled:cursor-not-allowed text-fleet-text"
+              disabled={!canCommit}
+              onClick={() => runCommit(true)}
+            >
+              Commit & Push
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {diffTarget && (
         <Modal onClose={() => setDiffTarget(null)} width="w-[90vw]" height="h-[80vh]">

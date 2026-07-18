@@ -122,6 +122,10 @@ const api = {
   gitLastCommitMessage: (root: string) => ipcRenderer.invoke('git-last-commit-message', root),
   gitPush: (root: string) => ipcRenderer.invoke('git-push', root),
   gitPull: (root: string) => ipcRenderer.invoke('git-pull', root),
+  gitLog: (root: string, limit: number, skip: number) =>
+    ipcRenderer.invoke('git-log', root, limit, skip),
+  gitBranches: (root: string) => ipcRenderer.invoke('git-branches', root),
+  gitCheckout: (root: string, branch: string) => ipcRenderer.invoke('git-checkout', root, branch),
   onGitStatusChanged: (callback: (statuses: GitRepoStatus[]) => void) => {
     const listener = (_, statuses: GitRepoStatus[]) => callback(statuses)
     ipcRenderer.on('git-status-changed', listener)

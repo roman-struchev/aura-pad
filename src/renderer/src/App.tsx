@@ -8,6 +8,7 @@ import { HtmlPreview } from './components/HtmlPreview'
 import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
+import { BranchSelector } from './components/BranchSelector'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
@@ -53,7 +54,6 @@ import {
   Crosshair,
   Eye,
   Code2,
-  GitBranch,
   Settings as SettingsIcon,
   Mic,
   Loader2,
@@ -619,11 +619,10 @@ function App() {
     : tree.rootNodes.length > 0
       ? tree.rootNodes.map((r) => r.name).join(', ')
       : 'AuraPad'
-  const branchLabel = tabs.selectedPath
+  const headerRepo = tabs.selectedPath
     ? activeRoot &&
       git.repos.find((r) => activeRoot.path === r.root || r.root.startsWith(activeRoot.path + '/'))
-        ?.branch
-    : git.repos[0]?.branch
+    : git.repos[0]
   const hasFileActions = !!tabs.selectedPath
   const voiceBusy = voice.status === 'downloading' || voice.status === 'transcribing'
 
@@ -636,11 +635,17 @@ function App() {
       <div className="h-9 border-b border-fleet-border flex items-center justify-between px-3 bg-fleet-header select-none drag-region shrink-0">
         <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 min-w-0">
           <span className="truncate max-w-[40vw]">{projectLabel}</span>
-          {branchLabel && (
-            <span className="flex items-center gap-1 text-gray-500 shrink-0">
-              <GitBranch size={12} />
-              {branchLabel}
-            </span>
+          {headerRepo && (
+            <div className="no-drag-region shrink-0">
+              <BranchSelector
+                key={headerRepo.root}
+                root={headerRepo.root}
+                branch={headerRepo.branch}
+                onBranches={git.branches}
+                onCheckout={git.checkout}
+                triggerClassName="text-gray-500"
+              />
+            </div>
           )}
           {hasFileActions && (
             <div className="flex items-center gap-1 no-drag-region shrink-0">
@@ -1012,6 +1017,9 @@ function App() {
             onGitPull={git.pull}
             onGitDiff={git.diff}
             onGitLastCommitMessage={git.lastCommitMessage}
+            onGitLog={git.log}
+            onGitBranches={git.branches}
+            onGitCheckout={git.checkout}
           />
         </div>
       </div>

@@ -18,3 +18,15 @@ export interface GitRepoStatus {
   staged: GitFileEntry[]
   unstaged: GitFileEntry[]
 }
+
+export interface GitCommit {
+  hash: string
+  shortHash: string
+  author: string
+  // Unix seconds
+  date: number
+  subject: string
+  // Decorations from `git log --pretty=%D`, e.g. "HEAD -> main, origin/main".
+  // Empty for undecorated commits.
+  refs: string
+}

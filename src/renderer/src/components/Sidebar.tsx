@@ -4,7 +4,12 @@ import clsx from 'clsx'
 import { FileTree, type FileNode, type RevealRequest } from './FileTree'
 import { GitPanel } from './GitPanel'
 import { getFileIcon } from '../lib/fileIcon'
-import type { GitFileEntry, GitFileState, GitRepoStatus } from '../../../shared/gitStatus'
+import type {
+  GitCommit,
+  GitFileEntry,
+  GitFileState,
+  GitRepoStatus
+} from '../../../shared/gitStatus'
 
 interface SidebarProps {
   monacoTheme: string
@@ -46,6 +51,9 @@ interface SidebarProps {
   onGitPull: (root: string) => void
   onGitDiff: (root: string, relPath: string) => Promise<{ original: string; modified: string }>
   onGitLastCommitMessage: (root: string) => Promise<string>
+  onGitLog: (root: string, limit: number, skip: number) => Promise<GitCommit[]>
+  onGitBranches: (root: string) => Promise<string[]>
+  onGitCheckout: (root: string, branch: string) => Promise<boolean>
 }
 
 // The sidebar's own content (the outer w-64/border chrome stays in App.tsx,
@@ -79,7 +87,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onGitPush,
   onGitPull,
   onGitDiff,
-  onGitLastCommitMessage
+  onGitLastCommitMessage,
+  onGitLog,
+  onGitBranches,
+  onGitCheckout
 }) => {
   return (
     <>
@@ -125,6 +136,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onPull={onGitPull}
             onDiff={onGitDiff}
             onLastCommitMessage={onGitLastCommitMessage}
+            onLog={onGitLog}
+            onBranches={onGitBranches}
+            onCheckout={onGitCheckout}
           />
         </div>
       ) : (
