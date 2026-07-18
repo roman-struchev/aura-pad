@@ -15,12 +15,31 @@ jobs:
     steps:
       - name: Check out git repository
         uses: actions/checkout@v4
+        with:
+          # Full history + tags, to list the commits since the previous release.
+          fetch-depth: 0
 
       - name: Create Draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create ${{ github.ref_name }} --draft --title "${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
+          TAG="${{ github.ref_name }}"
+          # Nearest tag reachable from the commit *before* this release's own
+          # tag - i.e. the previous release. Empty on the very first release.
+          PREV_TAG="$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
+          {
+            echo "## Changes"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              # The version-bump commits ("release vX.Y.Z") are noise, not changes.
+              git log --no-merges --pretty='- %s' "$PREV_TAG..$TAG" | grep -v '^- release v' || true
+              echo
+              echo "**Full changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
+            else
+              git log --no-merges --pretty='- %s' "$TAG" | grep -v '^- release v' || true
+            fi
+          } > "$RUNNER_TEMP/release-notes.md"
+          gh release create "$TAG" --draft --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
 
   build:
     needs: create-draft
