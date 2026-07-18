@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import clsx from 'clsx'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
 import type { AppSettings } from '../../../shared/settings'
+import type { UpdateNotification } from '../../../shared/updateNotification'
 import {
   SIDEBAR_POSITIONS,
   THEME_MODES,
@@ -18,6 +19,10 @@ interface SettingsModalProps {
   settings: AppSettings
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void
   density: DensityPreset
+  appVersion?: string
+  updateNotification?: UpdateNotification | null
+  updateInstalling?: boolean
+  onUpdateAction?: () => void
   onConfigureDictation: () => void
   onConfigureReadAloud: () => void
   onConfigureTranslate: () => void
@@ -49,6 +54,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   updateSetting,
   density,
+  appVersion,
+  updateNotification,
+  updateInstalling,
+  onUpdateAction,
   onConfigureDictation,
   onConfigureReadAloud,
   onConfigureTranslate,
@@ -182,9 +191,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         )}
       </div>
 
-      <div className="flex justify-end mt-4">
+      <div className="flex justify-between items-center mt-6">
+        <div className="flex items-center gap-2">
+          {appVersion && (
+            <a
+              href={`https://github.com/roman-struchev/aura-pad/releases/tag/v${appVersion}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] text-gray-500 hover:text-gray-400 hover:underline font-mono tracking-wide translate-y-[1px] transition-colors"
+              title="View release notes"
+            >
+              v{appVersion}
+            </a>
+          )}
+          {updateNotification && !updateNotification.failed && (
+            updateInstalling ? (
+              <span className="flex items-center gap-1.5 text-[11px] text-blue-400">
+                <Loader2 size={12} className="animate-spin" />
+                Installing…
+              </span>
+            ) : (
+              <button
+                className="text-[11px] text-blue-400 hover:text-blue-300 underline"
+                onClick={onUpdateAction}
+              >
+                {updateNotification.mode === 'install'
+                  ? 'Restart to update'
+                  : updateNotification.mode === 'script'
+                    ? 'Install update'
+                    : 'Download update'}
+              </button>
+            )
+          )}
+        </div>
         <button
-          className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
+          className="px-4 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
           onClick={onClose}
         >
           Done

@@ -293,6 +293,8 @@ app.on('window-all-closed', () => {
 })
 
 // File System IPC Handlers
+ipcMain.handle('get-app-version', () => app.getVersion())
+
 ipcMain.handle('get-workspaces', () => {
   return getWorkspaceTrees()
 })

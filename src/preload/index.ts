@@ -10,6 +10,7 @@ import type { MenuAction } from '../shared/menuAction'
 import type { UpdateNotification } from '../shared/updateNotification'
 
 const api = {
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
   addWorkspace: () => ipcRenderer.invoke('add-workspace'),
   removeWorkspace: (path: string) => ipcRenderer.invoke('remove-workspace', path),

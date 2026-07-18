@@ -14,6 +14,7 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: {
+      getAppVersion: () => Promise<string>
       getWorkspaces: () => Promise<FileNode[]>
       addWorkspace: () => Promise<FileNode[]>
       removeWorkspace: (path: string) => Promise<FileNode[]>

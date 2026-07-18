@@ -326,6 +326,12 @@ function App() {
   // until main reports a failed attempt (a fresh notification with `failed`
   // set), which must drop the spinner and show the retry state instead.
   const [updateInstalling, setUpdateInstalling] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>('')
+
+  useEffect(() => {
+    window.api.getAppVersion().then(setAppVersion)
+  }, [])
+
   useEffect(
     () =>
       window.api.onUpdateNotification((update) => {
@@ -639,6 +645,22 @@ function App() {
           {hasFileActions && (
             <div className="flex items-center gap-1 no-drag-region shrink-0">
               <div className="w-px h-4 bg-fleet-border mx-1" />
+              {tabs.selectedPath &&
+                isUnderAnyRoot(
+                  tabs.selectedPath,
+                  tree.rootNodes.map((r) => r.path)
+                ) && (
+                  <ToolbarButton
+                    onClick={() => {
+                      setSidebarView('files')
+                      if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
+                    }}
+                    title="Select Opened File in Tree"
+                    colorClassName="text-gray-400 hover:text-white"
+                  >
+                    <Crosshair size={16} />
+                  </ToolbarButton>
+                )}
               {tabs.selectedPath?.endsWith('.py') && (
                 <ToolbarButton
                   onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
@@ -762,23 +784,6 @@ function App() {
           )}
         </div>
         <div className="flex items-center gap-1 no-drag-region shrink-0">
-          {tabs.selectedPath &&
-            isUnderAnyRoot(
-              tabs.selectedPath,
-              tree.rootNodes.map((r) => r.path)
-            ) && (
-              <ToolbarButton
-                onClick={() => {
-                  setSidebarView('files')
-                  if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
-                }}
-                title="Select Opened File in Tree"
-                tooltipAlign="right"
-                colorClassName="text-gray-400 hover:text-white"
-              >
-                <Crosshair size={16} />
-              </ToolbarButton>
-            )}
           <ToolbarButton
             onClick={openGlobalSearch}
             title="Global Search (Cmd+Shift+F)"
@@ -1174,6 +1179,14 @@ function App() {
           settings={settings}
           updateSetting={updateSetting}
           density={density}
+          appVersion={appVersion}
+          updateNotification={updateNotification}
+          updateInstalling={updateInstalling}
+          onUpdateAction={() => {
+            window.api.applyUpdate()
+            if (updateNotification?.mode === 'manual') setUpdateNotification(null)
+            else setUpdateInstalling(true)
+          }}
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
           onConfigureTranslate={() => setShowTranslateConfig(true)}
