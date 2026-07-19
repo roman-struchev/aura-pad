@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import type { FileNode } from '../../../shared/fileNode'
 import type { RevealRequest } from '../components/FileTree'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
+import { dirname } from '../lib/path'
 
 interface UseWorkspaceTreeCallbacks {
   // Called after a new file is created in the tree, so it can be opened in a tab.
@@ -160,8 +161,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   }
 
   const startCreate = (node: FileNode, type: 'file' | 'directory'): void => {
-    const parentPath =
-      node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'))
+    const parentPath = node.type === 'directory' ? node.path : dirname(node.path)
     setContextMenu(null)
     setCreateValue('')
     setCreateTarget({ parentPath, type })
@@ -202,8 +202,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
 
   const pasteIntoNode = async (node: FileNode): Promise<void> => {
     if (!clipboard) return
-    const destDir =
-      node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'))
+    const destDir = node.type === 'directory' ? node.path : dirname(node.path)
     const result = await window.api.copyPath(clipboard.path, destDir)
     setContextMenu(null)
     if (!result.success || !result.newPath) {

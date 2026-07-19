@@ -4,6 +4,7 @@ import TtsWorker from '../lib/tts/piperWorker?worker'
 import type { TtsWorkerResponse } from '../lib/tts/piperWorker'
 import { download as piperDownload, remove as piperRemove } from '@mintplex-labs/piper-tts-web'
 import { useModelWorker } from './useModelWorker'
+import { makeDownloadedSet } from '../lib/downloadedSet'
 import { alertDialog } from '../lib/dialogs'
 import { detectReadLang as detectLang } from '../lib/langDetect'
 import { chunkSentences } from '../lib/sentenceChunks'
@@ -53,7 +54,9 @@ export const VOICE_CATALOG: {
     lessac: { id: 'en_US-lessac-medium', label: 'Lessac', approxDownload: '~63 MB' }
   }
 }
-const voiceInfo = (lang: ReadLang, key: string): ReadVoiceInfo | null =>
+// Look up a language's voice catalog entry by its settings key; null for the
+// 'system' choice, which has no catalog entry (it's the OS voice, no download).
+export const voiceInfo = (lang: ReadLang, key: string): ReadVoiceInfo | null =>
   key === 'system' ? null : (VOICE_CATALOG[lang] as Record<string, ReadVoiceInfo>)[key]
 
 // Markdown read as prose: rendered to HTML with the same marked call the
@@ -74,26 +77,11 @@ const chunkText = (text: string): string[] =>
     (c) => c.text
   )
 
-export const downloadedVoices = (): string[] => {
-  try {
-    return JSON.parse(localStorage.getItem(DOWNLOADED_VOICES_KEY) ?? '[]') as string[]
-  } catch {
-    return []
-  }
-}
+const downloadedVoiceSet = makeDownloadedSet(DOWNLOADED_VOICES_KEY)
 
-const markVoiceDownloaded = (voiceId: string): void => {
-  const list = downloadedVoices()
-  if (!list.includes(voiceId))
-    localStorage.setItem(DOWNLOADED_VOICES_KEY, JSON.stringify([...list, voiceId]))
-}
-
-const unmarkVoiceDownloaded = (voiceId: string): void => {
-  localStorage.setItem(
-    DOWNLOADED_VOICES_KEY,
-    JSON.stringify(downloadedVoices().filter((v) => v !== voiceId))
-  )
-}
+export const downloadedVoices = (): string[] => downloadedVoiceSet.list()
+const markVoiceDownloaded = (voiceId: string): void => downloadedVoiceSet.add(voiceId)
+const unmarkVoiceDownloaded = (voiceId: string): void => downloadedVoiceSet.remove(voiceId)
 
 // --- System (OS) voices, one of the selectable options per language ---
 

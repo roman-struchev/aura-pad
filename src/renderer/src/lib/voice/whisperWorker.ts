@@ -5,6 +5,7 @@ import {
   type AutomaticSpeechRecognitionPipeline
 } from '@huggingface/transformers'
 import { VOICE_MODEL_CATALOG } from './models'
+import { asyncifyWasmPaths } from '../ortAssets'
 import type { VoiceModel } from '../../../../shared/settings'
 
 // Runs Whisper (via transformers.js/onnxruntime) off the UI thread. Model
@@ -13,26 +14,10 @@ import type { VoiceModel } from '../../../../shared/settings'
 // transformers.js in the browser Cache API, so later sessions load fully
 // offline. Audio never leaves the machine; only model files are downloaded.
 
-// transformers.js defaults onnxruntime to pulling its wasm runtime from a
-// CDN at load time; point it at the copies the ort-assets plugin (see
-// electron.vite.config.ts) ships with the app instead, so dictation works
-// offline and within the app's CSP. It must be the asyncify build - that's
-// the runtime this ort version's webgpu backend initializes through (the
-// jsep build is its predecessor and lacks webgpuInit). In dev the plugin
-// serves them on the dev server; in the built app they sit in
-// out/renderer/ort-dist/, one level up from this worker's assets/ chunk.
-// The relative path lives in a variable so vite's build-time new URL()
-// asset analysis (which would fail - the path only exists at runtime)
-// leaves it alone.
-const ortDistDir = '../ort-dist/'
-const ortBase = import.meta.env.DEV
-  ? `${self.location.origin}/ort-dist/`
-  : new URL(ortDistDir, import.meta.url).href
+// Point onnxruntime at the app's bundled wasm runtime (offline + CSP) - see
+// ../ortAssets.ts for the resolution scheme.
 if (env.backends.onnx?.wasm) {
-  env.backends.onnx.wasm.wasmPaths = {
-    mjs: `${ortBase}ort-wasm-simd-threaded.asyncify.mjs`,
-    wasm: `${ortBase}ort-wasm-simd-threaded.asyncify.wasm`
-  }
+  env.backends.onnx.wasm.wasmPaths = asyncifyWasmPaths()
 }
 
 export type WorkerRequest =

@@ -2,12 +2,7 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { Modal } from './Modal'
-import {
-  VOICE_CATALOG,
-  downloadedVoices,
-  type ReadLang,
-  type ReadVoiceInfo
-} from '../hooks/useReadAloud'
+import { downloadedVoices, voiceInfo, type ReadLang } from '../hooks/useReadAloud'
 import { READ_VOICE_KEYS, type ReadVoices } from '../../../shared/settings'
 
 interface ReadAloudModalProps {
@@ -24,9 +19,6 @@ interface ReadAloudModalProps {
 }
 
 const LANG_TITLES: Record<ReadLang, string> = { ru: 'Russian voice', en: 'English voice' }
-
-const voiceInfo = (lang: ReadLang, key: string): ReadVoiceInfo | null =>
-  key === 'system' ? null : (VOICE_CATALOG[lang] as Record<string, ReadVoiceInfo>)[key]
 
 // First-use read-aloud dialog, mirroring the dictation model dialog: a radio
 // list of voices per language the text needs - the OS's basic voice is one of

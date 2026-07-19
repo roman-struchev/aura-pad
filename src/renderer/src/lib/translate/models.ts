@@ -1,5 +1,6 @@
 import type { TranslateModel, TranslatePair } from '../../../../shared/settings'
 import { TRANSLATE_MODEL_LABELS, TRANSLATE_PAIR_LABELS } from '../../../../shared/settings'
+import { makeDownloadedSet } from '../downloadedSet'
 import type { LangCode } from '../langDetect'
 
 // Two translation model families:
@@ -118,28 +119,14 @@ const repos = (model: TranslateModel, pair: TranslatePair): string[] => {
 // Which units have been fully downloaded on this machine (the actual bytes
 // live in the browser Cache API, keyed by Hugging Face URL - this is just the
 // "download finished successfully" marker that gates the consent dialog).
-const DOWNLOADED_KEY = 'aurapad-translate-models-downloaded'
+const downloaded = makeDownloadedSet('aurapad-translate-models-downloaded')
 
 export function isDownloaded(model: TranslateModel, pair: TranslatePair): boolean {
-  try {
-    return (JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]).includes(
-      downloadKey(model, pair)
-    )
-  } catch {
-    return false
-  }
+  return downloaded.has(downloadKey(model, pair))
 }
 
 export function markDownloaded(model: TranslateModel, pair: TranslatePair): void {
-  const list = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]
-    } catch {
-      return []
-    }
-  })()
-  const key = downloadKey(model, pair)
-  if (!list.includes(key)) localStorage.setItem(DOWNLOADED_KEY, JSON.stringify([...list, key]))
+  downloaded.add(downloadKey(model, pair))
   // The short-lived WebGPU build downloaded q4f16 weights (~1.2 GB) that
   // nothing loads anymore; drop them silently once the q8 download is in.
   if (model === 'nllb-600m') {
@@ -168,11 +155,5 @@ export async function deleteDownload(model: TranslateModel, pair: TranslatePair)
   } catch {
     // Cache API unavailable - still remove the marker below.
   }
-  try {
-    const key = downloadKey(model, pair)
-    const list = JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]
-    localStorage.setItem(DOWNLOADED_KEY, JSON.stringify(list.filter((k) => k !== key)))
-  } catch {
-    localStorage.removeItem(DOWNLOADED_KEY)
-  }
+  downloaded.remove(downloadKey(model, pair))
 }

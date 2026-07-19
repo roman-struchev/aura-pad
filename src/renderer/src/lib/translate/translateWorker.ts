@@ -1,5 +1,6 @@
 import { env, pipeline, TextStreamer, type TranslationPipeline } from '@huggingface/transformers'
 import { NLLB_LANG_TOKENS, NLLB_REPO, TRANSLATE_CATALOG } from './models'
+import { asyncifyWasmPaths } from '../ortAssets'
 import type { LangCode } from '../langDetect'
 import type { TranslateModel, TranslatePair } from '../../../../shared/settings'
 
@@ -16,21 +17,10 @@ import type { TranslateModel, TranslatePair } from '../../../../shared/settings'
 // with the q8 weights is ~2x *slower* than wasm (int8 dequant doesn't pay
 // off on the jsep backend), and the q4f16 build generates empty output.
 
-// transformers.js defaults onnxruntime to pulling its wasm runtime from a
-// CDN at load time; point it at the copies the ort-assets plugin (see
-// electron.vite.config.ts) ships with the app instead, so translation works
-// offline and within the app's CSP. Same asyncify build and same
-// variable-held relative path trick as the Whisper worker - see the comment
-// there for why.
-const ortDistDir = '../ort-dist/'
-const ortBase = import.meta.env.DEV
-  ? `${self.location.origin}/ort-dist/`
-  : new URL(ortDistDir, import.meta.url).href
+// Point onnxruntime at the app's bundled wasm runtime (offline + CSP) - see
+// ../ortAssets.ts for the resolution scheme.
 if (env.backends.onnx?.wasm) {
-  env.backends.onnx.wasm.wasmPaths = {
-    mjs: `${ortBase}ort-wasm-simd-threaded.asyncify.mjs`,
-    wasm: `${ortBase}ort-wasm-simd-threaded.asyncify.wasm`
-  }
+  env.backends.onnx.wasm.wasmPaths = asyncifyWasmPaths()
 }
 
 export type TranslateWorkerRequest =

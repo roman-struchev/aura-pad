@@ -1,3 +1,4 @@
+import { makeDownloadedSet } from '../downloadedSet'
 import type { VoiceModel } from '../../../../shared/settings'
 
 // Per-file ONNX precision choices, keyed by which execution backend ends up
@@ -69,25 +70,14 @@ export const VOICE_MODEL_CATALOG: Record<VoiceModel, VoiceModelInfo> = {
 // Which models have been fully downloaded on this machine (the actual bytes
 // live in the browser Cache API, keyed by Hugging Face URL - this is just the
 // "download finished successfully" marker that gates the consent dialog).
-const DOWNLOADED_KEY = 'aurapad-voice-models-downloaded'
+const downloaded = makeDownloadedSet('aurapad-voice-models-downloaded')
 
 export function isModelDownloaded(id: VoiceModel): boolean {
-  try {
-    return (JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]).includes(id)
-  } catch {
-    return false
-  }
+  return downloaded.has(id)
 }
 
 export function markModelDownloaded(id: VoiceModel): void {
-  const list = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]
-    } catch {
-      return []
-    }
-  })()
-  if (!list.includes(id)) localStorage.setItem(DOWNLOADED_KEY, JSON.stringify([...list, id]))
+  downloaded.add(id)
 }
 
 // Frees the disk space: drops every cached file of the model's repo from the
@@ -103,10 +93,5 @@ export async function deleteModelDownload(id: VoiceModel): Promise<void> {
   } catch {
     // Cache API unavailable - still remove the marker below.
   }
-  try {
-    const list = JSON.parse(localStorage.getItem(DOWNLOADED_KEY) ?? '[]') as string[]
-    localStorage.setItem(DOWNLOADED_KEY, JSON.stringify(list.filter((m) => m !== id)))
-  } catch {
-    localStorage.removeItem(DOWNLOADED_KEY)
-  }
+  downloaded.remove(id)
 }

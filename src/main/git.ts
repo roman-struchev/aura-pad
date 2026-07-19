@@ -4,13 +4,17 @@ import path from 'path'
 import { decodeFileBuffer, decodeLikeFile } from './encoding'
 import type { GitCommit, GitFileEntry, GitFileState, GitRepoStatus } from '../shared/gitStatus'
 
+// Cap for execFile's stdout buffer on every git call. Diffs and `git show` of
+// a large file can be several MB; the default 1MB would truncate them.
+const GIT_MAX_BUFFER = 10 * 1024 * 1024
+
 export function isGitRepo(root: string): boolean {
   return fs.existsSync(path.join(root, '.git'))
 }
 
 function runGit(root: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
+    execFile('git', args, { cwd: root, maxBuffer: GIT_MAX_BUFFER }, (error, stdout) => {
       if (error) reject(error)
       else resolve(stdout)
     })
@@ -41,7 +45,7 @@ function runGitCombined(
   args: string[]
 ): Promise<{ success: boolean; output: string }> {
   return new Promise((resolve) => {
-    execFile('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile('git', args, { cwd: root, maxBuffer: GIT_MAX_BUFFER }, (error, stdout, stderr) => {
       const output = [stdout, stderr].filter(Boolean).join('\n').trim()
       resolve({ success: !error, output })
     })

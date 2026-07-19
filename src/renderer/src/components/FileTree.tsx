@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import type { FileNode } from '../../../shared/fileNode'
 import type { GitFileState } from '../../../shared/gitStatus'
 import { getFileIcon } from '../lib/fileIcon'
+import { isPreviewablePath, isPythonPath } from '../lib/fileType'
 
 export type { FileNode }
 
@@ -76,9 +77,8 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
   const [isDragging, setIsDragging] = useState(false)
   const isSelected = selectedPath === node.path
   const isDirectory = node.type === 'directory'
-  const isPreviewable =
-    node.name.endsWith('.md') || node.name.endsWith('.html') || node.name.endsWith('.htm')
-  const hasFileAction = !isDirectory && (node.name.endsWith('.py') || isPreviewable)
+  const isPreviewable = isPreviewablePath(node.name)
+  const hasFileAction = !isDirectory && (isPythonPath(node.name) || isPreviewable)
 
   // Auto-expand (once) if the selected/revealed path is this directory or a
   // descendant of it. Adjusting state directly during render - rather than
@@ -211,7 +211,7 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
                 {GIT_BADGE[gitStatus[node.path]].label}
               </span>
             )}
-            {node.name.endsWith('.py') && (
+            {isPythonPath(node.name) && (
               <button
                 className="hidden group-hover:block p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-green-500"
                 title="Run Script"

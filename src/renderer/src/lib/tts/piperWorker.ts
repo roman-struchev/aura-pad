@@ -1,4 +1,5 @@
 import { TtsSession } from '@mintplex-labs/piper-tts-web'
+import { ortWasmBase } from '../ortAssets'
 
 // Neural read-aloud voices (Piper/VITS) running locally via onnxruntime's
 // wasm backend, phonemized by espeak-ng compiled to wasm. Voice models
@@ -21,15 +22,12 @@ export type TtsWorkerResponse =
 const post = (msg: TtsWorkerResponse, transfer: Transferable[] = []): void =>
   (self.postMessage as (message: unknown, transfer?: Transferable[]) => void)(msg, transfer)
 
-// Same asset-resolution scheme as whisperWorker.ts: the ort-assets vite
-// plugin serves these on the dev server and copies them next to the bundle
-// in production. The relative paths live in variables so vite's build-time
-// new URL() analysis leaves them alone.
-const ortDistDir = '../ort-dist/'
+// ort wasm base comes from the shared resolver (../ortAssets.ts). The
+// piper-specific wasm/data live alongside in piper-dist/ and use the same
+// variable-held relative-path trick so vite's build-time new URL() analysis
+// leaves them alone.
 const piperDistDir = '../piper-dist/'
-const ortBase = import.meta.env.DEV
-  ? `${self.location.origin}/ort-dist/`
-  : new URL(ortDistDir, import.meta.url).href
+const ortBase = ortWasmBase()
 const piperBase = import.meta.env.DEV
   ? `${self.location.origin}/piper-dist/`
   : new URL(piperDistDir, import.meta.url).href
