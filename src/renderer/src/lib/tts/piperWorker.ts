@@ -24,13 +24,15 @@ const post = (msg: TtsWorkerResponse, transfer: Transferable[] = []): void =>
 
 // ort wasm base comes from the shared resolver (../ortAssets.ts). The
 // piper-specific wasm/data live alongside in piper-dist/ and use the same
-// variable-held relative-path trick so vite's build-time new URL() analysis
-// leaves them alone.
+// scheme: a variable-held relative path (so vite's build-time new URL()
+// analysis leaves it alone), resolved against self.location - the worker's
+// own URL in assets/ - rather than import.meta.url, for the same stability
+// reason spelled out in ortAssets.ts.
 const piperDistDir = '../piper-dist/'
 const ortBase = ortWasmBase()
 const piperBase = import.meta.env.DEV
   ? `${self.location.origin}/piper-dist/`
-  : new URL(piperDistDir, import.meta.url).href
+  : new URL(piperDistDir, self.location.href).href
 
 const WASM_PATHS = {
   onnxWasm: ortBase,

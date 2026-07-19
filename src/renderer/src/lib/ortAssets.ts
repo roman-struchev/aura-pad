@@ -9,17 +9,25 @@
 //
 // The relative path lives in a variable so vite's build-time new URL() asset
 // analysis - which would fail, since the path only exists at runtime - leaves
-// it alone. `import.meta.url` here is this module's own chunk URL; every worker
-// chunk (and any shared chunk vite splits this into) lands in assets/, one
-// level below ort-dist/, so `../ort-dist/` resolves the same no matter which
-// worker imported it.
+// it alone.
+//
+// Anchored on `self.location` (the running worker script's own URL), NOT on
+// `import.meta.url`. import.meta.url is the URL of whatever *chunk* this code
+// ends up in, which - now that this module is shared - depends on vite's
+// chunking (inline vs. a separate shared chunk, possibly at another depth),
+// so `../ort-dist/` off it could silently break in a packaged build after a
+// bundler change. self.location is always the worker entry in assets/,
+// regardless of how the module is chunked, so `../ort-dist/` off it is stable.
+// The one remaining assumption - workers are emitted into assets/, one level
+// below ort-dist/ - is controlled by the renderer build layout, not by
+// chunk-splitting heuristics.
 const ortDistDir = '../ort-dist/'
 
 // Base URL of the ort-dist/ directory, trailing slash included.
 export function ortWasmBase(): string {
   return import.meta.env.DEV
     ? `${self.location.origin}/ort-dist/`
-    : new URL(ortDistDir, import.meta.url).href
+    : new URL(ortDistDir, self.location.href).href
 }
 
 // The asyncify wasm runtime files transformers.js's ort initializes webgpu
