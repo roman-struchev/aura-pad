@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as monaco from 'monaco-editor'
 import type { FileNode } from '../../../shared/fileNode'
+import { isEslintablePath, isPythonPath } from '../lib/fileType'
 
 // TS/JS diagnostics are Monaco's own bundled worker - free once each file has
 // a stable path-based model (see the Editor's `path` prop in App.tsx). Python
@@ -35,7 +36,7 @@ export function useDiagnostics(
     if (!model) return
 
     const run = async (): Promise<void> => {
-      if (path.endsWith('.py')) {
+      if (isPythonPath(path)) {
         const marker = await window.api.lintPython(path)
         monaco.editor.setModelMarkers(
           model,
@@ -53,7 +54,7 @@ export function useDiagnostics(
               ]
             : []
         )
-      } else if (/\.(ts|tsx|js|jsx)$/.test(path)) {
+      } else if (isEslintablePath(path)) {
         const root = rootNodes.find((r) => path.startsWith(r.path + '/'))
         if (!root) return
         const markers = await window.api.lintEslint(path, root.path)

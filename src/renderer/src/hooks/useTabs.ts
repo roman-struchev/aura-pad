@@ -30,6 +30,13 @@ export function useTabs(tabsEnabled: boolean) {
   const tabsRef = useRef<OpenTab[]>([])
   const pendingJump = useRef<JumpTarget | null>(null)
   const closedStackRef = useRef<string[]>([])
+  // Bumped at the start of every openTab. Opening two files in quick
+  // succession runs their reads concurrently, and the slower one used to
+  // resolve last and steal the active tab back to the earlier file. Each
+  // call captures its number and only claims the active tab / pending jump if
+  // it's still the most recent open request - so the last file the user
+  // actually opened wins, regardless of which read finishes first.
+  const openSeqRef = useRef(0)
   // Guards the persistence effect below from firing (and overwriting the
   // saved session with an empty one) before the restore-on-mount effect has
   // had a chance to run.
@@ -105,6 +112,7 @@ export function useTabs(tabsEnabled: boolean) {
     line?: number,
     highlight?: { col: number; matchLen: number }
   ): Promise<void> => {
+    const seq = ++openSeqRef.current
     // Checked against the ref (not the `tabs` state closure) so a second
     // concurrent call - e.g. dropping several files from Finder at once, or
     // two open-file requests arriving back to back - sees any tab the first
@@ -171,6 +179,14 @@ export function useTabs(tabsEnabled: boolean) {
       if (prev.some((t) => t.path === filePath)) return prev
       return tabsEnabled ? [...prev, newTab] : [newTab]
     })
+    // In multi-tab mode both concurrently-opened files end up as tabs, so the
+    // active tab / jump belong to the most recent open request only - a slower
+    // read for an earlier file must not yank focus off the file opened after
+    // it. In single-tab mode there's only ever one tab (setTabs replaces it),
+    // so the active path must track whichever call's setTabs ran last, or it
+    // could point at a file no longer open (blank editor); there the guard is
+    // skipped and the last-resolved call wins, matching the tab it just set.
+    if (tabsEnabled && openSeqRef.current !== seq) return
     setActiveTabPath(filePath)
     if (line) pendingJump.current = { line, ...highlight }
   }

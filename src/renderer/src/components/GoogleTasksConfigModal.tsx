@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React from 'react'
 import clsx from 'clsx'
 import { Check, Loader2, Plus, X } from 'lucide-react'
 import type { AppSettings } from '../../../shared/settings'
 import type { DensityPreset } from '../density'
 import { Modal } from './Modal'
 import { SettingToggle } from './SettingToggle'
-import { alertDialog, confirmDialog } from '../lib/dialogs'
+import { useGoogleAccounts } from '../hooks/useGoogleAccounts'
 
 interface GoogleTasksConfigModalProps {
   settings: AppSettings
@@ -25,51 +25,15 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
   onClose
 }) => {
   const gtasks = settings.extensions.googleTasks
-  const [accounts, setAccounts] = useState<string[]>([])
-  const [connecting, setConnecting] = useState(false)
-  // The email just connected in this session - flagged so the row shows a
-  // clear "connected" confirmation (a green check that fades) rather than
-  // the new account quietly appearing in the list behind the browser window.
-  const [justConnected, setJustConnected] = useState<string | null>(null)
-  const justConnectedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    window.api.gtasksAccounts().then(setAccounts)
-    return () => {
-      if (justConnectedTimer.current) clearTimeout(justConnectedTimer.current)
-    }
-  }, [])
+  // Account list + connect/disconnect (with the "just connected" green
+  // highlight) shared with the Google Tasks tab via this hook.
+  const { accounts, connecting, justConnected, connect, disconnect } = useGoogleAccounts()
 
   const patch = (values: Partial<typeof gtasks>): void =>
     updateSetting('extensions', {
       ...settings.extensions,
       googleTasks: { ...gtasks, ...values }
     })
-
-  const addAccount = async (): Promise<void> => {
-    setConnecting(true)
-    try {
-      const result = await window.api.gtasksAddAccount()
-      if (!result.success) {
-        await alertDialog(result.error || 'Sign-in failed.')
-        return
-      }
-      setAccounts(await window.api.gtasksAccounts())
-      if (result.email) {
-        setJustConnected(result.email)
-        if (justConnectedTimer.current) clearTimeout(justConnectedTimer.current)
-        justConnectedTimer.current = setTimeout(() => setJustConnected(null), 4000)
-      }
-    } finally {
-      setConnecting(false)
-    }
-  }
-
-  const removeAccount = async (email: string): Promise<void> => {
-    if (!(await confirmDialog(`Disconnect ${email}?`))) return
-    await window.api.gtasksRemoveAccount(email)
-    setAccounts(await window.api.gtasksAccounts())
-  }
 
   return (
     <Modal onClose={onClose} width="w-[26rem]">
@@ -161,7 +125,7 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
               <button
                 className="opacity-50 hover:opacity-100 shrink-0"
                 title="Disconnect"
-                onClick={() => removeAccount(email)}
+                onClick={() => disconnect(email)}
               >
                 <X size={12} />
               </button>
@@ -170,7 +134,7 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
           <button
             className="self-start mt-1 px-2.5 py-1 text-xs rounded border border-fleet-border hover:bg-fleet-active text-fleet-text disabled:opacity-40 flex items-center gap-1.5"
             disabled={connecting}
-            onClick={addAccount}
+            onClick={connect}
           >
             {connecting ? (
               <>

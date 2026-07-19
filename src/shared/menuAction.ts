@@ -6,6 +6,7 @@ export type MenuAction =
   | 'go-to-file'
   | 'find-in-files'
   | 'toggle-git-panel'
+  | 'toggle-sidebar'
   | 'toggle-dictation'
   | 'translate-selection'
   | 'format-document'

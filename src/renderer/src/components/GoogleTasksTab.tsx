@@ -13,7 +13,8 @@ import {
 import clsx from 'clsx'
 import type { GTask, GTaskInput, GTaskList } from '../../../shared/googleTasks'
 import type { AppSettings } from '../../../shared/settings'
-import { alertDialog, confirmDialog } from '../lib/dialogs'
+import { alertDialog } from '../lib/dialogs'
+import { useGoogleAccounts } from '../hooks/useGoogleAccounts'
 import { GoogleTaskEditModal } from './GoogleTaskEditModal'
 
 interface GoogleTasksTabProps {
@@ -158,10 +159,13 @@ const TaskRow: React.FC<TaskRowProps> = ({
 // a task isn't exposed here (do that in Google Tasks itself). Completed tasks
 // are hidden per list by default - "Show completed (n)" reveals them.
 export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, updateSetting }) => {
-  const [accounts, setAccounts] = useState<string[] | null>(null)
-  const [activeEmail, setActiveEmail] = useState<string | null>(null)
+  // Account list + connect/disconnect shared with the Settings modal.
+  const { accounts, initialized, connecting, connect, disconnect } = useGoogleAccounts()
+  // The account the user explicitly picked (null = none chosen yet). The
+  // *effective* active account is derived below, so it stays valid as the
+  // list changes without a setState-in-effect.
+  const [selectedEmail, setSelectedEmail] = useState<string | null>(null)
   const [listsByEmail, setListsByEmail] = useState<Record<string, ListWithTasks[]>>({})
-  const [connecting, setConnecting] = useState(false)
   // Which lists have their completed tasks revealed - keyed by list id, so
   // the setting is remembered across a refresh (but not across app restarts).
   const [expandedCompleted, setExpandedCompleted] = useState<Set<string>>(new Set())
@@ -183,24 +187,15 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
     error: null
   })
 
+  // Keep the active account valid as the list changes (initial load, connect,
+  // disconnect) without a setState-in-effect: keep the user's pick if it's
+  // still connected, else fall back to the first account.
+  const activeEmail =
+    selectedEmail && accounts.includes(selectedEmail) ? selectedEmail : (accounts[0] ?? null)
+
   const fetchKey = `${refreshSeq}:${activeEmail ?? ''}`
   const loading = !!activeEmail && fetchDone.key !== fetchKey
   const error = fetchDone.key === fetchKey ? fetchDone.error : null
-
-  const applyAccounts = (list: string[]): void => {
-    setAccounts(list)
-    setActiveEmail((prev) => (prev && list.includes(prev) ? prev : (list[0] ?? null)))
-  }
-
-  const loadAccounts = async (): Promise<string[]> => {
-    const list = await window.api.gtasksAccounts()
-    applyAccounts(list)
-    return list
-  }
-
-  useEffect(() => {
-    window.api.gtasksAccounts().then(applyAccounts)
-  }, [])
 
   useEffect(() => {
     if (!activeEmail) return
@@ -331,32 +326,22 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
   }
 
   const addAccount = async (): Promise<void> => {
-    setConnecting(true)
-    try {
-      const result = await window.api.gtasksAddAccount()
-      if (!result.success) {
-        await alertDialog(result.error || 'Sign-in failed.')
-        return
-      }
-      const list = await loadAccounts()
-      if (result.email && list.includes(result.email)) setActiveEmail(result.email)
-    } finally {
-      setConnecting(false)
-    }
+    const email = await connect()
+    // Focus the newly connected account (the derived activeEmail only
+    // guarantees *some* valid account stays selected, not the new one).
+    if (email) setSelectedEmail(email)
   }
 
   const removeAccount = async (email: string): Promise<void> => {
-    if (!(await confirmDialog(`Disconnect ${email}?`))) return
-    await window.api.gtasksRemoveAccount(email)
+    if (!(await disconnect(email))) return
     setListsByEmail((prev) => {
       const next = { ...prev }
       delete next[email]
       return next
     })
-    await loadAccounts()
   }
 
-  if (accounts === null) return null
+  if (!initialized) return null
 
   if (accounts.length === 0) {
     return (
@@ -393,7 +378,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                   ? 'bg-fleet-active text-fleet-textHover'
                   : 'text-gray-400 hover:text-gray-200'
               )}
-              onClick={() => setActiveEmail(email)}
+              onClick={() => setSelectedEmail(email)}
             >
               <span className="truncate max-w-[180px]">{email}</span>
               <X

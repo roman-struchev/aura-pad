@@ -97,6 +97,11 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           click: () => sendAction('find-in-files')
         },
         {
+          label: 'Toggle Sidebar',
+          accelerator: 'CmdOrCtrl+B',
+          click: () => sendAction('toggle-sidebar')
+        },
+        {
           label: 'Toggle Git Panel',
           accelerator: 'CmdOrCtrl+K',
           click: () => sendAction('toggle-git-panel')

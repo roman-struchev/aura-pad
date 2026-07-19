@@ -37,6 +37,7 @@ import { DialogHost } from './components/DialogHost'
 import { alertDialog, confirmDialog } from './lib/dialogs'
 import { useStableCallback } from './lib/useStableCallback'
 import { findRepoForRoot } from './lib/repoForRoot'
+import { isHtmlPath, isPreviewablePath, isProsePath, isMarkdownPath } from './lib/fileType'
 import { getLanguage } from './lib/language'
 import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
@@ -46,18 +47,6 @@ import { MONO_FONT_FAMILY } from './lib/fonts'
 import Editor from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import clsx from 'clsx'
-
-// File types with a rendered preview mode (the toolbar's Show Preview toggle
-// and the tree's hover eye icon): Markdown, plus raw HTML in a sandboxed
-// iframe.
-const isHtmlPath = (path: string | null): boolean =>
-  !!path && (path.endsWith('.html') || path.endsWith('.htm'))
-const isPreviewablePath = (path: string | null): boolean =>
-  !!path && (path.endsWith('.md') || isHtmlPath(path))
-// Voice features target prose, not code: dictation inserts into (and the
-// read-aloud button reads from) Markdown and plain-text files only.
-const isProsePath = (path: string | null): boolean =>
-  !!path && (path.endsWith('.md') || path.endsWith('.markdown') || path.endsWith('.txt'))
 
 function App(): React.JSX.Element {
   const { settings, updateSetting } = useSettings()
@@ -185,6 +174,10 @@ function App(): React.JSX.Element {
     else term.setShowTerminal(!term.showTerminal)
   }
 
+  // Hide/show the whole file-tree sidebar (button + Cmd+B); persisted in
+  // settings so it survives a restart.
+  const toggleSidebar = (): void => updateSetting('sidebarVisible', !settings.sidebarVisible)
+
   const readAloud = useReadAloud(settings.readVoices)
   const readAloudRef = useRef(readAloud)
   useEffect(() => {
@@ -222,7 +215,7 @@ function App(): React.JSX.Element {
   const startReadAloud = (): void => {
     const t = tabsRef.current
     if (!t.selectedPath) return
-    const markdown = t.selectedPath.endsWith('.md')
+    const markdown = isMarkdownPath(t.selectedPath)
     let text = t.fileContent
     const editor = editorInstanceRef.current
     const model = editor?.getModel()
@@ -488,6 +481,7 @@ function App(): React.JSX.Element {
     'go-to-file': () => setShowFileSearch((prev) => !prev),
     'find-in-files': openGlobalSearch,
     'toggle-git-panel': () => setSidebarView((prev) => (prev === 'git' ? 'files' : 'git')),
+    'toggle-sidebar': toggleSidebar,
     'toggle-dictation': toggleDictation,
     'translate-selection': startTranslate,
     'format-document': formatActiveDocument,
@@ -597,10 +591,12 @@ function App(): React.JSX.Element {
   const hasFileActions = !!tabs.selectedPath && !activeExt
 
   // Entry point from the file tree's per-root branch badge: focus that
-  // root's repo in the git panel and reveal the panel.
+  // root's repo in the git panel and reveal the panel. Also un-hides the
+  // sidebar, since the git panel lives inside it.
   const openGitPanel = useStableCallback((rootPath: string): void => {
     setGitPanelRoot(findRepoForRoot(git.repos, rootPath)?.root ?? rootPath)
     setSidebarView('git')
+    if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
   })
 
   // Identity-stable wrappers for everything the memoized FileTree rows (via
@@ -654,9 +650,11 @@ function App(): React.JSX.Element {
         googleTasksEnabled={settings.extensions.googleTasks.enabled}
         googleTasksActive={activeExt?.id === 'google-tasks'}
         terminalShown={terminal.showTerminal}
+        sidebarVisible={settings.sidebarVisible}
         voice={voice}
         readAloud={readAloud}
         onRevealActiveFile={() => {
+          if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
           setSidebarView('files')
           if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
         }}
@@ -669,6 +667,7 @@ function App(): React.JSX.Element {
         onAddFolder={tree.handleAddFolder}
         onOpenGoogleTasks={() => tabs.openTab(makeExtensionPath('google-tasks'))}
         onToggleTerminal={toggleTerminal}
+        onToggleSidebar={toggleSidebar}
         onOpenSettings={() => setShowSettings(true)}
       />
 
@@ -723,7 +722,7 @@ function App(): React.JSX.Element {
                 </div>
               )
             ) : tabs.selectedPath ? (
-              tabs.showMarkdownPreview && tabs.selectedPath.endsWith('.md') ? (
+              tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
                 <MarkdownPreview content={tabs.fileContent} />
               ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
                 <HtmlPreview content={tabs.fileContent} />
@@ -766,49 +765,51 @@ function App(): React.JSX.Element {
           )}
         </div>
 
-        <div
-          ref={sidebarRef}
-          className={clsx(
-            'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
-            settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
-          )}
-          style={{ width: `${sidebarWidth.width}px`, fontSize: density.uiFontSize }}
-        >
+        {settings.sidebarVisible && (
           <div
+            ref={sidebarRef}
             className={clsx(
-              'absolute top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-blue-500/50 transition-colors z-10',
-              settings.sidebarPosition === 'left'
-                ? 'right-0 translate-x-1/2'
-                : 'left-0 -translate-x-1/2'
+              'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
+              settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
             )}
-            onMouseDown={(e) => {
-              e.preventDefault()
-              sidebarWidth.startResizing()
-            }}
-          />
-          <Sidebar
-            monacoTheme={monacoTheme}
-            rowPadding={density.treeRowPadding}
-            sidebarView={sidebarView}
-            setSidebarView={setSidebarView}
-            rootNodes={tree.rootNodes}
-            recentExternalFiles={recentExternalPaths}
-            onRemoveRecentExternalFile={handleRemoveRecent}
-            selectedPath={tabs.selectedPath}
-            revealRequest={tree.revealRequest}
-            onSelect={handleTreeSelect}
-            onContextMenu={handleTreeContextMenu}
-            onCreateNew={handleTreeCreateNew}
-            onMove={handleTreeMove}
-            onFocusNode={handleTreeFocusNode}
-            onRunPython={handleTreeRunPython}
-            onPreviewMarkdown={handleTreePreview}
-            git={git}
-            gitPanelRoot={gitPanelRoot}
-            onSelectGitRoot={setGitPanelRoot}
-            onOpenGit={openGitPanel}
-          />
-        </div>
+            style={{ width: `${sidebarWidth.width}px`, fontSize: density.uiFontSize }}
+          >
+            <div
+              className={clsx(
+                'absolute top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-blue-500/50 transition-colors z-10',
+                settings.sidebarPosition === 'left'
+                  ? 'right-0 translate-x-1/2'
+                  : 'left-0 -translate-x-1/2'
+              )}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                sidebarWidth.startResizing()
+              }}
+            />
+            <Sidebar
+              monacoTheme={monacoTheme}
+              rowPadding={density.treeRowPadding}
+              sidebarView={sidebarView}
+              setSidebarView={setSidebarView}
+              rootNodes={tree.rootNodes}
+              recentExternalFiles={recentExternalPaths}
+              onRemoveRecentExternalFile={handleRemoveRecent}
+              selectedPath={tabs.selectedPath}
+              revealRequest={tree.revealRequest}
+              onSelect={handleTreeSelect}
+              onContextMenu={handleTreeContextMenu}
+              onCreateNew={handleTreeCreateNew}
+              onMove={handleTreeMove}
+              onFocusNode={handleTreeFocusNode}
+              onRunPython={handleTreeRunPython}
+              onPreviewMarkdown={handleTreePreview}
+              git={git}
+              gitPanelRoot={gitPanelRoot}
+              onSelectGitRoot={setGitPanelRoot}
+              onOpenGit={openGitPanel}
+            />
+          </div>
+        )}
       </div>
 
       {showSearch && (

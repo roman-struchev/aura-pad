@@ -56,16 +56,25 @@ install_macos() {
     exit 1
   fi
 
-  # Quit a running copy so the binary isn't replaced under it: ask politely
-  # via AppleScript, give it a few seconds, then force-kill as a last resort.
-  if pgrep -xq "$APP_NAME"; then
+  # Quit a running copy so the binary isn't replaced under it AND so the
+  # relaunch below actually starts a fresh instance: `open` on an app that's
+  # still running only re-activates it (single-instance lock), which is
+  # exactly the "spinner hangs, no restart" symptom. Ask politely via
+  # AppleScript first, but the app's own close handler defers a quit to its
+  # renderer (unsaved-changes check), so a polite quit - and even SIGTERM -
+  # can be held off indefinitely. Force the issue with SIGKILL, which nothing
+  # can intercept, so the process definitely dies and releases the lock.
+  if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
     echo "Quitting running ${APP_NAME}..."
     osascript -e "tell application \"${APP_NAME}\" to quit" 2>/dev/null || true
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      pgrep -xq "$APP_NAME" || break
+    for _ in 1 2 3 4 5 6; do
+      pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
       sleep 0.5
     done
-    pkill -x "$APP_NAME" 2>/dev/null || true
+    pkill -9 -x "$APP_NAME" 2>/dev/null || true
+    # Give the OS a moment to release the single-instance lock and file
+    # handles before we overwrite the bundle and relaunch.
+    sleep 1
   fi
 
   echo "Installing to ${install_dir}/${APP_NAME}.app..."

@@ -23,8 +23,11 @@ interface UseGlobalHotkeysOptions {
 // The window-level keydown handling that isn't owned by the native menu:
 // Escape priority chain, double-Shift quick open, and tree copy/paste/delete.
 export function useGlobalHotkeys(options: UseGlobalHotkeysOptions): void {
-  const { sidebarRef, focusedNode, hasClipboard, onCopyNode, onPasteIntoNode, onDeleteNode } =
-    options
+  // focusedNode/hasClipboard gate the branch logic and drive the effect's
+  // re-subscription, so they're read directly. The callbacks go through
+  // optionsRef (below) like onEscape/onToggleQuickOpen, so a keypress always
+  // hits the current render's handler with no stale-closure risk.
+  const { sidebarRef, focusedNode, hasClipboard } = options
 
   const lastShiftTime = useRef<number>(0)
   // Tracks whether some other key fired between the last lone Shift press and
@@ -71,13 +74,13 @@ export function useGlobalHotkeys(options: UseGlobalHotkeysOptions): void {
       if (isTreeFocused && focusedNode) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
           e.preventDefault()
-          onCopyNode(focusedNode)
+          optionsRef.current.onCopyNode(focusedNode)
         } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && hasClipboard) {
           e.preventDefault()
-          onPasteIntoNode(focusedNode)
+          optionsRef.current.onPasteIntoNode(focusedNode)
         } else if ((e.key === 'Delete' || e.key === 'Backspace') && !focusedNode.isRoot) {
           e.preventDefault()
-          onDeleteNode(focusedNode)
+          optionsRef.current.onDeleteNode(focusedNode)
         }
       }
     }

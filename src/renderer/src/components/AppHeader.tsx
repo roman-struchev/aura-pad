@@ -7,6 +7,8 @@ import {
   FolderOpen,
   Loader2,
   Mic,
+  PanelLeft,
+  PanelLeftClose,
   Play,
   Search,
   Settings as SettingsIcon,
@@ -18,6 +20,7 @@ import {
 import { BranchSelector } from './BranchSelector'
 import { ToolbarButton } from './ToolbarButton'
 import { VoiceLevelMeter } from './VoiceLevelMeter'
+import { isFormattablePath, isPythonPath } from '../lib/fileType'
 import type { GitRepoStatus } from '../../../shared/gitStatus'
 import type { useGitStatus } from '../hooks/useGitStatus'
 import type { useVoiceInput } from '../hooks/useVoiceInput'
@@ -38,6 +41,7 @@ interface AppHeaderProps {
   googleTasksEnabled: boolean
   googleTasksActive: boolean
   terminalShown: boolean
+  sidebarVisible: boolean
   voice: ReturnType<typeof useVoiceInput>
   readAloud: ReturnType<typeof useReadAloud>
   onRevealActiveFile: () => void
@@ -50,6 +54,7 @@ interface AppHeaderProps {
   onAddFolder: () => void
   onOpenGoogleTasks: () => void
   onToggleTerminal: () => void
+  onToggleSidebar: () => void
   onOpenSettings: () => void
 }
 
@@ -70,6 +75,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   googleTasksEnabled,
   googleTasksActive,
   terminalShown,
+  sidebarVisible,
   voice,
   readAloud,
   onRevealActiveFile,
@@ -82,10 +88,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onAddFolder,
   onOpenGoogleTasks,
   onToggleTerminal,
+  onToggleSidebar,
   onOpenSettings
 }) => {
   const voiceBusy = voice.status === 'downloading' || voice.status === 'transcribing'
-  const isFormattable = !!selectedPath && /\.(json|html|htm|xml)$/.test(selectedPath.toLowerCase())
+  const isFormattable = isFormattablePath(selectedPath)
 
   return (
     <div className="h-9 border-b border-fleet-border flex items-center justify-between px-3 bg-fleet-header select-none drag-region shrink-0">
@@ -115,7 +122,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 <Crosshair size={16} />
               </ToolbarButton>
             )}
-            {selectedPath?.endsWith('.py') && (
+            {isPythonPath(selectedPath) && (
               <ToolbarButton
                 onClick={onRunPython}
                 title="Run Python"
@@ -252,6 +259,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </ToolbarButton>
         )}
         <div className="w-px h-4 bg-fleet-border mx-1" />
+        <ToolbarButton
+          onClick={onToggleSidebar}
+          active={!sidebarVisible}
+          title={sidebarVisible ? 'Hide Sidebar (Cmd+B)' : 'Show Sidebar (Cmd+B)'}
+          tooltipAlign="right"
+          colorClassName="text-gray-400 hover:text-white"
+        >
+          {sidebarVisible ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+        </ToolbarButton>
         <ToolbarButton
           onClick={onToggleTerminal}
           active={terminalShown}

@@ -127,6 +127,7 @@ export interface AppSettings {
   uiMode: UiMode
   sidebarPosition: SidebarPosition
   sidebarWidth: number
+  sidebarVisible: boolean
   lineNumbersEnabled: boolean
   voiceModel: VoiceModel
   voiceLanguage: VoiceLanguage
@@ -144,6 +145,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiMode: 'compact',
   sidebarPosition: 'left',
   sidebarWidth: 256,
+  sidebarVisible: true,
   lineNumbersEnabled: true,
   voiceModel: 'base',
   voiceLanguage: 'auto',
