@@ -1,9 +1,8 @@
-import { app, shell } from 'electron'
+import { app, shell, BrowserWindow } from 'electron'
 import crypto from 'crypto'
-import fs from 'fs'
 import http from 'http'
 import path from 'path'
-import { writeConfigFile } from './configFile'
+import { readConfigFile, writeConfigFile } from './configFile'
 import { loadSettings } from './settings'
 import type { GTask, GTaskInput, GTaskList } from '../shared/googleTasks'
 
@@ -37,14 +36,9 @@ const EMBEDDED_CLIENT_ID = ''
 const EMBEDDED_CLIENT_SECRET = ''
 
 function loadAccounts(): StoredAccount[] {
-  try {
-    if (fs.existsSync(accountsPath())) {
-      return JSON.parse(fs.readFileSync(accountsPath(), 'utf-8'))
-    }
-  } catch (e) {
-    console.warn('Failed to load googleTasksAccounts.json:', e)
-  }
-  return []
+  // Copied so add/remove below can build new lists without mutating the
+  // cached array inside readConfigFile.
+  return [...readConfigFile<StoredAccount[]>(accountsPath(), () => [])]
 }
 
 function saveAccounts(accounts: StoredAccount[]): void {
@@ -124,6 +118,17 @@ function waitForAuthCode(
       )
       clearTimeout(timeout)
       server.close()
+      // The user has been in the browser for the whole sign-in; pull AuraPad
+      // back to the front so they actually see the connected result instead
+      // of it landing silently behind the browser window. steal:true is
+      // needed on macOS to take focus from another app.
+      app.focus({ steal: true })
+      const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+      if (win) {
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+      }
       if (code) resolve({ code, redirectUri })
       else reject(new Error(`Sign-in was declined (${error}).`))
     })

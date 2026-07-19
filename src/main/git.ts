@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import fs from 'fs'
 import path from 'path'
+import { decodeFileBuffer, decodeLikeFile } from './encoding'
 import type { GitCommit, GitFileEntry, GitFileState, GitRepoStatus } from '../shared/gitStatus'
 
 export function isGitRepo(root: string): boolean {
@@ -13,6 +14,22 @@ function runGit(root: string, args: string[]): Promise<string> {
       if (error) reject(error)
       else resolve(stdout)
     })
+  })
+}
+
+// Raw stdout bytes - for content that may not be UTF-8 (file bodies out of
+// `git show`), where the string variant above would bake in mojibake.
+function runGitBuffer(root: string, args: string[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'git',
+      args,
+      { cwd: root, maxBuffer: 10 * 1024 * 1024, encoding: 'buffer' },
+      (error, stdout) => {
+        if (error) reject(error)
+        else resolve(stdout)
+      }
+    )
   })
 }
 
@@ -210,17 +227,21 @@ export async function getDiff(
   root: string,
   relPath: string
 ): Promise<{ original: string; modified: string }> {
-  let original = ''
-  try {
-    original = await runGit(root, ['show', `HEAD:${relPath}`])
-  } catch (e) {}
+  const absPath = path.join(root, relPath)
 
+  // Working copy first: decodeFileBuffer registers the file's encoding, which
+  // the HEAD-version decode below then reuses so both diff sides agree.
   let modified = ''
   try {
-    modified = fs.readFileSync(path.join(root, relPath), 'utf-8')
+    modified = decodeFileBuffer(absPath, fs.readFileSync(absPath)).content ?? ''
   } catch (e) {
     console.warn('Failed to read working copy for diff:', e)
   }
+
+  let original = ''
+  try {
+    original = decodeLikeFile(absPath, await runGitBuffer(root, ['show', `HEAD:${relPath}`]))
+  } catch (e) {}
 
   return { original, modified }
 }

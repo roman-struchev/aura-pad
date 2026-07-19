@@ -1,66 +1,18 @@
 // Must stay the first import: pins the app name (and thus the userData dir)
 // before any module resolves paths under it at import time.
 import './appIdentity'
-import { app, shell, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
+import { app, shell, BrowserWindow, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
-import {
-  loadWorkspaces,
-  saveWorkspaces,
-  getWorkspaceTrees,
-  searchInWorkspaces,
-  readFileContent,
-  writeFileContent,
-  renamePath,
-  createPath,
-  copyPath,
-  deletePath,
-  movePath
-} from './workspaces'
-import { loadSettings, saveSettings } from './settings'
-import { loadOpenTabsState, saveOpenTabsState } from './openTabsState'
-import {
-  loadRecentExternalFiles,
-  touchRecentExternalFile,
-  removeRecentExternalFile
-} from './recentExternalFiles'
-import { listPathMatches } from './pathBrowse'
-import { setupWatchers, closeAllWatchers, broadcast, recordSelfWrite } from './watcher'
+import { handleSend } from './ipc'
+import { registerIpcHandlers } from './ipcHandlers'
+import { setupWatchers, closeAllWatchers, broadcast } from './watcher'
 import { registerCreatePtyHandler, killAllPtys } from './terminals'
 import { buildAppMenu } from './menu'
-import {
-  getAllRepoStatuses,
-  getDiff,
-  stagePaths,
-  unstagePaths,
-  discardPath,
-  commit as gitCommit,
-  lastCommitMessage,
-  push as gitPush,
-  pull as gitPull,
-  getLog,
-  getBranches,
-  checkoutBranch
-} from './git'
-import {
-  listAccounts as gtasksListAccounts,
-  addAccount as gtasksAddAccount,
-  removeAccount as gtasksRemoveAccount,
-  listTaskLists as gtasksListTaskLists,
-  listTasks as gtasksListTasks,
-  createTask as gtasksCreateTask,
-  updateTask as gtasksUpdateTask,
-  moveTask as gtasksMoveTask
-} from './googleTasks'
-import type { GTaskInput } from '../shared/googleTasks'
-import { lintPython, lintEslint } from './lint'
-import { googleWebTranslate } from './translate'
-import { initAutoUpdater, applyUpdate } from './updater'
-import type { AppSettings } from '../shared/settings'
-import type { OpenTabsState } from '../shared/openTabsState'
+import { initAutoUpdater } from './updater'
 
 // Opening a file via "Open With" (or dropping one on the dock icon on macOS)
 // only reaches this process, not the renderer directly - forward it over
@@ -73,6 +25,10 @@ const pendingFileOpens: string[] = []
 // Windows that the renderer has confirmed are safe to close (no unsaved
 // tabs, or the user chose to discard them) - see the 'close' handler below.
 const windowsAllowedToClose = new WeakSet<BrowserWindow>()
+// Windows whose renderer has stopped responding (busy-looped or OOM-stalled
+// JS). The close handler must not wait for a 'confirm-close' from these -
+// it would never arrive, leaving the window (and Cmd+Q) permanently stuck.
+const unresponsiveWindows = new WeakSet<BrowserWindow>()
 // True once App.tsx has mounted and subscribed to 'open-file-request' (see
 // the 'renderer-ready' handler below). 'ready-to-show' fires as soon as the
 // page has painted a first frame, which isn't guaranteed to be after React
@@ -178,12 +134,19 @@ function createWindow(): void {
 
   // Ask the renderer whether it's safe to close (unsaved tabs) instead of
   // discarding work silently - it responds via 'confirm-close' below, either
-  // immediately (nothing unsaved) or after the user confirms a prompt.
+  // immediately (nothing unsaved) or after the user confirms a prompt. A
+  // crashed or hung renderer can't respond at all, so it gets no veto: there
+  // is nothing left to save, and preventing the close would leave the window
+  // (and the whole quit sequence) permanently stuck behind a dead page.
   mainWindow.on('close', (event) => {
     if (windowsAllowedToClose.has(mainWindow)) return
+    if (mainWindow.webContents.isCrashed() || unresponsiveWindows.has(mainWindow)) return
     event.preventDefault()
     mainWindow.webContents.send('request-close')
   })
+
+  mainWindow.on('unresponsive', () => unresponsiveWindows.add(mainWindow))
+  mainWindow.on('responsive', () => unresponsiveWindows.delete(mainWindow))
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -194,7 +157,13 @@ function createWindow(): void {
   // headless forever - kill them whenever the main frame navigates, same as
   // when the last window closes. The initial load also fires this, when the
   // map is still empty.
+  //
+  // The reload also wipes the page's 'open-file-request' subscription, so
+  // rendererReady must drop back to false until the fresh page re-announces
+  // itself - otherwise a file opened via Finder mid-reload would be sent into
+  // the void instead of queued.
   mainWindow.webContents.on('did-navigate', () => {
+    rendererReady = false
     killAllPtys()
   })
 
@@ -227,7 +196,7 @@ function createWindow(): void {
   }
 }
 
-ipcMain.on('confirm-close', (event) => {
+handleSend('confirm-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (!win) return
   windowsAllowedToClose.add(win)
@@ -244,17 +213,19 @@ ipcMain.on('confirm-close', (event) => {
 // The renderer's unsaved-changes prompt was declined - the user kept working.
 // A quit that was pending must be forgotten, or the next plain window close
 // would wrongly quit the whole app.
-ipcMain.on('decline-close', () => {
+handleSend('decline-close', () => {
   quitRequested = false
 })
 
 // App.tsx sends this right after mounting and subscribing to
 // 'open-file-request' - only from this point on is it safe to deliver a file
 // open directly instead of queuing it.
-ipcMain.on('renderer-ready', () => {
+handleSend('renderer-ready', () => {
   rendererReady = true
   flushPendingFileOpens()
 })
+
+registerIpcHandlers()
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.struchev.aurapad')
@@ -305,215 +276,3 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
-
-// File System IPC Handlers
-ipcMain.handle('get-app-version', () => app.getVersion())
-
-ipcMain.handle('get-workspaces', () => {
-  return getWorkspaceTrees()
-})
-
-ipcMain.handle('add-workspace', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
-  if (result.canceled || result.filePaths.length === 0) return null
-
-  const selectedPath = result.filePaths[0]
-  const paths = loadWorkspaces()
-
-  if (!paths.includes(selectedPath)) {
-    paths.push(selectedPath)
-    saveWorkspaces(paths)
-    setupWatchers()
-  }
-
-  return getWorkspaceTrees()
-})
-
-ipcMain.handle('remove-workspace', (_, pathToRemove) => {
-  let paths = loadWorkspaces()
-  paths = paths.filter((p) => p !== pathToRemove)
-  saveWorkspaces(paths)
-  setupWatchers()
-  return getWorkspaceTrees()
-})
-
-ipcMain.handle('search-projects', async (_, query) => {
-  return await searchInWorkspaces(query)
-})
-
-ipcMain.handle('get-recent-external-files', () => loadRecentExternalFiles())
-
-ipcMain.handle('touch-recent-external-file', (_, filePath) => touchRecentExternalFile(filePath))
-
-ipcMain.handle('remove-recent-external-file', (_, filePath) => removeRecentExternalFile(filePath))
-
-ipcMain.handle('list-path-matches', (_, rawInput) => listPathMatches(rawInput))
-
-// Tree context menu's "Open in Finder": reveals the file/folder selected in
-// its parent window (Finder / Explorer / the Linux file manager).
-ipcMain.on('reveal-in-finder', (_, targetPath: string) => {
-  shell.showItemInFolder(targetPath)
-})
-
-ipcMain.handle('read-file', async (_, filePath) => {
-  return readFileContent(filePath)
-})
-
-ipcMain.handle('save-file', async (_, filePath, content) => {
-  const result = writeFileContent(filePath, content)
-  if (result.success) recordSelfWrite(filePath, content)
-  return result
-})
-
-ipcMain.on('apply-update', () => applyUpdate())
-
-ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors)
-
-ipcMain.handle('get-settings', () => loadSettings())
-
-ipcMain.handle('save-settings', (_, settings: AppSettings) => {
-  saveSettings(settings)
-  return settings
-})
-
-ipcMain.handle('get-open-tabs', () => loadOpenTabsState())
-
-ipcMain.handle('save-open-tabs', (_, state: OpenTabsState) => {
-  saveOpenTabsState(state)
-})
-
-ipcMain.handle('rename-path', async (_, oldPath: string, newName: string) => {
-  const result = renamePath(oldPath, newName)
-  if (result.success) setupWatchers()
-  return result
-})
-
-ipcMain.handle(
-  'create-path',
-  async (_, parentPath: string, name: string, type: 'file' | 'directory') => {
-    return createPath(parentPath, name, type)
-  }
-)
-
-ipcMain.handle('copy-path', async (_, sourcePath: string, targetDirPath: string) => {
-  return copyPath(sourcePath, targetDirPath)
-})
-
-ipcMain.handle('delete-path', async (_, targetPath: string) => {
-  const result = await deletePath(targetPath)
-  if (result.success) setupWatchers()
-  return result
-})
-
-ipcMain.handle('move-path', async (_, sourcePath: string, targetDirPath: string) => {
-  const result = movePath(sourcePath, targetDirPath)
-  if (result.success) setupWatchers()
-  return result
-})
-
-// Git IPC Handlers
-const refreshedStatuses = (): ReturnType<typeof getAllRepoStatuses> =>
-  getAllRepoStatuses(loadWorkspaces())
-
-ipcMain.handle('git-status', async () => {
-  if (!loadSettings().extensions.git.enabled) return []
-  return refreshedStatuses()
-})
-
-ipcMain.handle('git-diff', async (_, root: string, relPath: string) => {
-  return getDiff(root, relPath)
-})
-
-ipcMain.handle('git-stage', async (_, root: string, relPaths: string[]) => {
-  const result = await stagePaths(root, relPaths)
-  return { ...result, statuses: await refreshedStatuses() }
-})
-
-ipcMain.handle('git-unstage', async (_, root: string, relPaths: string[]) => {
-  const result = await unstagePaths(root, relPaths)
-  return { ...result, statuses: await refreshedStatuses() }
-})
-
-ipcMain.handle('git-discard', async (_, root: string, relPath: string) => {
-  const result = await discardPath(root, relPath)
-  return { ...result, statuses: await refreshedStatuses() }
-})
-
-ipcMain.handle(
-  'git-commit',
-  async (_, root: string, message: string, relPaths: string[], amend: boolean) => {
-    const result = await gitCommit(root, message, relPaths, amend)
-    return { ...result, statuses: await refreshedStatuses() }
-  }
-)
-
-ipcMain.handle('git-last-commit-message', async (_, root: string) => {
-  return lastCommitMessage(root)
-})
-
-ipcMain.handle('git-push', async (_, root: string) => {
-  return gitPush(root)
-})
-
-ipcMain.handle('git-pull', async (_, root: string) => {
-  const result = await gitPull(root)
-  return { ...result, statuses: await refreshedStatuses() }
-})
-
-ipcMain.handle('git-log', async (_, root: string, limit: number, skip: number) => {
-  return getLog(root, limit, skip)
-})
-
-ipcMain.handle('git-branches', async (_, root: string) => {
-  return getBranches(root)
-})
-
-ipcMain.handle('git-checkout', async (_, root: string, branch: string) => {
-  const result = await checkoutBranch(root, branch)
-  return { ...result, statuses: await refreshedStatuses() }
-})
-
-// Google Tasks IPC Handlers
-ipcMain.handle('gtasks-accounts', () => gtasksListAccounts())
-
-ipcMain.handle('gtasks-add-account', () => gtasksAddAccount())
-
-ipcMain.handle('gtasks-remove-account', (_, email: string) => gtasksRemoveAccount(email))
-
-ipcMain.handle('gtasks-lists', (_, email: string) => gtasksListTaskLists(email))
-
-ipcMain.handle('gtasks-tasks', (_, email: string, listId: string) => gtasksListTasks(email, listId))
-
-ipcMain.handle('gtasks-create-task', (_, email: string, listId: string, input: GTaskInput) =>
-  gtasksCreateTask(email, listId, input)
-)
-
-ipcMain.handle(
-  'gtasks-update-task',
-  (
-    _,
-    email: string,
-    listId: string,
-    taskId: string,
-    input: Partial<GTaskInput> & { status?: 'needsAction' | 'completed' }
-  ) => gtasksUpdateTask(email, listId, taskId, input)
-)
-
-ipcMain.handle(
-  'gtasks-move-task',
-  (_, email: string, listId: string, taskId: string, previousTaskId?: string) =>
-    gtasksMoveTask(email, listId, taskId, previousTaskId)
-)
-
-// Diagnostics IPC Handlers
-ipcMain.handle('lint-python', async (_, absPath: string) => {
-  return lintPython(absPath)
-})
-
-ipcMain.handle('lint-eslint', async (_, absPath: string, workspaceRoot: string) => {
-  return lintEslint(absPath, workspaceRoot)
-})
-
-ipcMain.handle('translate-google-web', (_, text: string, from: string, to: string) =>
-  googleWebTranslate(text, from, to)
-)

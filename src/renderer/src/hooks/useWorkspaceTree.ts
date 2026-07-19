@@ -18,13 +18,55 @@ interface UseWorkspaceTreeCallbacks {
   createInputRef: RefObject<HTMLInputElement | null>
 }
 
+// Main rebuilds and pushes the *entire* forest on any structural change.
+// Reuse the previous render's node objects (by identity) for subtrees that
+// didn't actually change, so the memoized FileTree rows under them can skip
+// re-rendering - without this, every watcher push re-rendered every expanded
+// row in every workspace.
+function mergeNode(prev: FileNode | undefined, next: FileNode): FileNode {
+  if (
+    !prev ||
+    prev.name !== next.name ||
+    prev.path !== next.path ||
+    prev.type !== next.type ||
+    !!prev.isRoot !== !!next.isRoot ||
+    !prev.children !== !next.children
+  ) {
+    return next
+  }
+  if (!next.children) return prev
+  const prevChildren = prev.children ?? []
+  const prevByPath = new Map(prevChildren.map((c) => [c.path, c]))
+  let unchanged = prevChildren.length === next.children.length
+  const merged = next.children.map((child, i) => {
+    const result = mergeNode(prevByPath.get(child.path), child)
+    if (result !== prevChildren[i]) unchanged = false
+    return result
+  })
+  return unchanged ? prev : { ...next, children: merged }
+}
+
+function mergeForest(prev: FileNode[], next: FileNode[]): FileNode[] {
+  const prevByPath = new Map(prev.map((r) => [r.path, r]))
+  let unchanged = prev.length === next.length
+  const merged = next.map((root, i) => {
+    const result = mergeNode(prevByPath.get(root.path), root)
+    if (result !== prev[i]) unchanged = false
+    return result
+  })
+  return unchanged ? prev : merged
+}
+
 // Owns the workspace file tree: the roots themselves (add/remove/rename/move/
 // copy/delete), the rename/create dialogs, and the tree's focus/clipboard
 // state used for keyboard copy-paste-delete.
 export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   const { renameInputRef, createInputRef } = callbacks
 
-  const [rootNodes, setRootNodes] = useState<FileNode[]>([])
+  const [rootNodes, setRawRootNodes] = useState<FileNode[]>([])
+  const setRootNodes = (trees: FileNode[]): void => {
+    setRawRootNodes((prev) => mergeForest(prev, trees))
+  }
   // Each reveal carries a fresh seq so revealing the same path twice (e.g.
   // the "select opened file" button after the user collapsed folders) still
   // re-expands and re-scrolls - the tree reacts to a *change* of the request.

@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { FileTree, type FileNode, type RevealRequest } from './FileTree'
 import { GitPanel } from './GitPanel'
 import { getFileIcon } from '../lib/fileIcon'
-import type { GitRepoStatus } from '../../../shared/gitStatus'
+import { findRepoForRoot } from '../lib/repoForRoot'
 import type { useGitStatus } from '../hooks/useGitStatus'
 
 interface SidebarProps {
@@ -30,7 +30,8 @@ interface SidebarProps {
   git: ReturnType<typeof useGitStatus>
   gitPanelRoot: string | null
   onSelectGitRoot: (root: string) => void
-  onOpenGit: (root: string) => void
+  // Receives the workspace root's path; App resolves it to the repo root.
+  onOpenGit: (rootPath: string) => void
 }
 
 // The sidebar's own content (the outer w-64/border chrome stays in App.tsx,
@@ -59,11 +60,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectGitRoot,
   onOpenGit
 }) => {
-  // Same repo-for-root lookup as the window header: the repo usually *is*
-  // the workspace root, but a repo nested one level under it also counts.
-  const repoForRoot = (rootPath: string): GitRepoStatus | undefined =>
-    git.repos.find((r) => r.root === rootPath || r.root.startsWith(rootPath + '/'))
-
   return (
     <>
       {git.repos.length > 0 && (
@@ -108,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {rootNodes.length > 0 ? (
             <div className="flex flex-col gap-2">
               {rootNodes.map((rootNode) => {
-                const repo = repoForRoot(rootNode.path)
+                const repo = findRepoForRoot(git.repos, rootNode.path)
                 return (
                   <FileTree
                     key={rootNode.path}
@@ -125,7 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     rowPadding={rowPadding}
                     gitStatus={git.fileStates}
                     rootBranch={repo?.branch}
-                    onOpenGit={repo ? () => onOpenGit(repo.root) : undefined}
+                    onOpenGit={repo ? onOpenGit : undefined}
                   />
                 )
               })}

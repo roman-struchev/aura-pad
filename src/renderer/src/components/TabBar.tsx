@@ -21,7 +21,9 @@ interface TabBarProps {
 // close button, right-click for Close/Close Others/Close All. Pinned-tab
 // close confirmation lives in closeTab itself (so Cmd+W respects it too, not
 // just this button).
-export const TabBar: React.FC<TabBarProps> = ({
+// Memoized so unrelated App re-renders (git status pushes, terminal state)
+// skip the strip; App passes identity-stable callbacks for the same reason.
+export const TabBar: React.FC<TabBarProps> = React.memo(function TabBar({
   tabs,
   activeTabPath,
   setActiveTabPath,
@@ -31,7 +33,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   togglePin,
   reorderTab,
   heightClassName
-}) => {
+}) {
   const [draggedTab, setDraggedTab] = useState<string | null>(null)
   const [dragOverTab, setDragOverTab] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(
@@ -144,4 +146,4 @@ export const TabBar: React.FC<TabBarProps> = ({
       )}
     </div>
   )
-}
+})

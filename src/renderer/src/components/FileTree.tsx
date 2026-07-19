@@ -30,7 +30,10 @@ interface FileTreeProps {
   // Current branch of the repo this root belongs to; shown as a badge on the
   // root row (the per-project git entry point). Only set on root instances.
   rootBranch?: string
-  onOpenGit?: () => void
+  // Called with this root's path - takes the path as an argument (rather
+  // than closing over it) so the same stable callback can be passed to every
+  // root without breaking the memo below.
+  onOpenGit?: (rootPath: string) => void
   level?: number
 }
 
@@ -45,7 +48,11 @@ const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
 
 export const DRAG_PATH_MIME = 'application/x-aura-path'
 
-export const FileTree: React.FC<FileTreeProps> = ({
+// Memoized: App re-renders on every keystroke, and without this the entire
+// expanded forest re-rendered with it. Effective because the node objects
+// keep their identity across unrelated updates (useWorkspaceTree's
+// mergeForest) and App passes identity-stable callbacks (useStableCallback).
+export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
   node,
   onSelect,
   onContextMenu,
@@ -61,7 +68,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   rootBranch,
   onOpenGit,
   level = 0
-}) => {
+}) {
   const [expanded, setExpanded] = useState<boolean>(level === 0)
   const [lastRevealKey, setLastRevealKey] = useState<string | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -184,7 +191,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
             title={`Open Git — ${rootBranch}`}
             onClick={(e) => {
               e.stopPropagation()
-              onOpenGit?.()
+              onOpenGit?.(node.path)
             }}
           >
             <GitBranch size={10} className="shrink-0" />
@@ -280,4 +287,4 @@ export const FileTree: React.FC<FileTreeProps> = ({
       )}
     </div>
   )
-}
+})

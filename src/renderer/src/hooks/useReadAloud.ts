@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import TtsWorker from '../lib/tts/piperWorker?worker'
 import type { TtsWorkerResponse } from '../lib/tts/piperWorker'
 import { download as piperDownload, remove as piperRemove } from '@mintplex-labs/piper-tts-web'
+import { useModelWorker } from './useModelWorker'
 import { alertDialog } from '../lib/dialogs'
 import { detectReadLang as detectLang } from '../lib/langDetect'
 import { chunkSentences } from '../lib/sentenceChunks'
@@ -23,9 +24,6 @@ export const READ_ALOUD_RATES = [1, 1.5, 2]
 // on chunk boundaries, and the first chunk's synthesis time is the latency
 // before the user hears anything.
 const MAX_CHUNK_CHARS = 220
-// A loaded Piper session holds ~100MB+ per voice; drop the worker after this
-// long without reading (mirrors the dictation model's idle unload).
-const TTS_IDLE_UNLOAD_MS = 30 * 60 * 1000
 
 // Settings keys -> Piper voices (all from rhasspy/piper-voices), with what
 // the download-consent dialog shows. 'system' is deliberately absent - it's
@@ -142,8 +140,6 @@ export function useReadAloud(voices: ReadVoices) {
 
   const rateRef = useRef(rate)
   const speakingRef = useRef(false)
-  const workerRef = useRef<Worker | null>(null)
-  const idleUnloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingChunksRef = useRef<string[]>([])
 
   const voicesRef = useRef(voices)
@@ -163,24 +159,31 @@ export function useReadAloud(voices: ReadVoices) {
   const playingRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const systemVoicesRef = useRef<SpeechSynthesisVoice[]>([])
-  const progressPerUrlRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
 
-  const scheduleIdleUnload = (): void => {
-    if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
-    idleUnloadRef.current = setTimeout(() => {
-      if (!speakingRef.current && workerRef.current) {
-        workerRef.current.terminate()
-        workerRef.current = null
-      }
-    }, TTS_IDLE_UNLOAD_MS)
-  }
+  // Worker lifecycle (lazy start, startup-error recovery, idle unload after
+  // half an hour without reading, download-progress aggregation) - shared
+  // with dictation and translate via useModelWorker. A loaded Piper session
+  // holds ~100MB+ per voice, hence the idle unload.
+  const worker = useModelWorker<TtsWorkerResponse>({
+    create: () => new TtsWorker(),
+    onMessage: (msg) => handleWorkerMessage(msg),
+    // Terminate and drop the broken worker (as dictation/translate do) -
+    // keeping it cached would make every later read-aloud post messages
+    // into a dead worker and hang in 'speaking' forever.
+    onStartupError: () => {
+      stop()
+      alertDialog('Read aloud failed to start (see DevTools).')
+    },
+    isIdle: () => !speakingRef.current,
+    onProgress: setDownloadProgress
+  })
 
   const finishIfDone = (): void => {
     if (pendingIdsRef.current.size === 0 && bufferRef.current.size === 0 && !playingRef.current) {
       speakingRef.current = false
       setSpeaking(false)
       setDownloadProgress(null)
-      scheduleIdleUnload()
+      worker.scheduleIdleUnload()
     }
   }
 
@@ -238,17 +241,9 @@ export function useReadAloud(voices: ReadVoices) {
 
   const handleWorkerMessage = (msg: TtsWorkerResponse): void => {
     switch (msg.type) {
-      case 'progress': {
-        progressPerUrlRef.current.set(msg.url, { loaded: msg.loaded, total: msg.total })
-        let loaded = 0
-        let total = 0
-        for (const f of progressPerUrlRef.current.values()) {
-          loaded += f.loaded
-          total += f.total
-        }
-        if (total > 0) setDownloadProgress(Math.round((loaded / total) * 100))
+      case 'progress':
+        worker.reportFileProgress(msg.url, msg.loaded, msg.total)
         break
-      }
       case 'audio': {
         if (!pendingIdsRef.current.delete(msg.id)) return // stale, after stop()
         markVoiceDownloaded(msg.voiceId)
@@ -267,31 +262,13 @@ export function useReadAloud(voices: ReadVoices) {
     }
   }
 
-  const getWorker = (): Worker => {
-    if (!workerRef.current) {
-      const worker = new TtsWorker()
-      worker.onmessage = (e: MessageEvent<TtsWorkerResponse>) => handleWorkerMessage(e.data)
-      // Terminate and drop the broken worker (as dictation/translate do) -
-      // keeping it cached would make every later read-aloud post messages
-      // into a dead worker and hang in 'speaking' forever.
-      worker.onerror = () => {
-        worker.terminate()
-        workerRef.current = null
-        stop()
-        alertDialog('Read aloud failed to start (see DevTools).')
-      }
-      workerRef.current = worker
-    }
-    return workerRef.current
-  }
-
   const stop = (): void => {
     speakingRef.current = false
     setSpeaking(false)
     setDownloadProgress(null)
     setModalPhase(null)
     pendingChunksRef.current = []
-    workerRef.current?.postMessage({ type: 'cancel' })
+    if (worker.hasWorker()) worker.getWorker().postMessage({ type: 'cancel' })
     pendingIdsRef.current.clear()
     for (const item of bufferRef.current.values()) {
       if (item.kind === 'wav') URL.revokeObjectURL(item.url)
@@ -306,11 +283,11 @@ export function useReadAloud(voices: ReadVoices) {
       audioRef.current = null
     }
     speechSynthesis.cancel()
-    scheduleIdleUnload()
+    worker.scheduleIdleUnload()
   }
 
   const enqueueChunks = async (chunks: string[]): Promise<void> => {
-    progressPerUrlRef.current = new Map()
+    worker.resetProgress()
     playIndexRef.current = nextIdRef.current
     if (chunks.some((c) => voiceFor(detectLang(c)) === 'system')) {
       systemVoicesRef.current = await ensureSystemVoices()
@@ -323,7 +300,7 @@ export function useReadAloud(voices: ReadVoices) {
         bufferRef.current.set(id, { kind: 'system', text: chunk })
       } else {
         pendingIdsRef.current.add(id)
-        getWorker().postMessage({ type: 'synthesize', id, text: chunk, voiceId: voice.id })
+        worker.getWorker().postMessage({ type: 'synthesize', id, text: chunk, voiceId: voice.id })
       }
     }
     playNext()
@@ -375,18 +352,13 @@ export function useReadAloud(voices: ReadVoices) {
   // as the consent flow.
   const predownloadVoices = async (voiceIds: string[]): Promise<void> => {
     setModalPhase('downloading')
-    progressPerUrlRef.current = new Map()
+    // No worker involved (piperDownload fetches straight to OPFS), but the
+    // handle's aggregation gives the same combined percentage for free.
+    worker.resetProgress()
     try {
       for (const voiceId of voiceIds) {
         await piperDownload(voiceId as never, (p) => {
-          progressPerUrlRef.current.set(p.url, { loaded: p.loaded, total: p.total })
-          let loaded = 0
-          let total = 0
-          for (const f of progressPerUrlRef.current.values()) {
-            loaded += f.loaded
-            total += f.total
-          }
-          if (total > 0) setDownloadProgress(Math.round((loaded / total) * 100))
+          worker.reportFileProgress(p.url, p.loaded, p.total)
         })
         markVoiceDownloaded(voiceId)
       }
@@ -401,8 +373,7 @@ export function useReadAloud(voices: ReadVoices) {
   // The worker is dropped too - one of its sessions may hold that voice.
   const deleteVoice = async (voiceId: string): Promise<void> => {
     if (speakingRef.current) stop()
-    workerRef.current?.terminate()
-    workerRef.current = null
+    worker.terminateWorker()
     try {
       await piperRemove(voiceId as never)
     } catch {
@@ -415,10 +386,7 @@ export function useReadAloud(voices: ReadVoices) {
   // worker, the only way to abort the in-flight fetches (finished files stay
   // cached, so retrying resumes).
   const closeVoiceModal = (): void => {
-    if (modalPhase === 'downloading') {
-      workerRef.current?.terminate()
-      workerRef.current = null
-    }
+    if (modalPhase === 'downloading') worker.terminateWorker()
     stop()
   }
 
@@ -435,8 +403,7 @@ export function useReadAloud(voices: ReadVoices) {
 
   useEffect(() => {
     return () => {
-      workerRef.current?.terminate()
-      if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
+      // The worker itself is terminated by useModelWorker's own cleanup.
       // A detached HTMLAudioElement keeps playing after unmount - silence it.
       audioRef.current?.pause()
       speechSynthesis.cancel()

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import type { FileNode } from './components/FileTree'
-import { Terminal } from './components/Terminal'
 import { GlobalSearch } from './components/GlobalSearch'
 import { FileSearch } from './components/FileSearch'
 import { MarkdownPreview } from './components/MarkdownPreview'
@@ -8,7 +7,11 @@ import { HtmlPreview } from './components/HtmlPreview'
 import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
-import { BranchSelector } from './components/BranchSelector'
+import { AppHeader } from './components/AppHeader'
+import { TerminalPanel } from './components/TerminalPanel'
+import { UpdateToast } from './components/UpdateToast'
+import { NameInputModal } from './components/NameInputModal'
+import { AiModals } from './components/AiModals'
 import { GoogleTasksTab } from './components/GoogleTasksTab'
 import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
 import { makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
@@ -24,19 +27,16 @@ import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
-import { useReadAloud, VOICE_CATALOG, downloadedVoices } from './hooks/useReadAloud'
+import { useReadAloud } from './hooks/useReadAloud'
 import { useTranslate } from './hooks/useTranslate'
-import { READ_LANGS } from '../../shared/settings'
+import { useMenuActions } from './hooks/useMenuActions'
+import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
 import type { UpdateNotification } from '../../shared/updateNotification'
-import { VoiceModelModal } from './components/VoiceModelModal'
-import { ReadAloudModal } from './components/ReadAloudModal'
-import { TranslateModal } from './components/TranslateModal'
 import { TranslatePopup } from './components/TranslatePopup'
-import { VoiceLevelMeter } from './components/VoiceLevelMeter'
-import { Modal } from './components/Modal'
 import { DialogHost } from './components/DialogHost'
-import { ToolbarButton } from './components/ToolbarButton'
 import { alertDialog, confirmDialog } from './lib/dialogs'
+import { useStableCallback } from './lib/useStableCallback'
+import { findRepoForRoot } from './lib/repoForRoot'
 import { getLanguage } from './lib/language'
 import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
@@ -46,24 +46,6 @@ import { MONO_FONT_FAMILY } from './lib/fonts'
 import Editor from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import clsx from 'clsx'
-import {
-  FolderOpen,
-  X,
-  Terminal as TerminalIcon,
-  Plus,
-  Play,
-  AlignLeft,
-  Search,
-  Crosshair,
-  Eye,
-  Code2,
-  SquareCheckBig,
-  Settings as SettingsIcon,
-  Mic,
-  Loader2,
-  Square,
-  Volume2
-} from 'lucide-react'
 
 // File types with a rendered preview mode (the toolbar's Show Preview toggle
 // and the tree's hover eye icon): Markdown, plus raw HTML in a sandboxed
@@ -77,11 +59,32 @@ const isPreviewablePath = (path: string | null): boolean =>
 const isProsePath = (path: string | null): boolean =>
   !!path && (path.endsWith('.md') || path.endsWith('.markdown') || path.endsWith('.txt'))
 
-function App() {
+function App(): React.JSX.Element {
   const { settings, updateSetting } = useSettings()
   const resolvedTheme = useTheme(settings.theme)
   const monacoTheme = getMonacoTheme(resolvedTheme)
   const density = DENSITY[settings.uiMode]
+
+  // Stable identity unless the settings that feed it change - a fresh object
+  // literal per render makes the editor re-apply updateOptions() on every
+  // App render (i.e. on every keystroke).
+  const editorOptions = useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(
+    () => ({
+      minimap: { enabled: false },
+      fontFamily: MONO_FONT_FAMILY,
+      fontSize: density.editorFontSize,
+      wordWrap: 'on',
+      padding: { top: 6 },
+      scrollBeyondLastLine: false,
+      lineNumbers: settings.lineNumbersEnabled ? 'on' : 'off',
+      // Tighter gutter than Monaco's defaults; 0 when line numbers are off
+      // so text isn't indented for no reason.
+      lineNumbersMinChars: settings.lineNumbersEnabled ? 4 : 0,
+      lineDecorationsWidth: settings.lineNumbersEnabled ? 4 : 0,
+      scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 }
+    }),
+    [density.editorFontSize, settings.lineNumbersEnabled]
+  )
 
   const terminal = useTerminals()
   const tabs = useTabs(settings.tabsEnabled)
@@ -115,8 +118,8 @@ function App() {
   const voice = useVoiceInput(settings.voiceModel, settings.voiceLanguage, (text) =>
     tabsRef.current.insertTextAtCursor(text)
   )
-  // Same ref pattern as tabsRef: the menu-action effect below subscribes once
-  // but must always call the current render's toggle (which sees live status).
+  // Same ref pattern as tabsRef: the menu-action hook subscribes once but
+  // must always call the current render's toggle (which sees live status).
   const voiceRef = useRef(voice)
   useEffect(() => {
     voiceRef.current = voice
@@ -150,15 +153,12 @@ function App() {
     if (!path) return
     if (path.endsWith('.json')) {
       try {
-        t.updateTab(path, {
-          content: JSON.stringify(JSON.parse(t.fileContent), null, 2),
-          isSaved: false
-        })
+        t.setFileContent(path, JSON.stringify(JSON.parse(t.fileContent), null, 2))
       } catch {
         alertDialog('Invalid JSON format.')
       }
     } else if (path.endsWith('.html') || path.endsWith('.htm') || path.endsWith('.xml')) {
-      t.updateTab(path, { content: prettyPrintMarkup(t.fileContent), isSaved: false })
+      t.setFileContent(path, prettyPrintMarkup(t.fileContent))
     }
   }
 
@@ -174,11 +174,14 @@ function App() {
     return (activeRoot ?? roots[0])?.path
   }
 
+  const openDefaultTerminal = (): void => {
+    terminalRef.current.openNewTerminal(defaultTerminalCwd())
+  }
+
   // Shared by the toolbar button and the Ctrl+` menu accelerator.
   const toggleTerminal = (): void => {
     const term = terminalRef.current
-    if (!term.showTerminal && term.terminals.length === 0)
-      term.openNewTerminal(defaultTerminalCwd())
+    if (!term.showTerminal && term.terminals.length === 0) openDefaultTerminal()
     else term.setShowTerminal(!term.showTerminal)
   }
 
@@ -269,7 +272,7 @@ function App() {
       run: () => startTranslate()
     })
   }
-  const git = useGitStatus(settings.extensions.git.enabled)
+  const git = useGitStatus(settings.extensions.git.enabled, tabs.saveAllDirtyFileTabs)
   useDiagnostics(tabs.selectedPath, tabs.isSaved, tree.rootNodes)
   const recentExternalFiles = useRecentExternalFiles()
 
@@ -348,13 +351,15 @@ function App() {
     []
   )
 
-  const lastShiftTime = useRef<number>(0)
-  // Tracks whether some other key fired between the last lone Shift press and
-  // now, so two Shift keydowns close together only count as "double-Shift"
-  // when nothing happened in between - not e.g. two Shift+<letter> presses
-  // from fast CamelCase typing, each of which also fires its own Shift
-  // keydown right before the letter.
-  const keyPressedSinceShift = useRef<boolean>(false)
+  // 'manual' just opens the releases page - nothing to wait for. The
+  // self-applying modes keep the toast up as a progress indicator until the
+  // app restarts itself. Shared by the update toast and the Settings modal.
+  const handleApplyUpdate = (): void => {
+    window.api.applyUpdate()
+    if (updateNotification?.mode === 'manual') setUpdateNotification(null)
+    else setUpdateInstalling(true)
+  }
+
   const sidebarRef = useRef<HTMLDivElement>(null)
 
   // Monaco's built-in widgets (e.g. the Find/Replace bar's icon buttons) use
@@ -365,16 +370,33 @@ function App() {
   // never touches our own toolbar buttons' tooltips. Keep an aria-label so
   // screen readers still get the same text.
   useEffect(() => {
-    const MONACO_TITLE_SELECTOR = '.monaco-editor[title], .monaco-editor [title]'
-    const stripTitles = () => {
-      document.querySelectorAll(MONACO_TITLE_SELECTOR).forEach((el) => {
-        const title = el.getAttribute('title')
-        if (title && !el.getAttribute('aria-label')) el.setAttribute('aria-label', title)
-        el.removeAttribute('title')
-      })
+    const strip = (el: Element): void => {
+      const title = el.getAttribute('title')
+      if (!title) return
+      if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', title)
+      el.removeAttribute('title')
     }
-    stripTitles()
-    const observer = new MutationObserver(stripTitles)
+    // Only elements inside a Monaco editor - and only the mutated subtrees,
+    // not a document-wide querySelectorAll per mutation batch: Monaco emits
+    // mutations continuously while typing/scrolling, and the full-document
+    // scan burned CPU on every one of them.
+    const stripWithin = (el: Element): void => {
+      if (!el.closest('.monaco-editor')) return
+      strip(el)
+      el.querySelectorAll('[title]').forEach(strip)
+    }
+    document.querySelectorAll('.monaco-editor[title], .monaco-editor [title]').forEach(strip)
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes') {
+          if (mutation.target instanceof Element) stripWithin(mutation.target)
+        } else {
+          mutation.addedNodes.forEach((node) => {
+            if (node instanceof Element) stripWithin(node)
+          })
+        }
+      }
+    })
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -396,7 +418,7 @@ function App() {
   // a capture-phase listener higher up the tree that stops the event before
   // it reaches the button prevents the hover from ever appearing.
   useEffect(() => {
-    const suppressFindWidgetHover = (e: MouseEvent) => {
+    const suppressFindWidgetHover = (e: MouseEvent): void => {
       if ((e.target as HTMLElement).closest?.('.find-widget')) {
         e.stopPropagation()
       }
@@ -405,68 +427,36 @@ function App() {
     return () => document.removeEventListener('mouseover', suppressFindWidgetHover, true)
   }, [])
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape with the translation popup open: dismiss it. Checked first -
-      // the popup sits on top of whatever else is going on.
-      if (e.key === 'Escape' && translateRef.current.popup) {
+  useGlobalHotkeys({
+    // Escape priority chain: the translation popup sits on top of whatever
+    // else is going on; then dictation (stop recording, throw the take away);
+    // then read-aloud (stop speaking).
+    onEscape: () => {
+      if (translateRef.current.popup) {
         translateRef.current.closePopup()
-        return
+        return true
       }
-      // Escape during dictation: stop recording and throw the take away
-      // (nothing gets transcribed or inserted).
-      if (e.key === 'Escape' && voiceRef.current.status === 'recording') {
+      if (voiceRef.current.status === 'recording') {
         voiceRef.current.cancelRecording()
-        return
+        return true
       }
-      // Escape during read-aloud: stop speaking.
-      if (e.key === 'Escape' && readAloudRef.current.speaking) {
+      if (readAloudRef.current.speaking) {
         readAloudRef.current.stop()
-        return
+        return true
       }
-
-      // Double-Shift quick open, JetBrains-style - toggles rather than just
-      // opening, so pressing it again closes the dialog too.
-      if (e.key === 'Shift') {
-        const now = Date.now()
-        if (now - lastShiftTime.current < 300 && !keyPressedSinceShift.current) {
-          setShowFileSearch((prev) => !prev)
-          lastShiftTime.current = 0
-        } else {
-          lastShiftTime.current = now
-        }
-        keyPressedSinceShift.current = false
-      } else {
-        keyPressedSinceShift.current = true
-      }
-
-      // Copy/paste/delete for the file tree - only when a tree row actually
-      // has focus, so this never steals Cmd+C/V from the editor or terminal,
-      // and never fires while typing in an input/textarea inside the sidebar
-      // (e.g. the Git panel's commit message box).
-      const isTreeFocused =
-        !!sidebarRef.current?.contains(document.activeElement) &&
-        document.activeElement?.tagName !== 'INPUT' &&
-        document.activeElement?.tagName !== 'TEXTAREA'
-      if (isTreeFocused && tree.focusedNode) {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
-          e.preventDefault()
-          tree.setClipboard({ path: tree.focusedNode.path })
-        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && tree.clipboard) {
-          e.preventDefault()
-          tree.pasteIntoNode(tree.focusedNode)
-        } else if ((e.key === 'Delete' || e.key === 'Backspace') && !tree.focusedNode.isRoot) {
-          e.preventDefault()
-          tree.deleteNode(tree.focusedNode)
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [tree.focusedNode, tree.clipboard])
+      return false
+    },
+    onToggleQuickOpen: () => setShowFileSearch((prev) => !prev),
+    sidebarRef,
+    focusedNode: tree.focusedNode,
+    hasClipboard: !!tree.clipboard,
+    onCopyNode: (node) => tree.setClipboard({ path: node.path }),
+    onPasteIntoNode: tree.pasteIntoNode,
+    onDeleteNode: tree.deleteNode
+  })
 
   useEffect(() => {
-    const handleClickOutside = () => tree.setContextMenu(null)
+    const handleClickOutside = (): void => tree.setContextMenu(null)
     window.addEventListener('click', handleClickOutside)
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
@@ -481,65 +471,34 @@ function App() {
     return unsubscribe
   }, [])
 
-  // The native macOS/Windows/Linux menu owns these accelerators (Cmd+S,
-  // Cmd+W, etc.) instead of a renderer-side keydown handler, so each key
-  // press only ever triggers one handler - see menu.ts.
-  useEffect(() => {
-    const unsubscribe = window.api.onMenuAction((action) => {
-      switch (action) {
-        case 'open-folder':
-          treeRef.current.handleAddFolder()
-          break
-        case 'save':
-          tabsRef.current.handleSave()
-          break
-        case 'close-tab':
-          // Context-sensitive: with focus inside the terminal panel (xterm
-          // keeps it on a textarea within .xterm) Cmd+W closes the active
-          // terminal, not the file tab hidden underneath it.
-          if (document.activeElement?.closest('.xterm')) {
-            terminalRef.current.closeActiveTerminal()
-          } else {
-            tabsRef.current.handleCloseFile()
-          }
-          break
-        case 'reopen-tab':
-          tabsRef.current.reopenClosedTab()
-          break
-        case 'go-to-file':
-          setShowFileSearch((prev) => !prev)
-          break
-        case 'find-in-files':
-          openGlobalSearch()
-          break
-        case 'toggle-git-panel':
-          setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
-          break
-        case 'toggle-dictation':
-          toggleDictation()
-          break
-        case 'translate-selection':
-          startTranslate()
-          break
-        case 'format-document':
-          formatActiveDocument()
-          break
-        case 'toggle-preview': {
-          const t = tabsRef.current
-          if (t.activeTabPath && isPreviewablePath(t.selectedPath))
-            t.updateTab(t.activeTabPath, { showPreview: !t.showMarkdownPreview })
-          break
-        }
-        case 'toggle-terminal':
-          toggleTerminal()
-          break
-        case 'preferences':
-          setShowSettings(true)
-          break
+  useMenuActions({
+    'open-folder': () => treeRef.current.handleAddFolder(),
+    save: () => tabsRef.current.handleSave(),
+    // Context-sensitive: with focus inside the terminal panel (xterm keeps it
+    // on a textarea within .xterm) Cmd+W closes the active terminal, not the
+    // file tab hidden underneath it.
+    'close-tab': () => {
+      if (document.activeElement?.closest('.xterm')) {
+        terminalRef.current.closeActiveTerminal()
+      } else {
+        tabsRef.current.handleCloseFile()
       }
-    })
-    return unsubscribe
-  }, [])
+    },
+    'reopen-tab': () => tabsRef.current.reopenClosedTab(),
+    'go-to-file': () => setShowFileSearch((prev) => !prev),
+    'find-in-files': openGlobalSearch,
+    'toggle-git-panel': () => setSidebarView((prev) => (prev === 'git' ? 'files' : 'git')),
+    'toggle-dictation': toggleDictation,
+    'translate-selection': startTranslate,
+    'format-document': formatActiveDocument,
+    'toggle-preview': () => {
+      const t = tabsRef.current
+      if (t.activeTabPath && isPreviewablePath(t.selectedPath))
+        t.updateTab(t.activeTabPath, { showPreview: !t.showMarkdownPreview })
+    },
+    'toggle-terminal': toggleTerminal,
+    preferences: () => setShowSettings(true)
+  })
 
   // Tells main it's now safe to deliver a file-open request directly instead
   // of queuing it - must run only once, after the subscription above is in
@@ -633,18 +592,41 @@ function App() {
       ? tree.rootNodes.map((r) => r.name).join(', ')
       : 'AuraPad'
   const headerRepo = breadcrumbPath
-    ? activeRoot &&
-      git.repos.find((r) => activeRoot.path === r.root || r.root.startsWith(activeRoot.path + '/'))
+    ? activeRoot && findRepoForRoot(git.repos, activeRoot.path)
     : git.repos[0]
   const hasFileActions = !!tabs.selectedPath && !activeExt
 
-  // Entry point from the file tree's per-root branch badge: focus that repo
-  // in the git panel and reveal the panel.
-  const openGitPanel = (root: string): void => {
-    setGitPanelRoot(root)
+  // Entry point from the file tree's per-root branch badge: focus that
+  // root's repo in the git panel and reveal the panel.
+  const openGitPanel = useStableCallback((rootPath: string): void => {
+    setGitPanelRoot(findRepoForRoot(git.repos, rootPath)?.root ?? rootPath)
     setSidebarView('git')
-  }
-  const voiceBusy = voice.status === 'downloading' || voice.status === 'transcribing'
+  })
+
+  // Identity-stable wrappers for everything the memoized FileTree rows (via
+  // Sidebar) receive - the hooks recreate their functions every render, and
+  // a single fresh callback would re-render the whole expanded forest on
+  // each keystroke.
+  const handleTreeSelect = useStableCallback((path: string) => {
+    tabs.openTab(path)
+  })
+  const handleTreeContextMenu = useStableCallback(tree.handleContextMenu)
+  const handleTreeCreateNew = useStableCallback(tree.startCreate)
+  const handleTreeMove = useStableCallback(tree.handleMove)
+  const handleTreeFocusNode = useStableCallback(tree.handleFocusNode)
+  const handleTreeRunPython = useStableCallback((node: FileNode) => runPythonFile(node.path))
+  const handleTreePreview = useStableCallback(previewMarkdown)
+  const handleRemoveRecent = useStableCallback(handleRemoveRecentExternalFile)
+  const handleTabClose = useStableCallback(tabs.closeTab)
+  const handleTabCloseOthers = useStableCallback(tabs.closeOtherTabs)
+  const handleTabCloseAll = useStableCallback(tabs.closeAllTabs)
+  const handleTabTogglePin = useStableCallback(tabs.togglePin)
+  const handleTabReorder = useStableCallback(tabs.reorderTab)
+  // Plain .map in the JSX would hand Sidebar a fresh array every render.
+  const recentExternalPaths = useMemo(
+    () => recentExternalFiles.entries.map((e) => e.path),
+    [recentExternalFiles.entries]
+  )
 
   return (
     <div
@@ -652,209 +634,46 @@ function App() {
       onDragOver={handleWindowDragOver}
       onDrop={handleWindowDrop}
     >
-      <div className="h-9 border-b border-fleet-border flex items-center justify-between px-3 bg-fleet-header select-none drag-region shrink-0">
-        <div className="ml-24 font-medium text-xs text-gray-400 flex items-center gap-2 min-w-0">
-          <span className="truncate max-w-[40vw]">{projectLabel}</span>
-          {headerRepo && (
-            <div className="no-drag-region shrink-0">
-              <BranchSelector
-                key={headerRepo.root}
-                root={headerRepo.root}
-                branch={headerRepo.branch}
-                onBranches={git.branches}
-                onCheckout={git.checkout}
-                triggerClassName="text-gray-500"
-              />
-            </div>
-          )}
-          {hasFileActions && (
-            <div className="flex items-center gap-1 no-drag-region shrink-0">
-              <div className="w-px h-4 bg-fleet-border mx-1" />
-              {tabs.selectedPath &&
-                isUnderAnyRoot(
-                  tabs.selectedPath,
-                  tree.rootNodes.map((r) => r.path)
-                ) && (
-                  <ToolbarButton
-                    onClick={() => {
-                      setSidebarView('files')
-                      if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
-                    }}
-                    title="Select Opened File in Tree"
-                    colorClassName="text-gray-400 hover:text-white"
-                  >
-                    <Crosshair size={16} />
-                  </ToolbarButton>
-                )}
-              {tabs.selectedPath?.endsWith('.py') && (
-                <ToolbarButton
-                  onClick={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
-                  title="Run Python"
-                  colorClassName="text-green-500"
-                >
-                  <Play size={16} />
-                </ToolbarButton>
-              )}
-              {tabs.selectedPath?.endsWith('.json') && (
-                <ToolbarButton
-                  onClick={formatActiveDocument}
-                  title="Format JSON (Option+Cmd+L)"
-                  colorClassName="text-yellow-500"
-                >
-                  <AlignLeft size={16} />
-                </ToolbarButton>
-              )}
-              {(tabs.selectedPath?.endsWith('.html') ||
-                tabs.selectedPath?.endsWith('.htm') ||
-                tabs.selectedPath?.endsWith('.xml')) && (
-                <ToolbarButton
-                  onClick={formatActiveDocument}
-                  title="Format Document (Option+Cmd+L)"
-                  colorClassName="text-yellow-500"
-                >
-                  <AlignLeft size={16} />
-                </ToolbarButton>
-              )}
-              {isPreviewablePath(tabs.selectedPath) && (
-                <ToolbarButton
-                  onClick={() =>
-                    tabs.activeTabPath &&
-                    tabs.updateTab(tabs.activeTabPath, { showPreview: !tabs.showMarkdownPreview })
-                  }
-                  active={tabs.showMarkdownPreview}
-                  title={
-                    tabs.showMarkdownPreview
-                      ? 'Show Source (Cmd+Shift+P)'
-                      : 'Show Preview (Cmd+Shift+P)'
-                  }
-                >
-                  {tabs.showMarkdownPreview ? <Code2 size={16} /> : <Eye size={16} />}
-                </ToolbarButton>
-              )}
-              {canDictate && (
-                <>
-                  <ToolbarButton
-                    onClick={toggleDictation}
-                    title={
-                      voice.status === 'recording'
-                        ? 'Stop Dictation (Cmd+D)'
-                        : voice.status === 'transcribing'
-                          ? 'Transcribing…'
-                          : voiceBusy
-                            ? 'Downloading speech model…'
-                            : 'Voice Dictation (Cmd+D)'
-                    }
-                    colorClassName={
-                      voice.status === 'recording'
-                        ? 'text-blue-400 bg-fleet-active'
-                        : 'text-gray-400 hover:text-white'
-                    }
-                  >
-                    {voiceBusy ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : voice.status === 'recording' ? (
-                      <Square size={16} className="fill-current" />
-                    ) : (
-                      <Mic size={16} />
-                    )}
-                  </ToolbarButton>
-                  {voice.status === 'recording' && (
-                    <span className="flex items-center px-2 py-0.5 rounded-full bg-fleet-active text-blue-400 select-none">
-                      {voice.analyser ? (
-                        <VoiceLevelMeter analyser={voice.analyser} />
-                      ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                      )}
-                    </span>
-                  )}
-                </>
-              )}
-              {(isProsePath(tabs.selectedPath) || readAloud.speaking) && (
-                <>
-                  <ToolbarButton
-                    onClick={readAloud.speaking ? readAloud.stop : startReadAloud}
-                    title={readAloud.speaking ? 'Stop Reading (Esc)' : 'Read Aloud'}
-                    colorClassName={
-                      readAloud.speaking
-                        ? 'text-blue-400 bg-fleet-active'
-                        : 'text-gray-400 hover:text-white'
-                    }
-                  >
-                    {readAloud.speaking ? (
-                      <Square size={16} className="fill-current" />
-                    ) : (
-                      <Volume2 size={16} />
-                    )}
-                  </ToolbarButton>
-                  {readAloud.speaking &&
-                    (readAloud.downloadProgress !== null ? (
-                      <span
-                        className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium select-none"
-                        title="Downloading voice…"
-                      >
-                        {readAloud.downloadProgress}%
-                      </span>
-                    ) : (
-                      <button
-                        onClick={readAloud.cycleRate}
-                        className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium hover:text-white select-none"
-                        title="Reading speed"
-                      >
-                        {readAloud.rate}×
-                      </button>
-                    ))}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-1 no-drag-region shrink-0">
-          <ToolbarButton
-            onClick={openGlobalSearch}
-            title="Global Search (Cmd+Shift+F)"
-            tooltipAlign="right"
-            colorClassName="text-gray-400 hover:text-white"
-          >
-            <Search size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={tree.handleAddFolder}
-            title="Add Folder"
-            tooltipAlign="right"
-            colorClassName="text-gray-400 hover:text-white"
-          >
-            <FolderOpen size={16} />
-          </ToolbarButton>
-          {settings.extensions.googleTasks.enabled && (
-            <ToolbarButton
-              onClick={() => tabs.openTab(makeExtensionPath('google-tasks'))}
-              active={activeExt?.id === 'google-tasks'}
-              title="Google Tasks"
-              tooltipAlign="right"
-              colorClassName="text-gray-400 hover:text-white"
-            >
-              <SquareCheckBig size={16} />
-            </ToolbarButton>
-          )}
-          <div className="w-px h-4 bg-fleet-border mx-1" />
-          <ToolbarButton
-            onClick={toggleTerminal}
-            active={terminal.showTerminal}
-            title="Toggle Terminal (Ctrl+`)"
-            tooltipAlign="right"
-          >
-            <TerminalIcon size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => setShowSettings(true)}
-            title="Settings (Cmd+,)"
-            tooltipAlign="right"
-            colorClassName="text-gray-400 hover:text-white"
-          >
-            <SettingsIcon size={16} />
-          </ToolbarButton>
-        </div>
-      </div>
+      <AppHeader
+        projectLabel={projectLabel}
+        headerRepo={headerRepo}
+        git={git}
+        selectedPath={tabs.selectedPath}
+        isFileInWorkspace={
+          !!tabs.selectedPath &&
+          isUnderAnyRoot(
+            tabs.selectedPath,
+            tree.rootNodes.map((r) => r.path)
+          )
+        }
+        hasFileActions={hasFileActions}
+        showPreview={tabs.showMarkdownPreview}
+        isPreviewable={isPreviewablePath(tabs.selectedPath)}
+        canDictate={canDictate}
+        isProse={isProsePath(tabs.selectedPath)}
+        googleTasksEnabled={settings.extensions.googleTasks.enabled}
+        googleTasksActive={activeExt?.id === 'google-tasks'}
+        terminalShown={terminal.showTerminal}
+        voice={voice}
+        readAloud={readAloud}
+        onRevealActiveFile={() => {
+          setSidebarView('files')
+          if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
+        }}
+        onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+        onFormatDocument={formatActiveDocument}
+        onTogglePreview={() =>
+          tabs.activeTabPath &&
+          tabs.updateTab(tabs.activeTabPath, { showPreview: !tabs.showMarkdownPreview })
+        }
+        onToggleDictation={toggleDictation}
+        onStartReadAloud={startReadAloud}
+        onOpenGlobalSearch={openGlobalSearch}
+        onAddFolder={tree.handleAddFolder}
+        onOpenGoogleTasks={() => tabs.openTab(makeExtensionPath('google-tasks'))}
+        onToggleTerminal={toggleTerminal}
+        onOpenSettings={() => setShowSettings(true)}
+      />
 
       <div className="flex flex-1 overflow-hidden relative">
         <div
@@ -868,11 +687,11 @@ function App() {
               tabs={tabs.tabs}
               activeTabPath={tabs.activeTabPath}
               setActiveTabPath={tabs.setActiveTabPath}
-              closeTab={tabs.closeTab}
-              closeOtherTabs={tabs.closeOtherTabs}
-              closeAllTabs={tabs.closeAllTabs}
-              togglePin={tabs.togglePin}
-              reorderTab={tabs.reorderTab}
+              closeTab={handleTabClose}
+              closeOtherTabs={handleTabCloseOthers}
+              closeAllTabs={handleTabCloseAll}
+              togglePin={handleTabTogglePin}
+              reorderTab={handleTabReorder}
               heightClassName={density.tabBarHeight}
             />
           )}
@@ -917,23 +736,20 @@ function App() {
                   path={tabs.selectedPath}
                   language={getLanguage(tabs.selectedPath)}
                   theme={monacoTheme}
-                  value={tabs.fileContent}
+                  // Uncontrolled: the model owns the text and only tab-state
+                  // bookkeeping flows through React on each keystroke - a
+                  // `value` prop makes the library diff the entire file
+                  // against the model on every render. Programmatic content
+                  // changes go through useTabs' applyContentToModel.
+                  defaultValue={tabs.fileContent}
+                  // Unmounting (preview toggle, extension tab, last tab
+                  // closed) must not dispose the current model - closing a
+                  // tab does that explicitly in useTabs. Without this, every
+                  // trip to Preview and back silently wiped the undo stack.
+                  keepCurrentModel
                   onChange={tabs.handleEditorChange}
                   onMount={handleEditorMount}
-                  options={{
-                    minimap: { enabled: false },
-                    fontFamily: MONO_FONT_FAMILY,
-                    fontSize: density.editorFontSize,
-                    wordWrap: 'on',
-                    padding: { top: 6 },
-                    scrollBeyondLastLine: false,
-                    lineNumbers: settings.lineNumbersEnabled ? 'on' : 'off',
-                    // Tighter gutter than Monaco's defaults; 0 when line
-                    // numbers are off so text isn't indented for no reason.
-                    lineNumbersMinChars: settings.lineNumbersEnabled ? 4 : 0,
-                    lineDecorationsWidth: settings.lineNumbersEnabled ? 4 : 0,
-                    scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 }
-                  }}
+                  options={editorOptions}
                 />
               )
             ) : (
@@ -945,66 +761,11 @@ function App() {
           </div>
 
           {terminal.showTerminal && terminal.terminals.length > 0 && (
-            <div
-              className="absolute bottom-0 left-0 right-0 border-t border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30 shadow-2xl"
-              style={{ height: `${terminal.terminalHeight}px` }}
-            >
-              <div
-                className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-blue-500/50 transition-colors z-40"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  terminal.setIsResizing(true)
-                }}
-              />
-              <div className="flex items-center border-b border-[var(--terminal-border)] bg-[var(--terminal-header)] px-2 overflow-x-auto shrink-0">
-                {terminal.terminals.map((term) => (
-                  <div
-                    key={term.id}
-                    onClick={() => terminal.setActiveTermId(term.id)}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer border-r border-[var(--terminal-border)] ${terminal.activeTermId === term.id ? 'bg-[var(--terminal-active)] text-white' : 'text-gray-400 hover:bg-[var(--terminal-active)] hover:text-gray-200'}`}
-                  >
-                    <span>{term.name}</span>
-                    <X
-                      size={12}
-                      className="opacity-50 hover:opacity-100"
-                      onClick={(e) => terminal.closeTerminal(term.id, e)}
-                    />
-                  </div>
-                ))}
-                <button
-                  onClick={() => terminal.openNewTerminal(defaultTerminalCwd())}
-                  className="p-1.5 text-gray-400 hover:text-white mx-1"
-                >
-                  <Plus size={14} />
-                </button>
-                <div className="flex-1" />
-                <button
-                  onClick={() => terminal.setShowTerminal(false)}
-                  className="p-1.5 text-gray-400 hover:text-white"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden relative bg-[var(--terminal-bg)]">
-                {terminal.terminals.map((term) => (
-                  <div
-                    key={term.id}
-                    className="absolute inset-0"
-                    style={{
-                      zIndex: terminal.activeTermId === term.id ? 10 : 1,
-                      visibility: terminal.activeTermId === term.id ? 'visible' : 'hidden'
-                    }}
-                  >
-                    <Terminal
-                      termId={term.id}
-                      isActive={terminal.activeTermId === term.id}
-                      fontSize={density.terminalFontSize}
-                      onExit={() => terminal.handleTerminalExit(term.id)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <TerminalPanel
+              terminal={terminal}
+              fontSize={density.terminalFontSize}
+              onOpenNew={openDefaultTerminal}
+            />
           )}
         </div>
 
@@ -1034,17 +795,17 @@ function App() {
             sidebarView={sidebarView}
             setSidebarView={setSidebarView}
             rootNodes={tree.rootNodes}
-            recentExternalFiles={recentExternalFiles.entries.map((e) => e.path)}
-            onRemoveRecentExternalFile={handleRemoveRecentExternalFile}
+            recentExternalFiles={recentExternalPaths}
+            onRemoveRecentExternalFile={handleRemoveRecent}
             selectedPath={tabs.selectedPath}
             revealRequest={tree.revealRequest}
-            onSelect={tabs.openTab}
-            onContextMenu={tree.handleContextMenu}
-            onCreateNew={tree.startCreate}
-            onMove={tree.handleMove}
-            onFocusNode={tree.handleFocusNode}
-            onRunPython={(node) => runPythonFile(node.path)}
-            onPreviewMarkdown={previewMarkdown}
+            onSelect={handleTreeSelect}
+            onContextMenu={handleTreeContextMenu}
+            onCreateNew={handleTreeCreateNew}
+            onMove={handleTreeMove}
+            onFocusNode={handleTreeFocusNode}
+            onRunPython={handleTreeRunPython}
+            onPreviewMarkdown={handleTreePreview}
             git={git}
             gitPanelRoot={gitPanelRoot}
             onSelectGitRoot={setGitPanelRoot}
@@ -1068,54 +829,14 @@ function App() {
           }}
         />
       )}
+
       {updateNotification && (
-        <div className="fixed bottom-4 right-4 z-[90] flex items-center gap-4 bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl px-4 py-3 text-xs text-fleet-text">
-          {updateInstalling ? (
-            <>
-              <Loader2 size={14} className="animate-spin text-blue-400 shrink-0" />
-              <span>
-                {updateNotification.mode === 'install'
-                  ? 'Restarting to install the update…'
-                  : `Installing AuraPad ${updateNotification.version}… the app will restart itself.`}
-              </span>
-            </>
-          ) : (
-            <>
-              <span>
-                {updateNotification.failed
-                  ? 'Update failed — check your connection and try again.'
-                  : updateNotification.mode === 'install'
-                    ? `AuraPad ${updateNotification.version} is ready to install.`
-                    : `AuraPad ${updateNotification.version} is available.`}
-              </span>
-              <button
-                className="underline text-blue-400 hover:text-blue-300"
-                onClick={() => {
-                  window.api.applyUpdate()
-                  // 'manual' just opens the releases page - nothing to wait
-                  // for. The self-applying modes keep the toast up as a
-                  // progress indicator until the app restarts itself.
-                  if (updateNotification.mode === 'manual') setUpdateNotification(null)
-                  else setUpdateInstalling(true)
-                }}
-              >
-                {updateNotification.failed
-                  ? 'Retry'
-                  : updateNotification.mode === 'install'
-                    ? 'Restart'
-                    : updateNotification.mode === 'script'
-                      ? 'Install'
-                      : 'Download'}
-              </button>
-              <button
-                className="underline text-gray-500 hover:text-gray-400"
-                onClick={() => setUpdateNotification(null)}
-              >
-                Later
-              </button>
-            </>
-          )}
-        </div>
+        <UpdateToast
+          notification={updateNotification}
+          installing={updateInstalling}
+          onApply={handleApplyUpdate}
+          onDismiss={() => setUpdateNotification(null)}
+        />
       )}
 
       {showFileSearch && (
@@ -1148,67 +869,28 @@ function App() {
       )}
 
       {tree.renameTarget && (
-        <Modal onClose={() => tree.setRenameTarget(null)}>
-          <div className="text-xs text-gray-400 mb-2 truncate">
-            Rename &quot;{tree.renameTarget.name}&quot;
-          </div>
-          <input
-            ref={renameInputRef}
-            className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-sm text-fleet-text outline-none focus:border-blue-500"
-            value={tree.renameValue}
-            onChange={(e) => tree.setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') tree.confirmRename()
-            }}
-          />
-          <div className="flex justify-end gap-2 mt-3">
-            <button
-              className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
-              onClick={() => tree.setRenameTarget(null)}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
-              onClick={tree.confirmRename}
-            >
-              Rename
-            </button>
-          </div>
-        </Modal>
+        <NameInputModal
+          title={`Rename "${tree.renameTarget.name}"`}
+          value={tree.renameValue}
+          confirmLabel="Rename"
+          inputRef={renameInputRef}
+          onChange={tree.setRenameValue}
+          onConfirm={tree.confirmRename}
+          onCancel={() => tree.setRenameTarget(null)}
+        />
       )}
 
       {tree.createTarget && (
-        <Modal onClose={() => tree.setCreateTarget(null)}>
-          <div className="text-xs text-gray-400 mb-2 truncate">
-            New {tree.createTarget.type === 'directory' ? 'Folder' : 'File'} in &quot;
-            {tree.createTarget.parentPath.split('/').pop()}&quot;
-          </div>
-          <input
-            ref={createInputRef}
-            className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-sm text-fleet-text outline-none focus:border-blue-500"
-            value={tree.createValue}
-            placeholder={tree.createTarget.type === 'directory' ? 'folder-name' : 'file-name.ts'}
-            onChange={(e) => tree.setCreateValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') tree.confirmCreate()
-            }}
-          />
-          <div className="flex justify-end gap-2 mt-3">
-            <button
-              className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
-              onClick={() => tree.setCreateTarget(null)}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
-              onClick={tree.confirmCreate}
-            >
-              Create
-            </button>
-          </div>
-        </Modal>
+        <NameInputModal
+          title={`New ${tree.createTarget.type === 'directory' ? 'Folder' : 'File'} in "${tree.createTarget.parentPath.split('/').pop()}"`}
+          value={tree.createValue}
+          placeholder={tree.createTarget.type === 'directory' ? 'folder-name' : 'file-name.ts'}
+          confirmLabel="Create"
+          inputRef={createInputRef}
+          onChange={tree.setCreateValue}
+          onConfirm={tree.confirmCreate}
+          onCancel={() => tree.setCreateTarget(null)}
+        />
       )}
 
       {showSettings && (
@@ -1219,11 +901,7 @@ function App() {
           appVersion={appVersion}
           updateNotification={updateNotification}
           updateInstalling={updateInstalling}
-          onUpdateAction={() => {
-            window.api.applyUpdate()
-            if (updateNotification?.mode === 'manual') setUpdateNotification(null)
-            else setUpdateInstalling(true)
-          }}
+          onUpdateAction={handleApplyUpdate}
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
           onConfigureTranslate={() => setShowTranslateConfig(true)}
@@ -1250,90 +928,19 @@ function App() {
         />
       )}
 
-      {(translate.status === 'consent' ||
-        translate.status === 'downloading' ||
-        showTranslateConfig) && (
-        <TranslateModal
-          defaultModel={settings.translateModel}
-          defaultPair={settings.translatePair}
-          downloading={translate.status === 'downloading'}
-          progress={translate.progress}
-          onConfirm={(model, pair) => {
-            updateSetting('translateModel', model)
-            updateSetting('translatePair', pair)
-            setShowTranslateConfig(false)
-            // Also warms/downloads the model; harmless when opened from
-            // Settings - the modal stays visible through 'downloading'.
-            translate.confirmDownload(model, pair)
-          }}
-          onDeleteUnit={translate.deleteUnit}
-          onClose={() => {
-            setShowTranslateConfig(false)
-            if (translate.status === 'downloading') translate.cancelDownload()
-            else translate.dismissConsent()
-          }}
-        />
-      )}
-
-      {(voice.status === 'consent' || voice.status === 'downloading' || showDictationConfig) && (
-        <VoiceModelModal
-          defaultModel={settings.voiceModel}
-          language={settings.voiceLanguage}
-          onLanguageChange={(lang) => updateSetting('voiceLanguage', lang)}
-          downloading={voice.status === 'downloading'}
-          progress={voice.progress}
-          onConfirm={(model) => {
-            updateSetting('voiceModel', model)
-            setShowDictationConfig(false)
-            // Also warms/downloads the model; harmless when opened from
-            // Settings - the modal stays visible through 'downloading'.
-            voice.confirmDownload(model)
-          }}
-          onDeleteModel={voice.deleteModel}
-          onClose={() => {
-            setShowDictationConfig(false)
-            if (voice.status === 'downloading') voice.cancelDownload()
-            else voice.dismissConsent()
-          }}
-        />
-      )}
-
-      {(readAloud.modalPhase !== null || showReadAloudConfig) && (
-        <ReadAloudModal
-          langs={showReadAloudConfig ? READ_LANGS : readAloud.consentLangs}
-          current={settings.readVoices}
-          downloading={readAloud.modalPhase === 'downloading'}
-          progress={readAloud.downloadProgress}
-          mode={showReadAloudConfig ? 'settings' : 'consent'}
-          onConfirm={(choices) => {
-            updateSetting('readVoices', { ...settings.readVoices, ...choices })
-            if (showReadAloudConfig) {
-              // Settings flow: download anything newly selected, no reading.
-              const missing = Object.entries(choices)
-                .map(([lang, key]) =>
-                  key && key !== 'system'
-                    ? (
-                        VOICE_CATALOG[lang as keyof typeof VOICE_CATALOG] as Record<
-                          string,
-                          { id: string }
-                        >
-                      )[key].id
-                    : null
-                )
-                .filter((id): id is string => !!id && !downloadedVoices().includes(id))
-              if (missing.length > 0) readAloud.predownloadVoices(missing)
-              else setShowReadAloudConfig(false)
-            } else {
-              readAloud.confirmVoiceDownload(choices)
-            }
-          }}
-          onDeleteVoice={readAloud.deleteVoice}
-          onClose={() => {
-            setShowReadAloudConfig(false)
-            readAloud.closeVoiceModal()
-          }}
-        />
-      )}
+      <AiModals
+        settings={settings}
+        updateSetting={updateSetting}
+        translate={translate}
+        voice={voice}
+        readAloud={readAloud}
+        showTranslateConfig={showTranslateConfig}
+        setShowTranslateConfig={setShowTranslateConfig}
+        showDictationConfig={showDictationConfig}
+        setShowDictationConfig={setShowDictationConfig}
+        showReadAloudConfig={showReadAloudConfig}
+        setShowReadAloudConfig={setShowReadAloudConfig}
+      />
 
       <DialogHost />
     </div>

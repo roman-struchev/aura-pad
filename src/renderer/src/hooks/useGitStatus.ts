@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type {
   GitCommit,
   GitFileEntry,
@@ -11,11 +11,19 @@ import { alertDialog, confirmDialog } from '../lib/dialogs'
 // watcher-driven push updates, and wraps the mutating IPC calls (stage/
 // unstage/commit/push/pull), surfacing failures via the app's own dialog
 // instead of a native alert.
-export function useGitStatus(enabled: boolean) {
+//
+// `beforeCheckout` runs before every branch switch - App passes the tab
+// flush (saveAllDirtyFileTabs) so a pending autosave can't fire after the
+// checkout and silently write the old branch's buffer over the new one.
+// Module constant (not a fresh [] per render) so the fileStates memo below
+// stays referentially stable while git is disabled.
+const NO_REPOS: GitRepoStatus[] = []
+
+export function useGitStatus(enabled: boolean, beforeCheckout?: () => Promise<void>) {
   const [rawRepos, setRawRepos] = useState<GitRepoStatus[]>([])
   // Masked rather than cleared via an effect, so disabling the setting can't
   // race with an in-flight fetch that resolves after the effect already ran.
-  const repos = enabled ? rawRepos : []
+  const repos = enabled ? rawRepos : NO_REPOS
 
   useEffect(() => {
     if (!enabled) return
@@ -32,11 +40,15 @@ export function useGitStatus(enabled: boolean) {
   // Flattened for cheap per-row lookup in FileTree. Unstaged state (if any)
   // takes priority over "staged", since it reflects the more urgent fact that
   // there are still unsaved-to-git changes on top of what's already staged.
-  const fileStates: Record<string, GitFileState> = {}
-  for (const repo of repos) {
-    for (const entry of repo.staged) fileStates[entry.path] = 'staged'
-    for (const entry of repo.unstaged) fileStates[entry.path] = entry.state
-  }
+  // Memoized: a fresh object per render would break FileTree's React.memo.
+  const fileStates = useMemo(() => {
+    const states: Record<string, GitFileState> = {}
+    for (const repo of repos) {
+      for (const entry of repo.staged) states[entry.path] = 'staged'
+      for (const entry of repo.unstaged) states[entry.path] = entry.state
+    }
+    return states
+  }, [repos])
 
   const stage = async (root: string, relPaths: string[]): Promise<void> => {
     const result = await window.api.gitStage(root, relPaths)
@@ -117,6 +129,7 @@ export function useGitStatus(enabled: boolean) {
   // branch name in the panel header already reflects it. Refusals (dirty
   // working tree, etc.) do get surfaced.
   const checkout = async (root: string, branch: string): Promise<boolean> => {
+    await beforeCheckout?.()
     const result = await window.api.gitCheckout(root, branch)
     setRawRepos(result.statuses)
     if (!result.success) {

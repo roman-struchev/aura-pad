@@ -70,6 +70,25 @@ export function useTabs(tabsEnabled: boolean) {
     editor.focus()
   }
 
+  // The editor runs uncontrolled (defaultValue, not value) so typing doesn't
+  // round-trip the whole file through React on every keystroke. The flip
+  // side: state changes that don't originate from typing - external reload,
+  // the Reload banner, Format Document - must be pushed into the Monaco
+  // model explicitly. A full-range edit (not setValue) so the change lands
+  // on the undo stack: Cmd+Z after a reload brings the previous buffer back.
+  const applyContentToModel = (path: string, content: string): void => {
+    const model = monaco.editor.getModel(monaco.Uri.parse(path))
+    if (!model || model.getValue() === content) return
+    model.pushEditOperations([], [{ range: model.getFullModelRange(), text: content }], () => null)
+  }
+
+  // Programmatic content replacement (Format Document, etc.): one undoable
+  // edit that updates both the tab state and the live Monaco model.
+  const setFileContent = (path: string, content: string): void => {
+    applyContentToModel(path, content)
+    updateTab(path, { content, isSaved: false })
+  }
+
   // Jump to a specific line once the editor is showing the right content,
   // whether that's from opening a search result or switching tabs. Uses a
   // ref (not state) for the pending target so consuming it doesn't itself
@@ -214,6 +233,26 @@ export function useTabs(tabsEnabled: boolean) {
     }
   }
 
+  // Flushes every dirty file tab to disk. Called right before a branch
+  // switch: an armed autosave timer firing *after* the checkout would write
+  // the old branch's buffer over the new branch's file - and the watcher
+  // would then suppress that write's echo as a self-write, making the
+  // clobber completely silent.
+  const saveAllDirtyFileTabs = async (): Promise<void> => {
+    for (const tab of tabsRef.current) {
+      if (tab.isSaved || isExtensionPath(tab.path)) continue
+      const { path, content } = tab
+      const result = await window.api.saveFile(path, content)
+      // Same guard as handleSave: only mark saved if the buffer still holds
+      // exactly what was written.
+      if (result.success) {
+        setTabs((prev) =>
+          prev.map((t) => (t.path === path && t.content === content ? { ...t, isSaved: true } : t))
+        )
+      }
+    }
+  }
+
   // Shared pinned/unsaved confirmation for any close path (single or bulk).
   const confirmCanClose = async (tab: OpenTab): Promise<boolean> => {
     if (tab.pinned && !(await confirmDialog('This tab is pinned. Close anyway?'))) return false
@@ -321,8 +360,10 @@ export function useTabs(tabsEnabled: boolean) {
     if (!activeTabPath) return
     const result = await window.api.readFile(activeTabPath)
     if (result.success) {
+      const content = result.content || ''
+      applyContentToModel(activeTabPath, content)
       updateTab(activeTabPath, {
-        content: result.content || '',
+        content,
         isSaved: true,
         externalChangeAvailable: false
       })
@@ -405,7 +446,26 @@ export function useTabs(tabsEnabled: boolean) {
       if (!tab) return
       if (tab.isSaved) {
         const result = await window.api.readFile(changedPath)
-        if (result.success) updateTab(changedPath, { content: result.content || '', isSaved: true })
+        if (!result.success) return
+        const content = result.content || ''
+        // Re-checked after the await: the user may have started typing while
+        // the file was being read - a branch switch changes many files at
+        // once, so this window is very real. Their buffer wins; surface the
+        // banner instead of clobbering it. (The same check runs again inside
+        // the functional update below, against the definitively-current
+        // state; and the model edit is undoable either way.)
+        if (!tabsRef.current.find((t) => t.path === changedPath)?.isSaved) {
+          updateTab(changedPath, { externalChangeAvailable: true })
+          return
+        }
+        applyContentToModel(changedPath, content)
+        setTabs((prev) =>
+          prev.map((t) => {
+            if (t.path !== changedPath) return t
+            if (!t.isSaved) return { ...t, externalChangeAvailable: true }
+            return { ...t, content, isSaved: true }
+          })
+        )
       } else {
         updateTab(changedPath, { externalChangeAvailable: true })
       }
@@ -498,6 +558,7 @@ export function useTabs(tabsEnabled: boolean) {
     externalChangeAvailable,
     showMarkdownPreview,
     updateTab,
+    setFileContent,
     openTab,
     closeTab,
     closeOtherTabs,
@@ -508,6 +569,7 @@ export function useTabs(tabsEnabled: boolean) {
     togglePin,
     reorderTab,
     handleSave,
+    saveAllDirtyFileTabs,
     handleEditorChange,
     insertTextAtCursor,
     handleEditorDidMount,

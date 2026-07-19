@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import WhisperWorker from '../lib/voice/whisperWorker?worker'
 import type { WorkerResponse } from '../lib/voice/whisperWorker'
 import { deleteModelDownload, isModelDownloaded, markModelDownloaded } from '../lib/voice/models'
+import { useModelWorker } from './useModelWorker'
 import { alertDialog } from '../lib/dialogs'
 import type { VoiceLanguage, VoiceModel } from '../../../shared/settings'
 
@@ -17,11 +18,6 @@ export type VoiceStatus = 'idle' | 'consent' | 'downloading' | 'recording' | 'tr
 const MAX_RECORDING_MS = 5 * 60 * 1000
 // Anything shorter is an accidental tap - not worth a transcription pass.
 const MIN_RECORDING_SECONDS = 0.35
-// A loaded model holds hundreds of MB of RAM/VRAM; after this long without
-// dictation the worker is torn down. Cheap to come back from: recording
-// starts immediately anyway (the reload runs in parallel with it), the first
-// take just transcribes a few seconds longer.
-const MODEL_IDLE_UNLOAD_MS = 30 * 60 * 1000
 
 // Push-to-talk voice dictation: toggle() starts the microphone, a second
 // toggle() stops it and runs the recording through Whisper in a worker, and
@@ -39,7 +35,6 @@ export function useVoiceInput(
   // voice reacting in real time.
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
 
-  const workerRef = useRef<Worker | null>(null)
   const readyModelRef = useRef<VoiceModel | null>(null)
   // What 'ready' from the worker should do to the UI: 'idle' closes the
   // consent-download dialog; 'none' leaves the status alone - that's the
@@ -52,25 +47,29 @@ export function useVoiceInput(
   // Set by cancelRecording (Escape): the recorder's onstop then throws the
   // take away instead of transcribing it.
   const discardRef = useRef(false)
-  const idleUnloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const statusRef = useRef<VoiceStatus>('idle')
   useEffect(() => {
     statusRef.current = status
   })
 
-  // (Re)armed every time the worker finishes something; if half an hour
-  // passes with no dictation, drop the worker and its loaded model.
-  const scheduleIdleUnload = (): void => {
-    if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
-    idleUnloadRef.current = setTimeout(() => {
-      if (statusRef.current === 'idle' && workerRef.current) {
-        workerRef.current.terminate()
-        workerRef.current = null
-        readyModelRef.current = null
-      }
-    }, MODEL_IDLE_UNLOAD_MS)
-  }
-  const progressPerFileRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
+  // Worker lifecycle (lazy start, startup-error recovery, idle unload after
+  // half an hour without dictation, download-progress aggregation) - shared
+  // with translate and read-aloud via useModelWorker.
+  const worker = useModelWorker<WorkerResponse>({
+    create: () => new WhisperWorker(),
+    onMessage: (msg) => handleWorkerMessage(msg),
+    onStartupError: (message) => {
+      readyModelRef.current = null
+      setStatus('idle')
+      alertDialog(`Dictation failed to start: ${message}`)
+    },
+    isIdle: () => statusRef.current === 'idle',
+    // A model loaded in the unloaded worker is gone with it.
+    onIdleUnload: () => {
+      readyModelRef.current = null
+    },
+    onProgress: setProgress
+  })
 
   // Read through refs by the worker's message handler (attached once per
   // worker) and by callers registered once, so they always see current values.
@@ -85,31 +84,22 @@ export function useVoiceInput(
 
   const handleWorkerMessage = (msg: WorkerResponse): void => {
     switch (msg.type) {
-      case 'progress': {
+      case 'progress':
         // Only the .onnx weights are worth tracking - the config/tokenizer
         // JSONs are tiny and would briefly show a misleading "100%" while
         // they finish before the first weight file even starts.
-        if (!msg.file.endsWith('.onnx')) break
-        progressPerFileRef.current.set(msg.file, { loaded: msg.loaded, total: msg.total })
-        let loaded = 0
-        let total = 0
-        for (const f of progressPerFileRef.current.values()) {
-          loaded += f.loaded
-          total += f.total
-        }
-        if (total > 0) setProgress(Math.round((loaded / total) * 100))
+        if (msg.file.endsWith('.onnx')) worker.reportFileProgress(msg.file, msg.loaded, msg.total)
         break
-      }
       case 'ready':
         markModelDownloaded(msg.model)
         readyModelRef.current = msg.model
         if (afterLoadRef.current === 'idle') setStatus('idle')
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         break
       case 'result':
         if (msg.text) onTextRef.current(msg.text)
         setStatus('idle')
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         break
       case 'error':
         // If the model failed to load while a parallel recording was running,
@@ -117,7 +107,7 @@ export function useVoiceInput(
         // transcribe that would just fail again.
         if (msg.context === 'load') cancelRecording()
         setStatus('idle')
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         alertDialog(
           msg.context === 'load'
             ? `Failed to load the speech model: ${msg.message}`
@@ -127,29 +117,11 @@ export function useVoiceInput(
     }
   }
 
-  const getWorker = (): Worker => {
-    if (!workerRef.current) {
-      const worker = new WhisperWorker()
-      worker.onmessage = (e: MessageEvent<WorkerResponse>) => handleWorkerMessage(e.data)
-      // A worker that fails to even start (script load/parse error) never
-      // sends a message - without this the UI would hang at 0% forever.
-      worker.onerror = (e: ErrorEvent) => {
-        worker.terminate()
-        workerRef.current = null
-        readyModelRef.current = null
-        setStatus('idle')
-        alertDialog(`Dictation failed to start: ${e.message || 'worker error (see DevTools)'}`)
-      }
-      workerRef.current = worker
-    }
-    return workerRef.current
-  }
-
   const loadModel = (target: VoiceModel, then: 'idle' | 'none'): void => {
     afterLoadRef.current = then
-    progressPerFileRef.current = new Map()
+    worker.resetProgress()
     setProgress(0)
-    getWorker().postMessage({ type: 'load', model: target })
+    worker.getWorker().postMessage({ type: 'load', model: target })
   }
 
   const startRecording = async (): Promise<void> => {
@@ -182,7 +154,7 @@ export function useVoiceInput(
       if (discardRef.current) {
         discardRef.current = false
         setStatus('idle')
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         return
       }
       transcribeBlob(new Blob(chunks, { type: recorder.mimeType }))
@@ -228,7 +200,7 @@ export function useVoiceInput(
           for (let i = 0; i < data.length; i++) audio[i] += data[i] / decoded.numberOfChannels
         }
       }
-      getWorker().postMessage(
+      worker.getWorker().postMessage(
         {
           type: 'transcribe',
           audio,
@@ -289,8 +261,7 @@ export function useVoiceInput(
   // in-flight fetches. Files that finished downloading stay in the cache, so
   // retrying later resumes from where it left off.
   const cancelDownload = (): void => {
-    workerRef.current?.terminate()
-    workerRef.current = null
+    worker.terminateWorker()
     readyModelRef.current = null
     setStatus('idle')
   }
@@ -301,8 +272,7 @@ export function useVoiceInput(
   // If it's the one currently loaded, the worker goes with it.
   const deleteModel = async (target: VoiceModel): Promise<void> => {
     if (readyModelRef.current === target) {
-      workerRef.current?.terminate()
-      workerRef.current = null
+      worker.terminateWorker()
       readyModelRef.current = null
       // The worker may have been mid-transcribe (the model dialog stays
       // reachable while a take is processing) - its 'result' will never
@@ -328,9 +298,8 @@ export function useVoiceInput(
         discardRef.current = true
         recorderRef.current.stop()
       }
-      workerRef.current?.terminate()
+      // The worker itself is terminated by useModelWorker's own cleanup.
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-      if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
       levelCtxRef.current?.close()
       levelCtxRef.current = null
     }

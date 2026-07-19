@@ -26,7 +26,9 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "electron-updater": "^6.8.9",
+    "iconv-lite": "^0.7.3",
     "ignore": "^7.0.5",
+    "jschardet": "^3.1.4",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {

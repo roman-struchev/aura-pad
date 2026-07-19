@@ -1,6 +1,7 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 import os from 'os'
 import * as pty from 'node-pty'
+import { handleInvoke, handleSend } from './ipc'
 
 const shellExec =
   process.env[process.platform === 'win32' ? 'COMSPEC' : 'SHELL'] ||
@@ -23,7 +24,7 @@ let getMainWindow: () => BrowserWindow | null = () => null
 export function registerCreatePtyHandler(windowProvider: () => BrowserWindow | null): void {
   getMainWindow = windowProvider
 
-  ipcMain.handle('create-pty', (_event, cwd?: string) => {
+  handleInvoke('create-pty', (cwd) => {
     const termId = `term-${ptyIdCounter++}`
 
     const shellArgs = process.platform === 'win32' ? [] : ['-l']
@@ -55,17 +56,17 @@ export function registerCreatePtyHandler(windowProvider: () => BrowserWindow | n
   })
 }
 
-ipcMain.on('pty-write', (_, termId, data) => {
+handleSend('pty-write', (_event, termId, data) => {
   ptys.get(termId)?.write(data)
 })
 
-ipcMain.on('pty-resize', (_, termId, cols, rows) => {
+handleSend('pty-resize', (_event, termId, cols, rows) => {
   try {
     ptys.get(termId)?.resize(cols, rows)
   } catch (e) {}
 })
 
-ipcMain.on('destroy-pty', (_, termId) => {
+handleSend('destroy-pty', (_event, termId) => {
   ptys.get(termId)?.kill()
   ptys.delete(termId)
 })

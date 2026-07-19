@@ -1,7 +1,6 @@
 import { app } from 'electron'
-import fs from 'fs'
 import path from 'path'
-import { writeConfigFile } from './configFile'
+import { readConfigFile, writeConfigFile } from './configFile'
 import type { RecentExternalFile } from '../shared/recentExternalFile'
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000
@@ -14,18 +13,9 @@ function saveRecentExternalFiles(entries: RecentExternalFile[]): void {
 // Entries older than the retention window are dropped on every read, so
 // the list self-cleans without needing a background timer.
 export function loadRecentExternalFiles(): RecentExternalFile[] {
-  try {
-    if (fs.existsSync(recentFilesConfigPath)) {
-      const entries = JSON.parse(
-        fs.readFileSync(recentFilesConfigPath, 'utf-8')
-      ) as RecentExternalFile[]
-      const cutoff = Date.now() - RETENTION_MS
-      return entries.filter((e) => e.openedAt >= cutoff)
-    }
-  } catch (e) {
-    console.warn('Failed to load recentExternalFiles.json:', e)
-  }
-  return []
+  const entries = readConfigFile<RecentExternalFile[]>(recentFilesConfigPath, () => [])
+  const cutoff = Date.now() - RETENTION_MS
+  return entries.filter((e) => e.openedAt >= cutoff)
 }
 
 // Called every time an outside-workspace file is opened, including

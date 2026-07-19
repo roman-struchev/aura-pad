@@ -10,6 +10,7 @@ import {
   markDownloaded
 } from '../lib/translate/models'
 import { detectLanguage, type LangCode } from '../lib/langDetect'
+import { useModelWorker } from './useModelWorker'
 import { chunkSentences } from '../lib/sentenceChunks'
 import { alertDialog } from '../lib/dialogs'
 import type { TranslateModel, TranslatePair } from '../../../shared/settings'
@@ -49,10 +50,6 @@ const CHUNK_MAX_CHARS = 600
 // whole file would be minutes, and the popup isn't the place for that much
 // text anyway.
 const MAX_SELECTION_CHARS = 5000
-// A loaded model holds from a few hundred MB (Opus-MT) to well over a GB
-// (NLLB) of RAM/VRAM; after this long without translating the worker is torn
-// down (mirrors dictation/read-aloud).
-const MODEL_IDLE_UNLOAD_MS = 30 * 60 * 1000
 
 // Selection translation: translateSelection() detects which side of the
 // configured pair the selected text is written in, translates towards the
@@ -64,7 +61,6 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
   const [progress, setProgress] = useState(0)
   const [popup, setPopup] = useState<TranslatePopupState | null>(null)
 
-  const workerRef = useRef<Worker | null>(null)
   // downloadKey() of the unit the worker has loaded, if any.
   const readyKeyRef = useRef<string | null>(null)
   // What 'ready' from the worker should do when there's no pending request:
@@ -73,8 +69,6 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
   // already owns the status.
   const afterLoadRef = useRef<'idle' | 'none'>('none')
   const pendingRef = useRef<PendingRequest | null>(null)
-  const idleUnloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const progressPerFileRef = useRef<Map<string, { loaded: number; total: number }>>(new Map())
   // The active translate request's id; worker messages for any other id are
   // stale (a closed popup) and dropped.
   const requestSeqRef = useRef(0)
@@ -96,36 +90,35 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     pairRef.current = pair
   })
 
-  // (Re)armed every time the worker finishes something; if half an hour
-  // passes with no translation, drop the worker and its loaded models.
-  const scheduleIdleUnload = (): void => {
-    if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
-    idleUnloadRef.current = setTimeout(() => {
-      if (statusRef.current === 'idle' && workerRef.current) {
-        workerRef.current.terminate()
-        workerRef.current = null
-        readyKeyRef.current = null
-      }
-    }, MODEL_IDLE_UNLOAD_MS)
-  }
+  // Worker lifecycle (lazy start, startup-error recovery, idle unload after
+  // half an hour without translating, download-progress aggregation) -
+  // shared with dictation and read-aloud via useModelWorker.
+  const worker = useModelWorker<TranslateWorkerResponse>({
+    create: () => new TranslateWorker(),
+    onMessage: (msg) => handleWorkerMessage(msg),
+    onStartupError: (message) => {
+      readyKeyRef.current = null
+      pendingRef.current = null
+      setPopup(null)
+      setStatus('idle')
+      alertDialog(`Translation failed to start: ${message}`)
+    },
+    isIdle: () => statusRef.current === 'idle',
+    // A unit loaded in the unloaded worker is gone with it.
+    onIdleUnload: () => {
+      readyKeyRef.current = null
+    },
+    onProgress: setProgress
+  })
 
   const handleWorkerMessage = (msg: TranslateWorkerResponse): void => {
     switch (msg.type) {
-      case 'progress': {
+      case 'progress':
         // Only the .onnx weights are worth tracking - the config/tokenizer
         // files are tiny and would briefly show a misleading "100%" while
         // they finish before the first weight file even starts.
-        if (!msg.file.endsWith('.onnx')) break
-        progressPerFileRef.current.set(msg.file, { loaded: msg.loaded, total: msg.total })
-        let loaded = 0
-        let total = 0
-        for (const f of progressPerFileRef.current.values()) {
-          loaded += f.loaded
-          total += f.total
-        }
-        if (total > 0) setProgress(Math.round((loaded / total) * 100))
+        if (msg.file.endsWith('.onnx')) worker.reportFileProgress(msg.file, msg.loaded, msg.total)
         break
-      }
       case 'ready': {
         markDownloaded(msg.model, msg.pair)
         readyKeyRef.current = downloadKey(msg.model, msg.pair)
@@ -136,7 +129,7 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
         } else if (afterLoadRef.current === 'idle') {
           setStatus('idle')
         }
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         break
       }
       case 'delta':
@@ -157,7 +150,7 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
         setPopup((p) => (p ? { ...p, text, streaming: false } : p))
         setStatus('idle')
         statusRef.current = 'idle'
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         break
       }
       case 'error':
@@ -166,7 +159,7 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
         setPopup(null)
         setStatus('idle')
         statusRef.current = 'idle'
-        scheduleIdleUnload()
+        worker.scheduleIdleUnload()
         alertDialog(
           msg.context === 'load'
             ? `Failed to load the translation model: ${msg.message}`
@@ -176,35 +169,15 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     }
   }
 
-  const getWorker = (): Worker => {
-    if (!workerRef.current) {
-      const worker = new TranslateWorker()
-      worker.onmessage = (e: MessageEvent<TranslateWorkerResponse>) => handleWorkerMessage(e.data)
-      // A worker that fails to even start (script load/parse error) never
-      // sends a message - without this the UI would hang forever.
-      worker.onerror = (e: ErrorEvent) => {
-        worker.terminate()
-        workerRef.current = null
-        readyKeyRef.current = null
-        pendingRef.current = null
-        setPopup(null)
-        setStatus('idle')
-        alertDialog(`Translation failed to start: ${e.message || 'worker error (see DevTools)'}`)
-      }
-      workerRef.current = worker
-    }
-    return workerRef.current
-  }
-
   const loadUnit = (
     targetModel: TranslateModel,
     targetPair: TranslatePair,
     then: 'idle' | 'none'
   ): void => {
     afterLoadRef.current = then
-    progressPerFileRef.current = new Map()
+    worker.resetProgress()
     setProgress(0)
-    getWorker().postMessage({ type: 'load', model: targetModel, pair: targetPair })
+    worker.getWorker().postMessage({ type: 'load', model: targetModel, pair: targetPair })
   }
 
   // Detection, direction and chunking happen here (not at capture time) so a
@@ -288,7 +261,7 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     // Mirrored synchronously (the effect only syncs after a render) so a
     // rapid second trigger can't slip past translateSelection's idle check.
     statusRef.current = 'translating'
-    getWorker().postMessage({
+    worker.getWorker().postMessage({
       type: 'translate',
       id,
       model: targetModel,
@@ -372,13 +345,13 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     requestIdRef.current = null
     // Drops any not-yet-translated chunks; a chunk mid-inference finishes
     // silently (its output is filtered out by the request id).
-    workerRef.current?.postMessage({ type: 'cancel' })
+    if (worker.hasWorker()) worker.getWorker().postMessage({ type: 'cancel' })
     setPopup(null)
     if (statusRef.current === 'translating') {
       setStatus('idle')
       statusRef.current = 'idle'
     }
-    scheduleIdleUnload()
+    worker.scheduleIdleUnload()
   }
 
   // Consent dialog confirmed - start the actual download. The dialog may
@@ -406,8 +379,7 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
   // in-flight fetches. Files that finished downloading stay in the cache, so
   // retrying later resumes from where it left off.
   const cancelDownload = (): void => {
-    workerRef.current?.terminate()
-    workerRef.current = null
+    worker.terminateWorker()
     readyKeyRef.current = null
     pendingRef.current = null
     setStatus('idle')
@@ -425,8 +397,7 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     targetPair: TranslatePair
   ): Promise<void> => {
     if (readyKeyRef.current === downloadKey(targetModel, targetPair)) {
-      workerRef.current?.terminate()
-      workerRef.current = null
+      worker.terminateWorker()
       readyKeyRef.current = null
       // The worker may have been mid-translate (the settings dialog stays
       // reachable while the popup streams) - its 'done' will never arrive
@@ -441,13 +412,6 @@ export function useTranslate(model: TranslateModel, pair: TranslatePair) {
     }
     await deleteDownload(targetModel, targetPair)
   }
-
-  useEffect(() => {
-    return () => {
-      workerRef.current?.terminate()
-      if (idleUnloadRef.current) clearTimeout(idleUnloadRef.current)
-    }
-  }, [])
 
   return {
     status,

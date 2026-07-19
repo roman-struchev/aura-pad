@@ -6,6 +6,7 @@ import type { Ignore } from 'ignore'
 import { loadWorkspaces, getWorkspaceTrees, isIgnored, loadGitignore } from './workspaces'
 import { getAllRepoStatuses } from './git'
 import { loadSettings } from './settings'
+import type { EventContracts } from '../shared/ipc'
 
 // File watching: react to changes made outside the app (other editors, git,
 // other windows of this app) without reacting to our own writes.
@@ -47,7 +48,7 @@ const SELF_WRITE_MAX_AGE_MS = 10_000
 const STRUCTURE_DEBOUNCE_MS = 300
 const GIT_STATUS_DEBOUNCE_MS = 500
 
-const contentHash = (content: string): string =>
+const contentHash = (content: string | Buffer): string =>
   crypto.createHash('sha256').update(content).digest('hex')
 
 // Both sides of the suppression check must agree on one key form. Saves come
@@ -81,13 +82,19 @@ function scheduleGitStatusRefresh(): void {
   }, GIT_STATUS_DEBOUNCE_MS)
 }
 
-export function broadcast(channel: string, ...args: unknown[]): void {
+export function broadcast<C extends keyof EventContracts>(
+  channel: C,
+  ...args: EventContracts[C]
+): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(channel, ...args)
   }
 }
 
-export function recordSelfWrite(filePath: string, content: string): void {
+// `content` is the exact bytes written to disk (already encoded for the
+// file's detected encoding) - hashing a JS string here would only match
+// UTF-8 files.
+export function recordSelfWrite(filePath: string, content: string | Buffer): void {
   const key = selfWriteKey(filePath)
   recentSelfWrites.set(key, { time: Date.now() })
   // Delete-then-set keeps the map insertion-ordered by most recent save, so
@@ -148,7 +155,9 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
     const lastHash = lastSelfWriteHashes.get(key)
     if (lastHash === undefined) return false
     try {
-      return contentHash(fs.readFileSync(fullPath, 'utf-8')) === lastHash
+      // Raw bytes, not a utf-8 decode: the recorded hash is of the encoded
+      // bytes we wrote, whatever the file's encoding.
+      return contentHash(fs.readFileSync(fullPath)) === lastHash
     } catch {
       // Unreadable (deleted/moved/permissions) - treat as a real change and
       // let the handlers below sort it out.
@@ -184,9 +193,9 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   clearTimeout(structureDebounceTimers.get(rootPath))
   structureDebounceTimers.set(
     rootPath,
-    setTimeout(() => {
+    setTimeout(async () => {
       structureDebounceTimers.delete(rootPath)
-      broadcast('workspaces-changed', getWorkspaceTrees())
+      broadcast('workspaces-changed', await getWorkspaceTrees())
     }, STRUCTURE_DEBOUNCE_MS)
   )
 }

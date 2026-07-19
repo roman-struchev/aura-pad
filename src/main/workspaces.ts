@@ -2,21 +2,17 @@ import { app, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import ignore, { type Ignore } from 'ignore'
-import { writeConfigFile } from './configFile'
+import { readConfigFile, writeConfigFile } from './configFile'
+import { decodeFileBuffer, remapEncodingPaths } from './encoding'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
 
 const workspacesConfigPath = path.join(app.getPath('userData'), 'workspaces.json')
 
 export function loadWorkspaces(): string[] {
-  try {
-    if (fs.existsSync(workspacesConfigPath)) {
-      return JSON.parse(fs.readFileSync(workspacesConfigPath, 'utf-8'))
-    }
-  } catch (e) {
-    console.warn('Failed to load workspaces.json:', e)
-  }
-  return []
+  // Copied so callers that build a new list (push/filter) can't mutate the
+  // cached array behind readConfigFile's back.
+  return [...readConfigFile<string[]>(workspacesConfigPath, () => [])]
 }
 
 export function saveWorkspaces(paths: string[]): void {
@@ -57,13 +53,25 @@ export function loadGitignore(rootPath: string): Ignore {
   return ig
 }
 
-function buildFileTree(dirPath: string, rootPath: string, ig: Ignore, isRoot = false): FileNode {
+// Walks with fs.promises (like searchInWorkspaces below) so each
+// readdir/stat yields to the event loop - the fully synchronous version
+// froze every other IPC call (saves, terminal I/O, git status) for the
+// duration of a large workspace's walk, and it runs on every structural
+// fs event.
+async function buildFileTree(
+  dirPath: string,
+  rootPath: string,
+  ig: Ignore,
+  isRoot = false
+): Promise<FileNode> {
   const name = path.basename(dirPath)
   const item: FileNode = { name, path: dirPath, type: 'directory', children: [], isRoot }
 
   try {
-    const files = fs.readdirSync(dirPath)
-    for (const file of files) {
+    // withFileTypes: one readdir instead of a stat per entry.
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const file = entry.name
       if (file === '.git' || file === '.DS_Store' || isIgnored(file)) continue
 
       const fullPath = path.join(dirPath, file)
@@ -71,9 +79,12 @@ function buildFileTree(dirPath: string, rootPath: string, ig: Ignore, isRoot = f
       if (relPath && ig.ignores(relPath)) continue
 
       try {
-        const stat = fs.statSync(fullPath)
-        if (stat.isDirectory()) {
-          item.children!.push(buildFileTree(fullPath, rootPath, ig))
+        // Symlinks still need a real stat to know what they point at.
+        const isDirectory = entry.isSymbolicLink()
+          ? (await fs.promises.stat(fullPath)).isDirectory()
+          : entry.isDirectory()
+        if (isDirectory) {
+          item.children!.push(await buildFileTree(fullPath, rootPath, ig))
         } else {
           item.children!.push({ name: file, path: fullPath, type: 'file' })
         }
@@ -90,12 +101,12 @@ function buildFileTree(dirPath: string, rootPath: string, ig: Ignore, isRoot = f
   return item
 }
 
-export function getWorkspaceTrees(): FileNode[] {
+export async function getWorkspaceTrees(): Promise<FileNode[]> {
   const paths = loadWorkspaces()
   const trees: FileNode[] = []
   for (const p of paths) {
     if (fs.existsSync(p)) {
-      trees.push(buildFileTree(p, p, loadGitignore(p), true))
+      trees.push(await buildFileTree(p, p, loadGitignore(p), true))
     }
   }
   return trees
@@ -221,23 +232,6 @@ function isValidEntryName(name: string): boolean {
 
 const MAX_READABLE_FILE_BYTES = 10 * 1024 * 1024
 
-// Sniffs just the first few KB (not the whole file) for a NUL byte, the same
-// heuristic git.ts uses for untracked-file stats - cheap way to tell "binary"
-// from "text" without a full content read.
-function looksBinary(filePath: string): boolean {
-  let fd: number | null = null
-  try {
-    fd = fs.openSync(filePath, 'r')
-    const buffer = Buffer.alloc(8000)
-    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0)
-    return buffer.subarray(0, bytesRead).includes(0)
-  } catch (e) {
-    return false
-  } finally {
-    if (fd !== null) fs.closeSync(fd)
-  }
-}
-
 export function readFileContent(filePath: string): {
   success: boolean
   content?: string
@@ -253,11 +247,12 @@ export function readFileContent(filePath: string): {
         error: `File is too large to open (${sizeMb} MB, limit is ${limitMb} MB).`
       }
     }
-    if (looksBinary(filePath)) {
-      return { success: false, error: 'This looks like a binary file and cannot be opened.' }
-    }
-    const content = fs.readFileSync(filePath, 'utf-8')
-    return { success: true, content }
+    // Decoded (not assumed UTF-8): legacy cp1251/latin1/UTF-16 files used to
+    // come back as replacement characters, which the next autosave then wrote
+    // over the original file. decodeFileBuffer also owns the binary check.
+    const decoded = decodeFileBuffer(filePath, fs.readFileSync(filePath))
+    if (decoded.error !== undefined) return { success: false, error: decoded.error }
+    return { success: true, content: decoded.content }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
@@ -268,9 +263,13 @@ export function readFileContent(filePath: string): {
 // leave the user's file truncated: it holds either the old or the new content,
 // never a partial one. The dot-prefixed temp name keeps it out of the file
 // tree and the watcher, both of which skip dotfiles via isIgnored().
+//
+// Takes the already-encoded bytes (see encodeFileContent), not a string: the
+// caller also needs those exact bytes for recordSelfWrite(), and encoding
+// twice could diverge.
 export function writeFileContent(
   filePath: string,
-  content: string
+  content: Buffer
 ): { success: boolean; error?: string } {
   try {
     // Follow a symlink to its real target - renaming over the link itself
@@ -289,7 +288,7 @@ export function writeFileContent(
       path.dirname(targetPath),
       `.${path.basename(targetPath)}.${process.pid}.tmp`
     )
-    fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode })
+    fs.writeFileSync(tmpPath, content, { mode })
     try {
       fs.renameSync(tmpPath, targetPath)
     } catch (e) {
@@ -302,7 +301,7 @@ export function writeFileContent(
   }
 }
 
-export function renamePath(oldPath: string, newName: string): PathOpResult {
+export async function renamePath(oldPath: string, newName: string): Promise<PathOpResult> {
   if (!isValidEntryName(newName)) {
     return { success: false, error: 'Invalid name.' }
   }
@@ -312,6 +311,7 @@ export function renamePath(oldPath: string, newName: string): PathOpResult {
       return { success: false, error: 'A file or folder with this name already exists' }
     }
     fs.renameSync(oldPath, newPath)
+    remapEncodingPaths(oldPath, newPath)
 
     // Keep workspace roots in sync if a root folder was renamed
     const workspacePaths = loadWorkspaces()
@@ -321,17 +321,17 @@ export function renamePath(oldPath: string, newName: string): PathOpResult {
       saveWorkspaces(workspacePaths)
     }
 
-    return { success: true, newPath, trees: getWorkspaceTrees() }
+    return { success: true, newPath, trees: await getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
 }
 
-export function createPath(
+export async function createPath(
   parentPath: string,
   name: string,
   type: 'file' | 'directory'
-): PathOpResult {
+): Promise<PathOpResult> {
   if (!isValidEntryName(name)) {
     return { success: false, error: 'Invalid name.' }
   }
@@ -345,7 +345,7 @@ export function createPath(
     } else {
       fs.writeFileSync(newPath, '')
     }
-    return { success: true, newPath, trees: getWorkspaceTrees() }
+    return { success: true, newPath, trees: await getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
@@ -368,7 +368,10 @@ function getAvailableDestName(destDir: string, originalName: string): string {
   return candidate
 }
 
-export function copyPath(sourcePath: string, requestedTargetDirPath: string): PathOpResult {
+export async function copyPath(
+  sourcePath: string,
+  requestedTargetDirPath: string
+): Promise<PathOpResult> {
   try {
     // Pasting onto the exact folder that was copied means "duplicate it",
     // so copy alongside it (into its parent) instead of into itself.
@@ -384,7 +387,7 @@ export function copyPath(sourcePath: string, requestedTargetDirPath: string): Pa
     const newPath = path.join(targetDirPath, destName)
     fs.cpSync(sourcePath, newPath, { recursive: true })
 
-    return { success: true, newPath, trees: getWorkspaceTrees() }
+    return { success: true, newPath, trees: await getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
@@ -401,17 +404,17 @@ export async function deletePath(
       saveWorkspaces(workspacePaths.filter((p) => p !== targetPath))
     }
 
-    return { success: true, trees: getWorkspaceTrees() }
+    return { success: true, trees: await getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }
 }
 
-export function movePath(sourcePath: string, targetDirPath: string): PathOpResult {
+export async function movePath(sourcePath: string, targetDirPath: string): Promise<PathOpResult> {
   try {
     const sourceParent = path.dirname(sourcePath)
     if (sourcePath === targetDirPath || sourceParent === targetDirPath) {
-      return { success: true, newPath: sourcePath, trees: getWorkspaceTrees() }
+      return { success: true, newPath: sourcePath, trees: await getWorkspaceTrees() }
     }
 
     // Prevent moving a folder into itself or one of its own descendants
@@ -428,6 +431,7 @@ export function movePath(sourcePath: string, targetDirPath: string): PathOpResul
       }
     }
     fs.renameSync(sourcePath, newPath)
+    remapEncodingPaths(sourcePath, newPath)
 
     // Keep workspace roots in sync if a root folder was moved
     const workspacePaths = loadWorkspaces()
@@ -437,7 +441,7 @@ export function movePath(sourcePath: string, targetDirPath: string): PathOpResul
       saveWorkspaces(workspacePaths)
     }
 
-    return { success: true, newPath, trees: getWorkspaceTrees() }
+    return { success: true, newPath, trees: await getWorkspaceTrees() }
   } catch (e: any) {
     return { success: false, error: e.message }
   }

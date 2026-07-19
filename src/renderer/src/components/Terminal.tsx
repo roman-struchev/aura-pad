@@ -15,6 +15,13 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  // The mount effect below runs once per termId, so its resize handler would
+  // otherwise close over the isActive of the mount render (always true) and
+  // keep fitting/IPC-resizing hidden terminals on every window resize.
+  const isActiveRef = useRef(isActive)
+  useEffect(() => {
+    isActiveRef.current = isActive
+  })
 
   useEffect(() => {
     if (!terminalRef.current) return
@@ -67,7 +74,7 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
     })
 
     const handleResize = () => {
-      if (isActive && fitAddonRef.current) {
+      if (isActiveRef.current && fitAddonRef.current) {
         fitAddonRef.current.fit()
         window.api.ptyResize(termId, term.cols, term.rows)
       }
