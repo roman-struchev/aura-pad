@@ -342,6 +342,18 @@ export function useTabs(tabsEnabled: boolean) {
     if (tab) updateTab(path, { pinned: !tab.pinned })
   }
 
+  // Flip a tab's preview mode, reading its current state inside the functional
+  // update rather than from a render-time closure. The tree's eye icon calls
+  // this right after openTab: computing "was it previewing?" from a captured
+  // `tabs` snapshot raced with rapid clicks (and the stable-callback ref lag),
+  // so clicking the eye on a *different* file was sometimes mis-read as a
+  // repeat toggle and dropped the user back to source.
+  const togglePreview = (path: string): void => {
+    setTabs((prev) =>
+      prev.map((t) => (t.path === path ? { ...t, showPreview: !t.showPreview } : t))
+    )
+  }
+
   // Reorders tabs by moving sourcePath to targetPath's index (drag & drop in the tab bar).
   const reorderTab = (sourcePath: string, targetPath: string): void => {
     if (sourcePath === targetPath) return
@@ -567,6 +579,7 @@ export function useTabs(tabsEnabled: boolean) {
     reopenClosedTab,
     getUnsavedCount,
     togglePin,
+    togglePreview,
     reorderTab,
     handleSave,
     saveAllDirtyFileTabs,

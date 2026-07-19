@@ -3,16 +3,71 @@
 Curated backlog from a full code review (v1.27.0). Ordered by expected value for AuraPad's
 positioning: a fast, zero-config editor that stays out of the way.
 
+## Next up: toggle the file-tree sidebar (detailed spec)
+
+Goal: hide/show the whole sidebar (file tree + git panel) with a button and a shortcut,
+so the editor can use the full window width. State persists across restarts.
+
+This is a small, self-contained change. Everything below is already wired the way the
+steps assume — follow them in order.
+
+1. **Settings flag.** In `src/shared/settings.ts` add `sidebarVisible: boolean` to
+   `AppSettings` and set it to `true` in `DEFAULT_SETTINGS`. (The settings loader in
+   `src/main/settings.ts` already deep-merges defaults, so old config files pick this up
+   automatically — no migration needed.)
+
+2. **Read it in App.** `src/renderer/src/App.tsx` already destructures
+   `const { settings, updateSetting } = useSettings()`. Add a toggle helper near the other
+   handlers:
+
+   ```ts
+   const toggleSidebar = (): void => updateSetting('sidebarVisible', !settings.sidebarVisible)
+   ```
+
+3. **Conditionally render the sidebar.** In `App.tsx` the sidebar is the outer
+   `<div ref={sidebarRef} ...>` that wraps `<Sidebar .../>` (right after the editor
+   column, look for `style={{ width: ... sidebarWidth.width ... }}`). Wrap that whole
+   `<div>` in `{settings.sidebarVisible && ( ... )}`. Do NOT remove `sidebarRef` usage —
+   keep the ref on the div; when hidden the div just isn't rendered, which is fine (the
+   tree-focus keyboard checks in `useGlobalHotkeys` already guard on
+   `sidebarRef.current?.contains(...)`, which is null-safe).
+
+4. **Toolbar button.** `src/renderer/src/components/AppHeader.tsx` renders the right-hand
+   button cluster (search / add-folder / terminal / settings). Add a new `ToolbarButton`
+   there, following the exact pattern of the existing ones (they take `onClick`, `title`,
+   `tooltipAlign="right"`, and an icon child). Use the `PanelLeft` / `PanelLeftClose` icon
+   from `lucide-react` (import at the top with the others). Pass a new prop
+   `sidebarVisible: boolean` and `onToggleSidebar: () => void` through `AppHeaderProps`
+   (add them to the interface), and wire them from `App.tsx` (`sidebarVisible={settings.sidebarVisible}`,
+   `onToggleSidebar={toggleSidebar}`). Set `active={!sidebarVisible}` so the button looks
+   engaged when the panel is hidden.
+
+5. **Keyboard shortcut via the native menu** (matches how every other AuraPad accelerator
+   works — do NOT add a renderer keydown listener):
+   - `src/shared/menuAction.ts`: add `'toggle-sidebar'` to the `MenuAction` union.
+   - `src/main/menu.ts`: add a View-menu item (near the other view toggles) with
+     `accelerator: 'CmdOrCtrl+B'` that sends the `'toggle-sidebar'` action — copy an
+     adjacent item's shape exactly.
+   - `src/renderer/src/App.tsx`: the `useMenuActions({...})` call maps action names to
+     handlers; add `'toggle-sidebar': toggleSidebar`.
+
+6. **Verify** (see `.claude/skills/verify`): launch with an isolated profile, click the new
+   button and confirm the sidebar disappears and the editor widens; press `Cmd+B` to toggle
+   it back; restart the app and confirm the last state is restored (it's in `settings.json`).
+
+Keep it minimal: no animation is required (a hard show/hide is fine and matches the app's
+snappy feel). `sidebarWidth` / resize behavior is untouched — a hidden sidebar simply isn't
+in the layout.
+
 ## High value, fits the product
 
 - **Command palette (`Cmd+Shift+P`)** — one searchable entry point for every action that
   today lives in scattered shortcuts (dictation, translate, preview, git, terminal).
   Cheap to build: the menu-action dispatcher in `App.tsx` already enumerates most actions.
-- **Encoding support (cp1251 / latin1 / auto-detect)** — today every file is read as UTF-8;
-  legacy non-UTF-8 text renders as `�` and autosave then writes the replacement characters
-  back, silently corrupting the file. Detect encoding on open (`jschardet` + `iconv-lite`),
-  show it in the status area, save back in the original encoding. This is both a feature
-  and a data-loss fix.
+- ~~Encoding support (cp1251 / latin1 / auto-detect)~~ — **done** (v1.27.0+): `src/main/encoding.ts`
+  strict-decodes UTF-8, falls back to `jschardet` + `iconv-lite`, remembers the encoding per
+  path and writes it back on save (UTF-16 BOM preserved). Still open as a nicety: show the
+  detected encoding in a status area and let the user override it.
 - **Project-wide replace** — GlobalSearch already finds matches across all workspace roots;
   adding replace (with per-match preview and confirm) completes the story.
 - **Split view (two editors side by side)** — the most-missed editor feature at this tier.
@@ -49,26 +104,52 @@ positioning: a fast, zero-config editor that stays out of the way.
 - **Ship the declared Windows/Linux builds** — `electron-builder.yml` and the updater
   support win/linux, but CI builds macOS only; either publish those artifacts or trim the
   config until then.
-- **Harden HTML preview** — render previews in a separate `BrowserView`/window with no
-  preload instead of an `allow-same-origin` iframe; today a previewed HTML file can call
-  `window.parent.api.*` (full file-system IPC) the moment preview is toggled.
+- **Harden HTML preview (needs a real isolation boundary — two shortcuts already failed).**
+  Today preview uses a `srcDoc` iframe with `sandbox="allow-scripts allow-same-origin"`
+  (`src/renderer/src/components/HtmlPreview.tsx`). Because `srcDoc` inherits the app's own
+  origin, a script in a previewed `.html` can reach `window.parent.api.*` — the full IPC
+  surface (read/write/delete any file, connected Google accounts). That's a real
+  escalation for untrusted files.
+
+  Do NOT "fix" it either of these ways (both were tried and rejected):
+  - **Dropping `allow-same-origin`** gives the doc an opaque origin and closes the hole,
+    but breaks real reports: several of the user's java-guild reports
+    (`report-port-component`, `report-aggregated`, `report-employees-stats`,
+    `report-port-mentor-domain`) decode an inner document and `document.write` it into a
+    nested iframe of their own — which throws once the frame is opaque. Verified: those
+    reports render blank.
+  - **Serving preview from a custom app-private scheme** (so `allow-same-origin` means the
+    scheme's origin, not the app's) is the right _idea_ for keeping `window.parent.api`
+    cross-origin, but a from-scratch attempt did not render reliably (blank previews) and
+    was reverted. If revisited, confirm scripts actually execute and CDN subresources
+    (`unpkg`, `cdn.plot.ly`) load inside the framed document before trusting it.
+
+  The dependable fix is a **dedicated `WebContentsView`/child window with its own
+  `webPreferences` (no preload, `contextIsolation: true`, `nodeIntegration: false`)**: the
+  preview then has no bridge to `api` at all, while keeping full same-origin semantics
+  (nested `document.write`, CDN loads) that the reports need. Cost is real: the view must
+  be positioned/resized over the editor pane, hidden when the preview toggles off or the
+  tab changes, and kept below modals in z-order. Budget it as a feature, not a patch.
+
 - **Path allowlisting in main-process IPC** — restrict `read-file`/`save-file`/`delete-path`
   to workspace roots (+ explicitly opened externals) as a second line of defense, and
   re-enable `sandbox: true` for the renderer.
 - **Encrypt Google refresh tokens** with Electron `safeStorage` (Keychain/DPAPI) instead of
   plaintext JSON in userData.
-- **Accessibility pass on modals** — focus trap, autofocus on the primary control,
-  Enter-to-confirm, and focus restore on close (one shared `Modal.tsx` fix covers all
-  dialogs).
+- ~~Accessibility pass on modals~~ — **done** (v1.27.0+): `Modal.tsx` now has a focus trap,
+  `[data-autofocus]`/first-focusable autofocus, focus restore on close, and
+  Enter-to-confirm via focusing the safe default button (OK / Cancel).
 
 ## Performance track (prerequisite for "instant" feel on big repos)
 
-- Memoize the render core: `App.tsx` re-renders the entire tree (recursive FileTree
-  included) on every keystroke; `fileStates` from `useGitStatus` breaks memoization by
-  identity.
-- Switch Monaco to uncontrolled models (`keepCurrentModel`) — also fixes undo-stack loss
-  when toggling preview or switching to the Tasks tab.
-- Incremental file-tree updates + virtualization instead of a full synchronous re-walk of
-  every workspace on each fs event.
-- Cache settings/workspaces in the main process instead of re-reading JSON from disk on
-  every fs event and git call.
+The first four items below were **done** in the v1.27.0 refactor pass; kept here as a record.
+
+- ~~Memoize the render core~~ — done: `TabBar`/`FileTree` are `React.memo` with stable
+  callbacks (`lib/useStableCallback.ts`), `fileStates` is memoized in `useGitStatus`.
+- ~~Switch Monaco to uncontrolled models~~ — done (`defaultValue` + `keepCurrentModel`);
+  also fixed undo-stack loss on preview/Tasks toggles.
+- ~~Incremental file-tree updates~~ — done: `useWorkspaceTree` reuses unchanged subtree
+  identities (`mergeForest`), and the main-process walk is now async (`fs.promises`).
+  Virtualization of very large expanded trees is still open.
+- ~~Cache settings/workspaces in main~~ — done: `configFile.ts` caches parsed configs.
+- Still open: virtualize the file tree for very large repos.

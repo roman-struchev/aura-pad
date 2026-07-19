@@ -30,6 +30,7 @@ export const NameInputModal: React.FC<NameInputModalProps> = ({
     <div className="text-xs text-gray-400 mb-2 truncate">{title}</div>
     <input
       ref={inputRef}
+      data-autofocus
       className="w-full bg-fleet-bg border border-fleet-border rounded px-2 py-1.5 text-sm text-fleet-text outline-none focus:border-blue-500"
       value={value}
       placeholder={placeholder}

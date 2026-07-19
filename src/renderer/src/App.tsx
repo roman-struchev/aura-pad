@@ -493,8 +493,7 @@ function App(): React.JSX.Element {
     'format-document': formatActiveDocument,
     'toggle-preview': () => {
       const t = tabsRef.current
-      if (t.activeTabPath && isPreviewablePath(t.selectedPath))
-        t.updateTab(t.activeTabPath, { showPreview: !t.showMarkdownPreview })
+      if (t.activeTabPath && isPreviewablePath(t.selectedPath)) t.togglePreview(t.activeTabPath)
     },
     'toggle-terminal': toggleTerminal,
     preferences: () => setShowSettings(true)
@@ -539,13 +538,14 @@ function App(): React.JSX.Element {
     terminal.openNewTerminal(dirname(path), `python3 ${quotedPath}`)
   }
 
-  // Toggles: clicking the hover icon again on an already-previewing tab flips
-  // it back to source. Checked before opening, since an already-open tab's
-  // showPreview is untouched by openTab (only a brand-new tab starts at false).
+  // The tree's eye icon: open the file and flip its preview. togglePreview
+  // reads the tab's current showPreview inside its own state updater, so a
+  // freshly opened file (showPreview:false) always turns preview on, and
+  // re-clicking the eye on an already-previewing file flips back to source -
+  // without racing a stale snapshot on rapid clicks across files.
   const previewMarkdown = async (node: FileNode): Promise<void> => {
-    const wasPreviewing = tabs.tabs.find((t) => t.path === node.path)?.showPreview ?? false
     await tabs.openTab(node.path)
-    tabs.updateTab(node.path, { showPreview: !wasPreviewing })
+    tabs.togglePreview(node.path)
   }
 
   const openTerminalHere = (node: FileNode): void => {
@@ -662,10 +662,7 @@ function App(): React.JSX.Element {
         }}
         onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
         onFormatDocument={formatActiveDocument}
-        onTogglePreview={() =>
-          tabs.activeTabPath &&
-          tabs.updateTab(tabs.activeTabPath, { showPreview: !tabs.showMarkdownPreview })
-        }
+        onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
         onToggleDictation={toggleDictation}
         onStartReadAloud={startReadAloud}
         onOpenGlobalSearch={openGlobalSearch}

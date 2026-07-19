@@ -15,6 +15,7 @@ export const DialogHost: React.FC = () => {
         <div className="text-sm text-fleet-text mb-4 whitespace-pre-wrap">{request.message}</div>
         <div className="flex justify-end">
           <button
+            data-autofocus
             className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
             onClick={() => request.resolve()}
           >
@@ -30,6 +31,7 @@ export const DialogHost: React.FC = () => {
       <div className="text-sm text-fleet-text mb-4 whitespace-pre-wrap">{request.message}</div>
       <div className="flex justify-end gap-2">
         <button
+          data-autofocus
           className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
           onClick={() => request.resolve(false)}
         >
