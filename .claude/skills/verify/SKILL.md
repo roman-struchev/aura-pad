@@ -42,3 +42,14 @@ Node 22 has a built-in WebSocket — no deps needed. Page target: `GET /json`, f
 - Autosave is on by default: anything typed into a real tab persists after ~1.2s. Create a scratch file via `window.api.createPath(root, name, 'file')` first, open it by clicking its tree node, type into that. Clean up with `find ... -name <scratch> -delete` (handles normalization).
 - Session restore drops missing paths gracefully — deleting the scratch file before relaunch is fine.
 - Restore the user's dev instance afterwards: `nohup npm run dev -- -- --remote-debugging-port=9222 &` (detached, unsandboxed).
+
+## Regression checklist
+
+Before signing off, if the change touches an area with a known past bug, run the
+matching section of `docs/TEST_CASES.md` — each section lists the files it guards
+under `Guards:`, so match them against your diff and run only that section. Don't
+run unrelated sections; a small change needs only its own.
+
+When you fix a new bug that could plausibly come back (or add a load-bearing
+behavior worth locking in), add a case to `docs/TEST_CASES.md` in the same
+change, so the checklist stays current instead of drifting behind the code.
