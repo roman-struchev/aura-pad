@@ -236,6 +236,30 @@ the reference implementation. If a non-`y-monaco` client genuinely needs plain
 position (`Y.createAbsolutePositionFromRelativePosition`) rather than tracking it a second
 time independently.
 
+### 4.3 Line-ending normalization (LF vs CRLF)
+
+Collaborative text editing relies on synchronized, character-accurate offsets. Monaco Editor uses platform-default line endings by default: **CRLF (`\r\n`)** on Windows (2 characters) and **LF (`\n`)** on macOS/Linux (1 character). If one client uses CRLF and another uses LF, their character offsets will diverge on the very first newline. This leads to immediate text corruption, interleaved characters, and cursor drift during typing.
+
+To guarantee synchronization across all platforms and operating systems, all clients MUST strictly enforce **LF (`\n`)** as the sole End-of-Line (EOL) sequence.
+
+#### EOL Enforcement Rules:
+1. **Model EOL Enforcement**: All clients must intercept newly created Monaco models and set their EOL sequence to LF immediately.
+2. **Value Change EOL Lock**: When `model.setValue()` is called (which happens during Yjs state synchronization inside bindings like `y-monaco`), Monaco silently resets the model's EOL setting back to the platform default (CRLF on Windows). All clients MUST listen to model content changes (`model.onDidChangeContent`) and immediately set the EOL back to LF if it has changed.
+3. **Initial Content Normalization**: Any text loaded from a file or external resource before seeding the Yjs document or creating a Monaco model MUST have its carriage returns removed (e.g., `.replace(/\r\n|\r/g, '\n')`).
+
+#### Reference Implementation (Monaco Setup):
+```javascript
+// Force LF globally for any created Monaco model and keep it locked
+monaco.editor.onDidCreateModel((model) => {
+  model.setEOL(monaco.editor.EndOfLineSequence.LF);
+  model.onDidChangeContent(() => {
+    if (model.getEndOfLineSequence() !== monaco.editor.EndOfLineSequence.LF) {
+      model.setEOL(monaco.editor.EndOfLineSequence.LF);
+    }
+  });
+});
+```
+
 ## 5. Session lifecycle events (control plane)
 
 Beyond raw Yjs traffic, the Host connection should receive out-of-band notifications
