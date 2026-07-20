@@ -54,6 +54,11 @@ const api: AuraPadApi & { getPathForFile: (file: File) => string } = {
     subscribe(`pty-data-${termId}`, callback as (...args: unknown[]) => void),
   onPtyExit: (termId: string, callback: () => void) => subscribe(`pty-exit-${termId}`, callback),
 
+  onWorkTogetherMessage: (sessionId: string, callback: (data: Uint8Array) => void) =>
+    subscribe(`work-together-message-${sessionId}`, callback as (...args: unknown[]) => void),
+  onWorkTogetherClosed: (sessionId: string, callback: (code: number, reason: string) => void) =>
+    subscribe(`work-together-closed-${sessionId}`, callback as (...args: unknown[]) => void),
+
   getPathForFile: (file: File) => webUtils.getPathForFile(file)
 }
 

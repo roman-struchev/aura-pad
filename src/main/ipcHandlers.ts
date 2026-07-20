@@ -50,6 +50,16 @@ import {
 import { lintPython, lintEslint } from './lint'
 import { googleWebTranslate } from './translate'
 import { applyUpdate } from './updater'
+import {
+  createSession as workTogetherCreateSession,
+  mintLink as workTogetherMintLink,
+  revokeLink as workTogetherRevokeLink,
+  endSession as workTogetherEndSession,
+  getSessionStatus as workTogetherGetSessionStatus,
+  connectSession as workTogetherConnectSession,
+  sendSessionMessage as workTogetherSendSessionMessage,
+  disconnectSession as workTogetherDisconnectSession
+} from './workTogether'
 
 // Domain-scoped IPC registration. Window-lifecycle channels (confirm-close,
 // decline-close, renderer-ready) stay in index.ts, next to the state they
@@ -216,10 +226,38 @@ function registerDiagnosticsIpc(): void {
   handleInvoke('lint-eslint', (absPath, workspaceRoot) => lintEslint(absPath, workspaceRoot))
 }
 
+function registerWorkTogetherIpc(): void {
+  handleInvoke('work-together-create-session', (backendUrl, filePath, language, content, maxTtl) =>
+    workTogetherCreateSession(backendUrl, filePath, language, content, maxTtl)
+  )
+  handleInvoke('work-together-mint-link', (backendUrl, sessionId, hostToken, role, ttlSeconds) =>
+    workTogetherMintLink(backendUrl, sessionId, hostToken, role, ttlSeconds)
+  )
+  handleInvoke('work-together-revoke-link', (backendUrl, sessionId, hostToken, linkId) =>
+    workTogetherRevokeLink(backendUrl, sessionId, hostToken, linkId)
+  )
+  handleInvoke('work-together-end-session', (backendUrl, sessionId, hostToken) =>
+    workTogetherEndSession(backendUrl, sessionId, hostToken)
+  )
+  handleInvoke('work-together-get-status', (backendUrl, sessionId, hostToken) =>
+    workTogetherGetSessionStatus(backendUrl, sessionId, hostToken)
+  )
+  handleInvoke('work-together-connect', (sessionId, backendUrl, token) =>
+    workTogetherConnectSession(sessionId, backendUrl, token)
+  )
+  handleInvoke('work-together-send', (sessionId, data) => {
+    workTogetherSendSessionMessage(sessionId, data)
+  })
+  handleInvoke('work-together-disconnect', (sessionId) => {
+    workTogetherDisconnectSession(sessionId)
+  })
+}
+
 export function registerIpcHandlers(): void {
   registerAppIpc()
   registerWorkspaceIpc()
   registerGitIpc()
   registerGoogleTasksIpc()
   registerDiagnosticsIpc()
+  registerWorkTogetherIpc()
 }

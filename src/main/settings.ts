@@ -22,6 +22,10 @@ export function loadSettings(): AppSettings {
       googleTasks: {
         ...DEFAULT_SETTINGS.extensions.googleTasks,
         ...saved.extensions?.googleTasks
+      },
+      workTogether: {
+        ...DEFAULT_SETTINGS.extensions.workTogether,
+        ...saved.extensions?.workTogether
       }
     }
   }

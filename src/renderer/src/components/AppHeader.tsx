@@ -12,6 +12,7 @@ import {
   Play,
   Search,
   Settings as SettingsIcon,
+  Share2,
   Square,
   SquareCheckBig,
   Terminal as TerminalIcon,
@@ -40,6 +41,9 @@ interface AppHeaderProps {
   isProse: boolean
   googleTasksEnabled: boolean
   googleTasksActive: boolean
+  workTogetherEnabled: boolean
+  workTogetherSharing: boolean
+  workTogetherParticipantCount: number
   terminalShown: boolean
   sidebarVisible: boolean
   voice: ReturnType<typeof useVoiceInput>
@@ -53,6 +57,7 @@ interface AppHeaderProps {
   onOpenGlobalSearch: () => void
   onAddFolder: () => void
   onOpenGoogleTasks: () => void
+  onOpenShare: () => void
   onToggleTerminal: () => void
   onToggleSidebar: () => void
   onOpenSettings: () => void
@@ -74,6 +79,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   isProse,
   googleTasksEnabled,
   googleTasksActive,
+  workTogetherEnabled,
+  workTogetherSharing,
+  workTogetherParticipantCount,
   terminalShown,
   sidebarVisible,
   voice,
@@ -87,6 +95,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenGlobalSearch,
   onAddFolder,
   onOpenGoogleTasks,
+  onOpenShare,
   onToggleTerminal,
   onToggleSidebar,
   onOpenSettings
@@ -187,6 +196,26 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     ) : (
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                     )}
+                  </span>
+                )}
+              </>
+            )}
+            {workTogetherEnabled && (
+              <>
+                <ToolbarButton
+                  onClick={onOpenShare}
+                  active={workTogetherSharing}
+                  title={workTogetherSharing ? 'Work Together (sharing)' : 'Share…'}
+                  colorClassName="text-gray-400 hover:text-white"
+                >
+                  <Share2 size={16} />
+                </ToolbarButton>
+                {workTogetherSharing && workTogetherParticipantCount > 0 && (
+                  <span
+                    className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium select-none"
+                    title={`${workTogetherParticipantCount} ${workTogetherParticipantCount === 1 ? 'person' : 'people'} here`}
+                  >
+                    {workTogetherParticipantCount}
                   </span>
                 )}
               </>

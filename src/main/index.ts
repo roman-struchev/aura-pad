@@ -11,6 +11,7 @@ import { handleSend } from './ipc'
 import { registerIpcHandlers } from './ipcHandlers'
 import { setupWatchers, closeAllWatchers, broadcast } from './watcher'
 import { registerCreatePtyHandler, killAllPtys } from './terminals'
+import { registerWorkTogetherWindowProvider, disconnectAllSessions } from './workTogether'
 import { buildAppMenu } from './menu'
 import { initAutoUpdater } from './updater'
 
@@ -165,6 +166,7 @@ function createWindow(): void {
   mainWindow.webContents.on('did-navigate', () => {
     rendererReady = false
     killAllPtys()
+    disconnectAllSessions()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -244,6 +246,7 @@ app.whenReady().then(() => {
   // window is current, so it keeps working across a macOS close-then-reopen
   // (dock activate) cycle instead of staying bound to a destroyed window.
   registerCreatePtyHandler(() => mainWindowRef)
+  registerWorkTogetherWindowProvider(() => mainWindowRef)
 
   createWindow()
   setupWatchers()
@@ -271,6 +274,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   killAllPtys()
+  disconnectAllSessions()
   closeAllWatchers()
   if (process.platform !== 'darwin') {
     app.quit()

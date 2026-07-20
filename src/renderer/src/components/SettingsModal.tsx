@@ -27,6 +27,7 @@ interface SettingsModalProps {
   onConfigureReadAloud: () => void
   onConfigureTranslate: () => void
   onConfigureGoogleTasks: () => void
+  onConfigureWorkTogether: () => void
   onClose: () => void
 }
 
@@ -63,6 +64,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onConfigureReadAloud,
   onConfigureTranslate,
   onConfigureGoogleTasks,
+  onConfigureWorkTogether,
   onClose
 }) => {
   const [showShortcuts, setShowShortcuts] = useState(false)
@@ -155,6 +157,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
               onClick={onConfigureGoogleTasks}
+            >
+              Configure…
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col min-w-0">
+              <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>
+                Work Together
+              </span>
+              <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+                {settings.extensions.workTogether.enabled ? 'Enabled' : 'Disabled'} · share the
+                active file by a time-limited link
+              </span>
+            </div>
+            <button
+              className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
+              onClick={onConfigureWorkTogether}
             >
               Configure…
             </button>

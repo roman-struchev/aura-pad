@@ -119,6 +119,14 @@ export interface ExtensionSettings {
     clientId: string
     clientSecret: string
   }
+  // Real-time collaborative editing ("Work Together"): share the active tab
+  // via a time-limited link. The backend is a separate, self-hosted service
+  // (see docs/edit-together/specification.md) - AuraPad only ever talks to
+  // whatever URL is configured here, it doesn't bundle or host one itself.
+  workTogether: {
+    enabled: boolean
+    backendUrl: string
+  }
 }
 
 export interface AppSettings {
@@ -167,6 +175,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     git: { enabled: true },
     // Off by default: it needs a one-time OAuth client setup before it can
     // do anything, so it starts hidden until configured.
-    googleTasks: { enabled: false, clientId: '', clientSecret: '' }
+    googleTasks: { enabled: false, clientId: '', clientSecret: '' },
+    // Off by default; the backend URL is pre-filled with the default hosted
+    // instance so enabling the toggle alone is enough to get started, but
+    // it's just a normal setting - point it at a self-hosted backend instead.
+    workTogether: { enabled: false, backendUrl: 'https://aura.struchev.site' }
   }
 }

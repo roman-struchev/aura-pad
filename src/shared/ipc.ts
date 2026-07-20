@@ -9,6 +9,13 @@ import type { RecentExternalFile } from './recentExternalFile'
 import type { PathListingResult } from './pathMatch'
 import type { MenuAction } from './menuAction'
 import type { UpdateNotification } from './updateNotification'
+import type {
+  WorkTogetherLink,
+  WorkTogetherLinkRole,
+  WorkTogetherResult,
+  WorkTogetherSession,
+  WorkTogetherSessionStatus
+} from './workTogether'
 
 // The single source of truth for every IPC channel: its name, its arguments,
 // and its result type. main registers handlers against these contracts
@@ -137,6 +144,53 @@ export interface InvokeContracts {
     args: [text: string, from: string, to: string]
     result: TranslateResult
   }
+  'work-together-create-session': {
+    args: [
+      backendUrl: string,
+      filePath: string,
+      language: string,
+      content: string,
+      maxTtlSeconds: number
+    ]
+    result: WorkTogetherResult<WorkTogetherSession>
+  }
+  'work-together-mint-link': {
+    args: [
+      backendUrl: string,
+      sessionId: string,
+      hostToken: string,
+      role: WorkTogetherLinkRole,
+      ttlSeconds: number
+    ]
+    result: WorkTogetherResult<WorkTogetherLink>
+  }
+  'work-together-revoke-link': {
+    args: [backendUrl: string, sessionId: string, hostToken: string, linkId: string]
+    result: WorkTogetherResult<void>
+  }
+  'work-together-end-session': {
+    args: [backendUrl: string, sessionId: string, hostToken: string]
+    result: WorkTogetherResult<void>
+  }
+  'work-together-get-status': {
+    args: [backendUrl: string, sessionId: string, hostToken: string]
+    result: WorkTogetherResult<WorkTogetherSessionStatus>
+  }
+  // Opens (or replaces) the main-process WebSocket relay for this session;
+  // resolves once the socket is open or has failed/timed out, so the
+  // renderer knows whether it's safe to start sending sync/awareness frames.
+  'work-together-connect': {
+    args: [sessionId: string, backendUrl: string, token: string]
+    result: { success: boolean; error?: string }
+  }
+  'work-together-send': {
+    args: [sessionId: string, data: Uint8Array]
+    result: void
+  }
+  'work-together-disconnect': {
+    args: [sessionId: string]
+    result: void
+  }
 }
 
 // window.api method name -> invoke channel.
@@ -185,7 +239,15 @@ export const INVOKE_CHANNELS = {
   gtasksMoveTask: 'gtasks-move-task',
   lintPython: 'lint-python',
   lintEslint: 'lint-eslint',
-  translateGoogleWeb: 'translate-google-web'
+  translateGoogleWeb: 'translate-google-web',
+  workTogetherCreateSession: 'work-together-create-session',
+  workTogetherMintLink: 'work-together-mint-link',
+  workTogetherRevokeLink: 'work-together-revoke-link',
+  workTogetherEndSession: 'work-together-end-session',
+  workTogetherGetStatus: 'work-together-get-status',
+  workTogetherConnect: 'work-together-connect',
+  workTogetherSend: 'work-together-send',
+  workTogetherDisconnect: 'work-together-disconnect'
 } as const satisfies Record<string, keyof InvokeContracts>
 
 // ---------------------------------------------------------------------------
@@ -267,4 +329,12 @@ export type AuraPadApi = InvokeApi &
   EventApi & {
     onPtyData: (termId: string, callback: (data: string) => void) => Unsubscribe
     onPtyExit: (termId: string, callback: () => void) => Unsubscribe
+    // Per-session, dynamic like the pty channels above: one binary Yjs
+    // sync/awareness/control frame per event (see specification.md §4-5),
+    // and the close code/reason once the backend drops the connection.
+    onWorkTogetherMessage: (sessionId: string, callback: (data: Uint8Array) => void) => Unsubscribe
+    onWorkTogetherClosed: (
+      sessionId: string,
+      callback: (code: number, reason: string) => void
+    ) => Unsubscribe
   }

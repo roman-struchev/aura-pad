@@ -29,7 +29,8 @@
     "iconv-lite": "^0.7.3",
     "ignore": "^7.0.5",
     "jschardet": "^3.1.4",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@diffusionstudio/piper-wasm": "^1.0.0",
@@ -42,6 +43,7 @@
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
@@ -65,6 +67,9 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "y-monaco": "^0.1.6",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.31"
   }
 }

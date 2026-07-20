@@ -14,6 +14,8 @@ import { NameInputModal } from './components/NameInputModal'
 import { AiModals } from './components/AiModals'
 import { GoogleTasksTab } from './components/GoogleTasksTab'
 import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
+import { WorkTogetherConfigModal } from './components/WorkTogetherConfigModal'
+import { ShareDialog } from './components/ShareDialog'
 import { makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { DENSITY } from './density'
@@ -29,6 +31,7 @@ import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { useReadAloud } from './hooks/useReadAloud'
 import { useTranslate } from './hooks/useTranslate'
+import { useWorkTogether } from './hooks/useWorkTogether'
 import { useMenuActions } from './hooks/useMenuActions'
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
 import type { UpdateNotification } from '../../shared/updateNotification'
@@ -84,6 +87,7 @@ function App(): React.JSX.Element {
 
   const terminal = useTerminals()
   const tabs = useTabs(settings.tabsEnabled)
+  const workTogether = useWorkTogether(settings.extensions.workTogether.backendUrl, 'Host')
   // useTabs (like most of this file's hooks) returns a fresh object literal
   // every render, so effects that only need to *call* something on it (not
   // react to one of its values changing) read it through this ref instead of
@@ -247,6 +251,7 @@ function App(): React.JSX.Element {
 
   const handleEditorMount = (editor: monaco.editor.IStandaloneCodeEditor): void => {
     tabs.handleEditorDidMount(editor)
+    workTogether.registerEditor(editor)
     editorInstanceRef.current = editor
     setMountedEditor(editor)
     // The editor unmounts (and is disposed) when the last tab closes or the
@@ -329,6 +334,8 @@ function App(): React.JSX.Element {
   const [showReadAloudConfig, setShowReadAloudConfig] = useState(false)
   const [showTranslateConfig, setShowTranslateConfig] = useState(false)
   const [showGoogleTasksConfig, setShowGoogleTasksConfig] = useState(false)
+  const [showWorkTogetherConfig, setShowWorkTogetherConfig] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
   // Which repo the git panel shows; set by the file tree's per-root badge.
   const [gitPanelRoot, setGitPanelRoot] = useState<string | null>(null)
@@ -659,6 +666,11 @@ function App(): React.JSX.Element {
         isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
         googleTasksEnabled={settings.extensions.googleTasks.enabled}
         googleTasksActive={activeExt?.id === 'google-tasks'}
+        workTogetherEnabled={settings.extensions.workTogether.enabled}
+        workTogetherSharing={!!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)}
+        workTogetherParticipantCount={
+          (tabs.selectedPath && workTogether.sessions[tabs.selectedPath]?.participants.length) || 0
+        }
         terminalShown={terminal.showTerminal}
         sidebarVisible={settings.sidebarVisible}
         voice={voice}
@@ -676,6 +688,7 @@ function App(): React.JSX.Element {
         onOpenGlobalSearch={openGlobalSearch}
         onAddFolder={tree.handleAddFolder}
         onOpenGoogleTasks={() => tabs.openTab(makeExtensionPath('google-tasks'))}
+        onOpenShare={() => setShowShareDialog(true)}
         onToggleTerminal={toggleTerminal}
         onToggleSidebar={toggleSidebar}
         onOpenSettings={() => setShowSettings(true)}
@@ -914,6 +927,7 @@ function App(): React.JSX.Element {
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
           onConfigureTranslate={() => setShowTranslateConfig(true)}
           onConfigureGoogleTasks={() => setShowGoogleTasksConfig(true)}
+          onConfigureWorkTogether={() => setShowWorkTogetherConfig(true)}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -924,6 +938,34 @@ function App(): React.JSX.Element {
           updateSetting={updateSetting}
           density={density}
           onClose={() => setShowGoogleTasksConfig(false)}
+        />
+      )}
+
+      {showWorkTogetherConfig && (
+        <WorkTogetherConfigModal
+          settings={settings}
+          updateSetting={updateSetting}
+          density={density}
+          onClose={() => setShowWorkTogetherConfig(false)}
+        />
+      )}
+
+      {showShareDialog && tabs.selectedPath && (
+        <ShareDialog
+          fileName={tabs.selectedPath.split('/').pop() ?? tabs.selectedPath}
+          session={workTogether.sessions[tabs.selectedPath]}
+          onShare={(role, ttlSeconds) =>
+            workTogether.share(
+              tabs.selectedPath!,
+              tabs.fileContent,
+              getLanguage(tabs.selectedPath!),
+              role,
+              ttlSeconds
+            )
+          }
+          onRevokeLink={(linkId) => workTogether.revokeLink(tabs.selectedPath!, linkId)}
+          onStop={() => workTogether.stop(tabs.selectedPath!)}
+          onClose={() => setShowShareDialog(false)}
         />
       )}
 
