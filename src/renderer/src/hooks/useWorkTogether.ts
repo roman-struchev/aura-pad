@@ -153,9 +153,13 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       // below finds them equal and leaves the model (and its undo stack)
       // alone. A joining guest starts from an empty doc and gets the real
       // content via the ordinary sync-step handshake once connected.
-      if (content) yText.insert(0, content)
-
       const model = monaco.editor.getModel(monaco.Uri.parse(path))
+      // Use the model's actual value, which has already been through Monaco's
+      // internal line-ending normalization. `content` from the arg might have
+      // \r\n while the model normalized to \n, which would make `yText` and
+      // the model have different string lengths and desync CRDT offsets.
+      const initialText = model ? model.getValue() : content.replace(/\r\n|\r/g, '\n')
+      if (initialText) yText.insert(0, initialText)
       const binding = model ? new MonacoBinding(yText, model, editorsRef.current, awareness) : null
 
       const provider = new WorkTogetherProvider(created.data.sessionId, doc, awareness)

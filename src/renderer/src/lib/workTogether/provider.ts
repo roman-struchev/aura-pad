@@ -103,25 +103,29 @@ export class WorkTogetherProvider {
 
   private handleMessage = (data: Uint8Array): void => {
     const decoder = decoding.createDecoder(data)
-    const encoder = encoding.createEncoder()
-    const messageType = decoding.readVarUint(decoder)
-    switch (messageType) {
-      case MESSAGE_SYNC:
-        encoding.writeVarUint(encoder, MESSAGE_SYNC)
-        syncProtocol.readSyncMessage(decoder, encoder, this.doc, this)
-        // readSyncMessage only writes a reply for SyncStep1 (it answers with
-        // SyncStep2); anything else leaves just the tag byte in the encoder.
-        if (encoding.length(encoder) > 1) this.send(encoding.toUint8Array(encoder))
-        break
-      case MESSAGE_AWARENESS:
-        awarenessProtocol.applyAwarenessUpdate(
-          this.awareness,
-          decoding.readVarUint8Array(decoder),
-          this
-        )
-        break
-      default:
-        break
+    while (decoding.hasContent(decoder)) {
+      const messageType = decoding.readVarUint(decoder)
+      switch (messageType) {
+        case MESSAGE_SYNC: {
+          const encoder = encoding.createEncoder()
+          encoding.writeVarUint(encoder, MESSAGE_SYNC)
+          syncProtocol.readSyncMessage(decoder, encoder, this.doc, this)
+          // readSyncMessage only writes a reply for SyncStep1 (it answers with
+          // SyncStep2); anything else leaves just the tag byte in the encoder.
+          if (encoding.length(encoder) > 1) this.send(encoding.toUint8Array(encoder))
+          break
+        }
+        case MESSAGE_AWARENESS:
+          awarenessProtocol.applyAwarenessUpdate(
+            this.awareness,
+            decoding.readVarUint8Array(decoder),
+            this
+          )
+          break
+        default:
+          // Unknown message type, stop processing this frame
+          return
+      }
     }
   }
 

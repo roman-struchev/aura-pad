@@ -19,6 +19,16 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco })
 
+// Force LF globally for any model created in Monaco (prevents CRLF offset drift)
+monaco.editor.onDidCreateModel((model) => {
+  model.setEOL(monaco.editor.EndOfLineSequence.LF)
+  model.onDidChangeContent(() => {
+    if (model.getEndOfLineSequence() !== monaco.editor.EndOfLineSequence.LF) {
+      model.setEOL(monaco.editor.EndOfLineSequence.LF)
+    }
+  })
+})
+
 // Monaco measures glyph widths once per font config, and the JetBrains Mono
 // webfont (plus its lazily-loaded Cyrillic subsets - @fontsource splits by
 // unicode-range) may finish loading after that measurement, which would leave
