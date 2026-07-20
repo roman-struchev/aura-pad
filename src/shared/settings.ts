@@ -129,9 +129,15 @@ export interface AppSettings {
   sidebarWidth: number
   sidebarVisible: boolean
   lineNumbersEnabled: boolean
+  // Each AI feature owns an on/off flag (toggled from its Configure dialog).
+  // Off hides the feature's buttons and makes its menu items/shortcuts no-ops,
+  // while its model/voice/pair choices below are kept for when it's turned on.
+  dictationEnabled: boolean
   voiceModel: VoiceModel
   voiceLanguage: VoiceLanguage
+  readAloudEnabled: boolean
   readVoices: ReadVoices
+  translateEnabled: boolean
   translatePair: TranslatePair
   translateModel: TranslateModel
   extensions: ExtensionSettings
@@ -147,9 +153,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sidebarWidth: 256,
   sidebarVisible: true,
   lineNumbersEnabled: true,
+  dictationEnabled: true,
   voiceModel: 'base',
   voiceLanguage: 'auto',
+  readAloudEnabled: true,
   readVoices: { ru: 'ruslan', en: 'ryan' },
+  translateEnabled: true,
   translatePair: 'en-ru',
   // Online engine by default: first translation works instantly, no ~850 MB
   // download gate. Only affects fresh installs - saved settings win.

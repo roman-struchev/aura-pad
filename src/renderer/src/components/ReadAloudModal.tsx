@@ -2,12 +2,16 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { Modal } from './Modal'
+import { SettingToggle } from './SettingToggle'
 import { downloadedVoices, voiceInfo, type ReadLang } from '../hooks/useReadAloud'
 import { READ_VOICE_KEYS, type ReadVoices } from '../../../shared/settings'
 
 interface ReadAloudModalProps {
   langs: ReadLang[]
   current: ReadVoices
+  // The Enabled toggle only renders when both are provided.
+  enabled?: boolean
+  onEnabledChange?: (enabled: boolean) => void
   downloading: boolean
   progress: number | null
   // 'consent' = opened by pressing Read Aloud (confirm starts reading);
@@ -27,6 +31,8 @@ const LANG_TITLES: Record<ReadLang, string> = { ru: 'Russian voice', en: 'Englis
 export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   langs,
   current,
+  enabled,
+  onEnabledChange,
   downloading,
   progress,
   mode,
@@ -107,6 +113,19 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
         Natural-sounding voices run entirely on this computer - downloaded once from huggingface.co
         and stored locally. The choice is remembered in Settings.
       </div>
+
+      {enabled !== undefined && onEnabledChange && (
+        <div className="border-y border-fleet-border py-3 mb-3">
+          <SettingToggle
+            label="Enabled"
+            description="Show the Read Aloud button and menu item"
+            checked={enabled}
+            onChange={onEnabledChange}
+            labelClassName="text-xs"
+            descriptionClassName="text-[11px]"
+          />
+        </div>
+      )}
 
       {langs.map((lang) => {
         const isOpen = expanded === lang

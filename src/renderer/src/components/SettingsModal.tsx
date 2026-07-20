@@ -164,7 +164,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex flex-col min-w-0">
             <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Dictation</span>
             <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-              Whisper {settings.voiceModel} · {settings.voiceLanguage}
+              {settings.dictationEnabled ? 'Enabled' : 'Disabled'} · Whisper {settings.voiceModel} ·{' '}
+              {settings.voiceLanguage}
             </span>
           </div>
           <button
@@ -178,7 +179,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex flex-col min-w-0">
             <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Read Aloud</span>
             <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-              Voices: {settings.readVoices.en.replace('_', ' ')} / {settings.readVoices.ru}
+              {settings.readAloudEnabled ? 'Enabled' : 'Disabled'} · Voices:{' '}
+              {settings.readVoices.en.replace('_', ' ')} / {settings.readVoices.ru}
             </span>
           </div>
           <button
@@ -192,6 +194,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex flex-col min-w-0">
             <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Translation</span>
             <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+              {settings.translateEnabled ? 'Enabled' : 'Disabled'} ·{' '}
               {TRANSLATE_MODEL_LABELS[settings.translateModel]} ·{' '}
               {TRANSLATE_PAIR_LABELS[settings.translatePair]}
             </span>

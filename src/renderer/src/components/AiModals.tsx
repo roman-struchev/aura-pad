@@ -48,6 +48,8 @@ export const AiModals: React.FC<AiModalsProps> = ({
       <TranslateModal
         defaultModel={settings.translateModel}
         defaultPair={settings.translatePair}
+        enabled={settings.translateEnabled}
+        onEnabledChange={(v) => updateSetting('translateEnabled', v)}
         downloading={translate.status === 'downloading'}
         progress={translate.progress}
         onConfirm={(model, pair) => {
@@ -72,6 +74,8 @@ export const AiModals: React.FC<AiModalsProps> = ({
         defaultModel={settings.voiceModel}
         language={settings.voiceLanguage}
         onLanguageChange={(lang) => updateSetting('voiceLanguage', lang)}
+        enabled={settings.dictationEnabled}
+        onEnabledChange={(v) => updateSetting('dictationEnabled', v)}
         downloading={voice.status === 'downloading'}
         progress={voice.progress}
         onConfirm={(model) => {
@@ -94,6 +98,8 @@ export const AiModals: React.FC<AiModalsProps> = ({
       <ReadAloudModal
         langs={showReadAloudConfig ? READ_LANGS : readAloud.consentLangs}
         current={settings.readVoices}
+        enabled={settings.readAloudEnabled}
+        onEnabledChange={(v) => updateSetting('readAloudEnabled', v)}
         downloading={readAloud.modalPhase === 'downloading'}
         progress={readAloud.downloadProgress}
         mode={showReadAloudConfig ? 'settings' : 'consent'}

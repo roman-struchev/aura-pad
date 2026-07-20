@@ -50,6 +50,13 @@ import clsx from 'clsx'
 
 function App(): React.JSX.Element {
   const { settings, updateSetting } = useSettings()
+  // Read through a ref by the once-subscribed handlers (menu accelerators,
+  // Monaco actions) so their guards see the live enabled flags, not a stale
+  // mount-time snapshot.
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  })
   const resolvedTheme = useTheme(settings.theme)
   const monacoTheme = getMonacoTheme(resolvedTheme)
   const density = DENSITY[settings.uiMode]
@@ -125,12 +132,13 @@ function App(): React.JSX.Element {
       v.toggle()
       return
     }
+    if (!settingsRef.current.dictationEnabled) return
     if (!isProsePath(t.selectedPath)) return
     if (t.showMarkdownPreview && t.activeTabPath)
       t.updateTab(t.activeTabPath, { showPreview: false })
     v.toggle()
   }
-  const canDictate = isProsePath(tabs.selectedPath)
+  const canDictate = settings.dictationEnabled && isProsePath(tabs.selectedPath)
 
   // One entry point for both the toolbar buttons and the Option+Cmd+L menu
   // accelerator: picks the formatter by the active file's extension. Reads
@@ -201,6 +209,7 @@ function App(): React.JSX.Element {
   // mounted, nothing selected) is a no-op - unlike dictation, there's no
   // sensible fallback to flip to.
   const startTranslate = (): void => {
+    if (!settingsRef.current.translateEnabled) return
     if (tabsRef.current.showMarkdownPreview) return
     const editor = editorInstanceRef.current
     if (!editor) return
@@ -213,6 +222,7 @@ function App(): React.JSX.Element {
   // (no editor mounted) the whole file. Markdown is flattened to prose before
   // speaking.
   const startReadAloud = (): void => {
+    if (!settingsRef.current.readAloudEnabled) return
     const t = tabsRef.current
     if (!t.selectedPath) return
     const markdown = isMarkdownPath(t.selectedPath)
@@ -646,7 +656,7 @@ function App(): React.JSX.Element {
         showPreview={tabs.showMarkdownPreview}
         isPreviewable={isPreviewablePath(tabs.selectedPath)}
         canDictate={canDictate}
-        isProse={isProsePath(tabs.selectedPath)}
+        isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
         googleTasksEnabled={settings.extensions.googleTasks.enabled}
         googleTasksActive={activeExt?.id === 'google-tasks'}
         terminalShown={terminal.showTerminal}

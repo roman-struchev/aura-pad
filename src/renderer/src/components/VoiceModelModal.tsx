@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { Trash2 } from 'lucide-react'
 import { Modal } from './Modal'
+import { SettingToggle } from './SettingToggle'
 import { VOICE_MODEL_CATALOG, isModelDownloaded } from '../lib/voice/models'
 import {
   VOICE_LANGUAGES,
@@ -14,6 +15,10 @@ interface VoiceModelModalProps {
   defaultModel: VoiceModel
   language: VoiceLanguage
   onLanguageChange: (language: VoiceLanguage) => void
+  // The Enabled toggle only renders when both are provided (Settings flow);
+  // the task-editor's inline consent dialog omits them.
+  enabled?: boolean
+  onEnabledChange?: (enabled: boolean) => void
   downloading: boolean
   progress: number
   onConfirm: (model: VoiceModel) => void
@@ -28,6 +33,8 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
   defaultModel,
   language,
   onLanguageChange,
+  enabled,
+  onEnabledChange,
   downloading,
   progress,
   onConfirm,
@@ -52,6 +59,19 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
         Dictation runs entirely on this computer - audio never leaves it. It needs a speech model,
         downloaded once from huggingface.co and stored locally.
       </div>
+
+      {enabled !== undefined && onEnabledChange && (
+        <div className="border-y border-fleet-border py-3 mb-3">
+          <SettingToggle
+            label="Enabled"
+            description="Show the dictation button and enable its shortcut"
+            checked={enabled}
+            onChange={onEnabledChange}
+            labelClassName="text-xs"
+            descriptionClassName="text-[11px]"
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         {VOICE_MODELS.map((id) => {

@@ -510,6 +510,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
           task={editState.task}
           onSave={saveTask}
           onClose={() => setEditState(null)}
+          dictationEnabled={settings.dictationEnabled}
           voiceModel={settings.voiceModel}
           voiceLanguage={settings.voiceLanguage}
           onVoiceModelChange={(model) => updateSetting('voiceModel', model)}

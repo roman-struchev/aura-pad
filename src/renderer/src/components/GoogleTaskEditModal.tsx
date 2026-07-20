@@ -12,6 +12,7 @@ interface GoogleTaskEditModalProps {
   task?: GTask
   onSave: (input: GTaskInput) => Promise<boolean>
   onClose: () => void
+  dictationEnabled: boolean
   voiceModel: VoiceModel
   voiceLanguage: VoiceLanguage
   onVoiceModelChange: (model: VoiceModel) => void
@@ -51,6 +52,7 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
   task,
   onSave,
   onClose,
+  dictationEnabled,
   voiceModel,
   voiceLanguage,
   onVoiceModelChange,
@@ -99,6 +101,7 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
   // no room for the level meter at this size, so recording is shown as a
   // pulsing stop icon instead.
   const renderMic = (field: DictationField): React.ReactNode => {
+    if (!dictationEnabled) return null
     const isTarget = dictationTarget === field
     const recording = voice.status === 'recording' && isTarget
     const busy = isTarget && (voice.status === 'transcribing' || voice.status === 'downloading')

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { Trash2 } from 'lucide-react'
 import { Modal } from './Modal'
+import { SettingToggle } from './SettingToggle'
 import { TRANSLATE_MODEL_CATALOG, TRANSLATE_CATALOG, isDownloaded } from '../lib/translate/models'
 import {
   TRANSLATE_MODELS,
@@ -13,6 +14,8 @@ import {
 interface TranslateModalProps {
   defaultModel: TranslateModel
   defaultPair: TranslatePair
+  enabled: boolean
+  onEnabledChange: (enabled: boolean) => void
   downloading: boolean
   progress: number
   onConfirm: (model: TranslateModel, pair: TranslatePair) => void
@@ -27,6 +30,8 @@ interface TranslateModalProps {
 export const TranslateModal: React.FC<TranslateModalProps> = ({
   defaultModel,
   defaultPair,
+  enabled,
+  onEnabledChange,
   downloading,
   progress,
   onConfirm,
@@ -53,6 +58,17 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
           ? 'Google Translate is an online service: the selected text is sent to Google on every translation. Nothing is downloaded or stored.'
           : 'Local models run entirely on this computer - text never leaves it. They download once from huggingface.co and are stored locally.'}{' '}
         The direction is picked automatically from the selected text&apos;s language.
+      </div>
+
+      <div className="border-y border-fleet-border py-3 mb-3">
+        <SettingToggle
+          label="Enabled"
+          description="Show the Translate Selection menu item and shortcut"
+          checked={enabled}
+          onChange={onEnabledChange}
+          labelClassName="text-xs"
+          descriptionClassName="text-[11px]"
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">
