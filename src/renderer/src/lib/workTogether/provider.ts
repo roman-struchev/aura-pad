@@ -78,6 +78,13 @@ export class WorkTogetherProvider {
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private snapshotTimer: ReturnType<typeof setTimeout> | null = null
+  // Snapshot-cache seeding is split into first-connect vs reconnect (see
+  // open()). `everConnected` flips true after the first successful open;
+  // `pushSnapshotAfterSync` defers a reconnect's snapshot push until we've
+  // merged the first incoming sync, so we never overwrite a fresher cache with
+  // our stale state.
+  private everConnected = false
+  private pushSnapshotAfterSync = false
 
   constructor(sessionId: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness) {
     this.sessionId = sessionId
@@ -156,13 +163,26 @@ export class WorkTogetherProvider {
       this.send(encoding.toUint8Array(awarenessEncoder))
     }
 
-    // Seed the backend's snapshot cache with our current full state right
-    // after connecting, but only if we already hold content (a freshly-shared
-    // tab whose Host seeded the doc, or a doc still populated from before a
-    // reconnect). A resumed session's doc is empty here and must NOT push -
-    // that would overwrite the backend's good snapshot with a blank one before
-    // the incoming sync has refilled us.
-    if (this.hasContent()) this.sendSnapshot()
+    if (!this.everConnected) {
+      this.everConnected = true
+      // First successful connect. Seed the backend's snapshot cache with our
+      // current full state, but only if we already hold content (a freshly-
+      // shared tab whose Host seeded the doc): no peer or cached snapshot
+      // exists yet to answer a guest that joins before the first edit. A
+      // resumed session's doc is empty here, so this correctly skips.
+      if (this.hasContent()) this.sendSnapshot()
+    } else {
+      // A reconnect. Do NOT push our current state now: while we were away a
+      // peer - or the backend's own cached snapshot - may hold edits we
+      // haven't merged yet, and a snapshot *replaces* the cache (the backend
+      // can't merge without decoding Yjs), so pushing our stale state here
+      // would regress the cache and lose those edits. Instead push once we've
+      // absorbed the first incoming sync: the backend replays its cache on
+      // connect (§4.4) and any live peer answers our sync-step-1, so by then
+      // our doc is the union of both and the snapshot we cache back is a
+      // superset - never a regression.
+      this.pushSnapshotAfterSync = true
+    }
 
     return { success: true }
   }
@@ -255,6 +275,14 @@ export class WorkTogetherProvider {
           // readSyncMessage only writes a reply for SyncStep1 (it answers with
           // SyncStep2); anything else leaves just the tag byte in the encoder.
           if (encoding.length(encoder) > 1) this.send(encoding.toUint8Array(encoder))
+          // A reconnect deferred its snapshot push until it had merged the
+          // first incoming sync (see open()) - that has now happened, so the
+          // state we cache back is the union of ours and the backend's/peer's,
+          // never a regression of a fresher cache.
+          if (this.pushSnapshotAfterSync) {
+            this.pushSnapshotAfterSync = false
+            this.sendSnapshot()
+          }
           break
         }
         case MESSAGE_AWARENESS:

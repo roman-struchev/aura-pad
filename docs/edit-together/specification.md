@@ -189,10 +189,14 @@ permission rules (§4.1). Two further tags are used outside the plain relay path
 `read`-role connections must:
 - Receive full sync + awareness traffic (they can see everything, including everyone's
   cursors).
-- Have any **sync update** message they send **rejected/dropped** by the backend — the
-  enforcement is server-side; a modified guest client that fakes a write must not be
-  able to mutate the document. Only `awareness` messages from a read-only connection
-  are relayed (their cursor still moves, they just can't edit).
+- Have any **content-bearing sync** message they send **rejected/dropped** by the
+  backend — both a *sync update* (subtype `2`) and a *sync step-2* (subtype `1`) carry
+  document changes (Yjs applies each via `applyUpdate`), so the backend must drop both.
+  Only *sync step-1* (subtype `0`, a content-free state-vector request) is let through,
+  so a read-only guest can still pull the current document. The enforcement is
+  server-side; a modified guest client that fakes a write must not be able to mutate the
+  document. `awareness` messages from a read-only connection are relayed (their cursor
+  still moves, they just can't edit).
 
 `write` and `host` connections may send both message types freely.
 
@@ -282,11 +286,21 @@ single **opaque snapshot** per session:
   (`Y.encodeStateAsUpdate`). The backend stores the inner message **verbatim**,
   replacing any previous snapshot; it MUST NOT decode the Yjs payload, and MUST NOT
   relay a snapshot frame to other participants. A `read` connection's snapshot frame is
-  dropped (same rule as §4.1). Clients SHOULD push once right after connecting if they
-  already hold content, and then throttled after local edits (a snapshot is the whole
-  document, so pushing on every keystroke is wasteful — the reference clients rate-limit
-  to at most one push every ~20s, which is fine because ordinary edits already relay
-  immediately as sync updates; the snapshot only backstops the all-offline case).
+  dropped (same rule as §4.1). Because a stored snapshot **replaces** rather than merges
+  (the backend never decodes Yjs, so it cannot union states), a client must only ever
+  push a state that is at least as new as what the cache already holds, or it would
+  regress it. Concretely:
+  - On the **first** connect, a client SHOULD push once if it already holds content —
+    nobody else and no cache can answer a guest that joins before the first edit.
+  - On a **reconnect**, a client MUST NOT push its state until it has merged the first
+    incoming sync (the backend's replayed snapshot below, and any live peer's answer to
+    its sync step-1). While it was away, a peer may have edited past its state; pushing
+    before merging would overwrite the fresher cache with stale content. After that first
+    merge its document is the union of both, so the push is a superset — safe.
+  - After local edits, pushes are throttled (a snapshot is the whole document, so pushing
+    on every keystroke is wasteful — the reference clients rate-limit to at most one push
+    every ~20s, which is fine because ordinary edits already relay immediately as sync
+    updates; the snapshot only backstops the all-offline case).
 - **Replay (backend → client):** immediately after accepting any new WebSocket
   connection, the backend sends the stored snapshot (if any) to just that client, as-is.
   Because the stored bytes are a plain sync message, the client applies them through its
