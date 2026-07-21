@@ -15,6 +15,7 @@ import {
 } from './workspaces'
 import { loadSettings, saveSettings } from './settings'
 import { loadOpenTabsState, saveOpenTabsState } from './openTabsState'
+import { loadWorkTogetherResumeState, saveWorkTogetherResumeState } from './workTogetherResumeState'
 import {
   loadRecentExternalFiles,
   touchRecentExternalFile,
@@ -250,6 +251,10 @@ function registerWorkTogetherIpc(): void {
   })
   handleInvoke('work-together-disconnect', (sessionId) => {
     workTogetherDisconnectSession(sessionId)
+  })
+  handleInvoke('get-work-together-resume-state', () => loadWorkTogetherResumeState())
+  handleInvoke('save-work-together-resume-state', (state) => {
+    saveWorkTogetherResumeState(state)
   })
 }
 

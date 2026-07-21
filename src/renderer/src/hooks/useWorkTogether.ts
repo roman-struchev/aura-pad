@@ -7,7 +7,8 @@ import { WorkTogetherProvider, type WorkTogetherProviderStatus } from '../lib/wo
 import type {
   WorkTogetherLink,
   WorkTogetherLinkRole,
-  WorkTogetherParticipant
+  WorkTogetherParticipant,
+  WorkTogetherResumableSession
 } from '../../../shared/workTogether'
 
 // Ceiling requested when a session is created (specification.md §3.1's
@@ -54,6 +55,23 @@ function disposeEntry(entry: SessionEntry): void {
   entry.doc.destroy()
 }
 
+// Binds a session's Yjs text to its tab's Monaco model, if that model exists
+// yet and isn't already bound. Split out from ensureSession/resumeSession
+// because a resumed session's path often has no live model at mount time -
+// the model only comes into existence once that tab is actually the active
+// one (see App.tsx's notifyActivePath effect on tabs.selectedPath) - so the
+// same bind attempt has to be retried later, not just made once at creation.
+function bindEntryModel(
+  path: string,
+  entry: SessionEntry,
+  editors: Set<monaco.editor.IStandaloneCodeEditor>
+): void {
+  if (entry.binding) return
+  const model = monaco.editor.getModel(monaco.Uri.parse(path))
+  if (!model) return
+  entry.binding = new MonacoBinding(entry.doc.getText('monaco'), model, editors, entry.awareness)
+}
+
 export interface UseWorkTogetherResult {
   sessions: Record<string, WorkTogetherSessionView>
   registerEditor: (editor: monaco.editor.IStandaloneCodeEditor) => void
@@ -67,6 +85,10 @@ export interface UseWorkTogetherResult {
   revokeLink: (path: string, linkId: string) => Promise<void>
   stop: (path: string) => Promise<void>
   isSharing: (path: string) => boolean
+  // Called whenever a tab becomes the active one (App.tsx, keyed on
+  // tabs.selectedPath) - lets a resumed session whose Monaco model didn't
+  // exist yet at reconnect time bind to it once the tab is actually opened.
+  notifyActivePath: (path: string) => void
 }
 
 // Owns every currently-shared tab's live collaboration state: one Yjs
@@ -74,8 +96,18 @@ export interface UseWorkTogetherResult {
 // that tab's already-open Monaco model via y-monaco. Tabs that were never
 // shared cost nothing - a session only comes into existence on the first
 // `share()` call for a given path.
+//
+// Sessions outlive this hook's own lifetime: quitting/reloading AuraPad
+// doesn't end them server-side (specification.md §2), so their
+// sessionId/hostToken/links are persisted (see persistSession/forgetSession
+// below) and reconnected to - not re-created - on next launch (resumeSession).
 export function useWorkTogether(backendUrl: string, displayName: string): UseWorkTogetherResult {
   const [view, setView] = useState<Record<string, WorkTogetherSessionView>>({})
+  // Backs isSharing. Kept separate from `view` (which also changes on every
+  // participant/status patch, e.g. a remote cursor moving) so that a
+  // TabBar/FileTree badge bound to isSharing only re-renders when a path is
+  // actually added to or removed from sharing, not on every awareness tick.
+  const [sharedPaths, setSharedPaths] = useState<ReadonlySet<string>>(new Set())
   const sessionsRef = useRef(new Map<string, SessionEntry>())
   // All bindings share this one Set: this app has a single visible Monaco
   // editor instance whose model gets swapped on tab switch (see useTabs.ts),
@@ -117,6 +149,33 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
     },
     [patchView]
   )
+
+  // Keeps the on-disk resume record for `path` in sync with its current
+  // entry (sessionId/hostToken never change after creation, but `links` does
+  // on every mint/revoke) - read-modify-write against the whole file, same as
+  // useTabs' openTabs.json, since writes only ever happen one user action at
+  // a time.
+  const persistSession = useCallback(async (path: string): Promise<void> => {
+    const entry = sessionsRef.current.get(path)
+    if (!entry) return
+    const state = await window.api.getWorkTogetherResumeState()
+    const sessions = state.sessions.filter((s) => s.path !== path)
+    sessions.push({
+      path,
+      backendUrl: entry.backendUrl,
+      sessionId: entry.sessionId,
+      hostToken: entry.hostToken,
+      links: entry.links
+    })
+    await window.api.saveWorkTogetherResumeState({ sessions })
+  }, [])
+
+  const forgetSession = useCallback(async (path: string): Promise<void> => {
+    const state = await window.api.getWorkTogetherResumeState()
+    await window.api.saveWorkTogetherResumeState({
+      sessions: state.sessions.filter((s) => s.path !== path)
+    })
+  }, [])
 
   const ensureSession = useCallback(
     async (
@@ -184,13 +243,15 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
         links: []
       }
       sessionsRef.current.set(path, entry)
+      await persistSession(path)
+      setSharedPaths((prev) => new Set(prev).add(path))
       patchView(path, { status: 'connecting', links: [], participants: [], closedReason: null })
 
       const connectResult = await provider.connect(backendUrl, created.data.hostToken)
       if (!connectResult.success) return { entry, error: connectResult.error }
       return { entry }
     },
-    [backendUrl, displayName, patchView, refreshParticipants]
+    [backendUrl, displayName, patchView, refreshParticipants, persistSession]
   )
 
   const share = useCallback(
@@ -213,10 +274,11 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       )
       if (!minted.success) return { error: minted.error }
       entry.links.push(minted.data)
+      await persistSession(path)
       patchView(path, { links: [...entry.links] })
       return { link: minted.data }
     },
-    [backendUrl, ensureSession, patchView]
+    [backendUrl, ensureSession, patchView, persistSession]
   )
 
   const revokeLink = useCallback(
@@ -225,35 +287,50 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       if (!entry) return
       await window.api.workTogetherRevokeLink(backendUrl, entry.sessionId, entry.hostToken, linkId)
       entry.links = entry.links.filter((l) => l.linkId !== linkId)
+      await persistSession(path)
       patchView(path, { links: [...entry.links] })
     },
-    [backendUrl, patchView]
+    [backendUrl, patchView, persistSession]
   )
 
-  const stop = useCallback(async (path: string): Promise<void> => {
-    const entry = sessionsRef.current.get(path)
-    if (!entry) return
-    sessionsRef.current.delete(path)
-    setView((prev) => {
-      const next = { ...prev }
-      delete next[path]
-      return next
-    })
-    // Disposed before the end-session round-trip below, not after: destroy()
-    // unsubscribes the provider's onStatus/onClosed callbacks synchronously.
-    // Awaiting the network call first left them live for however long that
-    // took - if the backend dropped the connection while it was in flight
-    // (closing the session server-side naturally does), the stale onClosed
-    // callback would call patchView() with a path already deleted from
-    // `view`, and patchView's "no entry yet" fallback would recreate it -
-    // resurrecting a session for the "Stop Sharing" button to appear on.
-    disposeEntry(entry)
-    await window.api.workTogetherEndSession(entry.backendUrl, entry.sessionId, entry.hostToken)
-  }, [])
+  const stop = useCallback(
+    async (path: string): Promise<void> => {
+      const entry = sessionsRef.current.get(path)
+      if (!entry) return
+      sessionsRef.current.delete(path)
+      setView((prev) => {
+        const next = { ...prev }
+        delete next[path]
+        return next
+      })
+      setSharedPaths((prev) => {
+        const next = new Set(prev)
+        next.delete(path)
+        return next
+      })
+      // Disposed before the end-session round-trip below, not after: destroy()
+      // unsubscribes the provider's onStatus/onClosed callbacks synchronously.
+      // Awaiting the network call first left them live for however long that
+      // took - if the backend dropped the connection while it was in flight
+      // (closing the session server-side naturally does), the stale onClosed
+      // callback would call patchView() with a path already deleted from
+      // `view`, and patchView's "no entry yet" fallback would recreate it -
+      // resurrecting a session for the "Stop Sharing" button to appear on.
+      disposeEntry(entry)
+      await forgetSession(path)
+      await window.api.workTogetherEndSession(entry.backendUrl, entry.sessionId, entry.hostToken)
+    },
+    [forgetSession]
+  )
 
-  // Best-effort teardown of every still-live session on unmount (app close,
-  // or the feature getting disabled mid-session) - doesn't block on the
-  // end-session round-trip.
+  // Local-only teardown of every still-live session on unmount (app close,
+  // reload, or the feature getting disabled mid-session) - unlike stop(),
+  // this must NOT end the session server-side: per specification.md §2 the
+  // session outlives the Host's connection, and that's exactly what makes
+  // resumeSession below able to reconnect to it (not re-create it, which
+  // would mint a new sessionId/hostToken and orphan any links already handed
+  // out) on the next launch. Only disconnects the socket and drops the local
+  // Yjs/MonacoBinding objects, which can't survive a reload anyway.
   useEffect(() => {
     // Same Map object for the lifetime of this hook (only ever mutated via
     // .set/.delete, never reassigned) - aliased here so the cleanup reads it
@@ -262,14 +339,125 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
     const sessions = sessionsRef.current
     return () => {
       for (const entry of sessions.values()) {
-        window.api.workTogetherEndSession(entry.backendUrl, entry.sessionId, entry.hostToken)
         disposeEntry(entry)
       }
       sessions.clear()
     }
   }, [])
 
-  const isSharing = useCallback((path: string): boolean => sessionsRef.current.has(path), [])
+  // Reconnects to a session that was still live when AuraPad last quit or
+  // reloaded (see persistSession/the effect below). Deliberately does not
+  // seed the Yjs doc from local content the way ensureSession does for a
+  // brand-new session: the backend has already been holding this session's
+  // real (possibly guest-edited-since) document the whole time, so an empty
+  // doc plus the ordinary sync handshake in provider.connect() is what
+  // brings it up to date - exactly like a guest joining fresh. Seeding it
+  // here too would insert a second, independent copy of the text once the
+  // real state merges in.
+  const resumeSession = useCallback(
+    async (persisted: WorkTogetherResumableSession): Promise<void> => {
+      if (sessionsRef.current.has(persisted.path)) return
 
-  return { sessions: view, registerEditor, share, revokeLink, stop, isSharing }
+      // Confirms the session is still alive server-side (not ended, not all
+      // links expired/revoked) before spending a WS handshake on it, and
+      // gives us a byte-for-byte reason to drop the stale record rather than
+      // silently retrying it forever if it's gone.
+      const status = await window.api.workTogetherGetStatus(
+        persisted.backendUrl,
+        persisted.sessionId,
+        persisted.hostToken
+      )
+      if (!status.success) {
+        await forgetSession(persisted.path)
+        return
+      }
+
+      // The status endpoint reports which of this client's own minted links
+      // are still valid, but never re-exposes a link's token/url (see the
+      // WorkTogetherResumableSession doc comment) - so cross-reference by id
+      // to drop anything revoked/expired, keeping the rest from `persisted`.
+      const liveById = new Map(status.data.links.map((l) => [l.linkId, l]))
+      const links = persisted.links.filter((l) => {
+        const live = liveById.get(l.linkId)
+        return !!live && !live.revoked && new Date(live.expiresAt).getTime() > Date.now()
+      })
+
+      const doc = new Y.Doc()
+      const awareness = new Awareness(doc)
+      awareness.setLocalState({
+        user: { name: displayName || 'Host', color: colorForClient(doc.clientID) },
+        role: 'host'
+      })
+
+      const provider = new WorkTogetherProvider(persisted.sessionId, doc, awareness)
+      provider.onStatus = (s) => patchView(persisted.path, { status: s })
+      provider.onClosed = (code, reason) =>
+        patchView(persisted.path, { closedReason: reason || `connection closed (code ${code})` })
+      const onAwarenessChange = (): void => refreshParticipants(persisted.path, awareness, doc)
+      awareness.on('change', onAwarenessChange)
+
+      const entry: SessionEntry = {
+        sessionId: persisted.sessionId,
+        hostToken: persisted.hostToken,
+        backendUrl: persisted.backendUrl,
+        doc,
+        awareness,
+        onAwarenessChange,
+        provider,
+        binding: null,
+        links
+      }
+      sessionsRef.current.set(persisted.path, entry)
+      setSharedPaths((prev) => new Set(prev).add(persisted.path))
+      // The tab (and its Monaco model) this session belongs to may not be
+      // open at all yet - notifyActivePath retries this once it is.
+      bindEntryModel(persisted.path, entry, editorsRef.current)
+      patchView(persisted.path, {
+        status: 'connecting',
+        links,
+        participants: [],
+        closedReason: null
+      })
+
+      await provider.connect(persisted.backendUrl, persisted.hostToken)
+    },
+    [displayName, patchView, refreshParticipants, forgetSession]
+  )
+
+  // Guards against React 18 StrictMode's double-invoked mount effects (dev
+  // only) starting two overlapping reconnect passes over the same persisted
+  // list - same pattern as useTabs' restoreStartedRef.
+  const resumeStartedRef = useRef(false)
+  useEffect(() => {
+    if (resumeStartedRef.current) return
+    resumeStartedRef.current = true
+    ;(async () => {
+      const state = await window.api.getWorkTogetherResumeState()
+      for (const persisted of state.sessions) {
+        await resumeSession(persisted)
+      }
+    })()
+  }, [resumeSession])
+
+  const notifyActivePath = useCallback((path: string): void => {
+    const entry = sessionsRef.current.get(path)
+    if (entry) bindEntryModel(path, entry, editorsRef.current)
+  }, [])
+
+  // Backed by `sharedPaths` (React state), not a plain read of the
+  // sessionsRef map: TabBar/FileTree/Sidebar's isPathShared badges are
+  // memoized components, and a ref mutation alone doesn't change any of
+  // their props, so it would never actually trigger the re-render that reads
+  // the new value.
+  const isSharing = useCallback((path: string): boolean => sharedPaths.has(path), [sharedPaths])
+
+  return {
+    sessions: view,
+    registerEditor,
+    share,
+    revokeLink,
+    stop,
+    isSharing,
+    notifyActivePath
+  }
 }

@@ -87,11 +87,16 @@ function App(): React.JSX.Element {
 
   const terminal = useTerminals()
   const workTogether = useWorkTogether(settings.extensions.workTogether.backendUrl, 'Host')
-  // workTogether.isSharing is a stable (empty-deps) callback, so passing it
-  // here doesn't churn useTabs' own deps - it lets tab close/cleanup skip
-  // disposing the Monaco model for a path that's still being shared (see the
-  // isPathShared guard in removeTabFromState).
+  // Lets tab close/cleanup skip disposing the Monaco model for a path that's
+  // still being shared (see the isPathShared guard in removeTabFromState).
   const tabs = useTabs(settings.tabsEnabled, workTogether.isSharing)
+  // Lets a resumed session whose model didn't exist yet at reconnect time
+  // (the tab wasn't open, or wasn't the active one) bind to it once it
+  // actually becomes the active tab.
+  const { notifyActivePath } = workTogether
+  useEffect(() => {
+    if (tabs.selectedPath) notifyActivePath(tabs.selectedPath)
+  }, [tabs.selectedPath, notifyActivePath])
   // useTabs (like most of this file's hooks) returns a fresh object literal
   // every render, so effects that only need to *call* something on it (not
   // react to one of its values changing) read it through this ref instead of

@@ -14,7 +14,8 @@ import type {
   WorkTogetherLinkRole,
   WorkTogetherResult,
   WorkTogetherSession,
-  WorkTogetherSessionStatus
+  WorkTogetherSessionStatus,
+  WorkTogetherResumeState
 } from './workTogether'
 
 // The single source of truth for every IPC channel: its name, its arguments,
@@ -191,6 +192,11 @@ export interface InvokeContracts {
     args: [sessionId: string]
     result: void
   }
+  // Sessions still live when the Host last quit/reloaded, so they can be
+  // reconnected to (not re-created) on next launch - see
+  // shared/workTogether.ts's WorkTogetherResumableSession doc comment.
+  'get-work-together-resume-state': { args: []; result: WorkTogetherResumeState }
+  'save-work-together-resume-state': { args: [state: WorkTogetherResumeState]; result: void }
 }
 
 // window.api method name -> invoke channel.
@@ -247,7 +253,9 @@ export const INVOKE_CHANNELS = {
   workTogetherGetStatus: 'work-together-get-status',
   workTogetherConnect: 'work-together-connect',
   workTogetherSend: 'work-together-send',
-  workTogetherDisconnect: 'work-together-disconnect'
+  workTogetherDisconnect: 'work-together-disconnect',
+  getWorkTogetherResumeState: 'get-work-together-resume-state',
+  saveWorkTogetherResumeState: 'save-work-together-resume-state'
 } as const satisfies Record<string, keyof InvokeContracts>
 
 // ---------------------------------------------------------------------------
