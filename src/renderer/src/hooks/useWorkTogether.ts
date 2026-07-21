@@ -38,9 +38,15 @@ interface SessionEntry {
   provider: WorkTogetherProvider
   binding: MonacoBinding | null
   links: WorkTogetherLink[]
+  // Set while bindEntryModel is waiting for a resumed session's empty doc to
+  // receive its first update before binding it (see there). Must be invoked
+  // from disposeEntry if the session is stopped mid-wait, or the update
+  // listener would leak past the doc's destruction.
+  cancelPendingBind?: () => void
 }
 
 function disposeEntry(entry: SessionEntry): void {
+  entry.cancelPendingBind?.()
   // Must come before doc.destroy(): y-protocols' Awareness registers its own
   // `doc.on('destroy', () => this.destroy())`, and Awareness#destroy() calls
   // setLocalState(null) - which fires a synchronous 'change' event - before
@@ -56,20 +62,57 @@ function disposeEntry(entry: SessionEntry): void {
 }
 
 // Binds a session's Yjs text to its tab's Monaco model, if that model exists
-// yet and isn't already bound. Split out from ensureSession/resumeSession
-// because a resumed session's path often has no live model at mount time -
-// the model only comes into existence once that tab is actually the active
-// one (see App.tsx's notifyActivePath effect on tabs.selectedPath) - so the
-// same bind attempt has to be retried later, not just made once at creation.
+// yet and isn't already bound (or pending). Split out from
+// ensureSession/resumeSession because a resumed session's path often has no
+// live model at mount time - the model only comes into existence once that
+// tab is actually the active one (see App.tsx's notifyActivePath effect on
+// tabs.selectedPath) - so the same bind attempt has to be retried later, not
+// just made once at creation.
 function bindEntryModel(
   path: string,
   entry: SessionEntry,
   editors: Set<monaco.editor.IStandaloneCodeEditor>
 ): void {
-  if (entry.binding) return
+  if (entry.binding || entry.cancelPendingBind) return
   const model = monaco.editor.getModel(monaco.Uri.parse(path))
   if (!model) return
-  entry.binding = new MonacoBinding(entry.doc.getText('monaco'), model, editors, entry.awareness)
+
+  // Doc already has content (ensureSession seeded it, or a snapshot/sync has
+  // already arrived): y-monaco's constructor finds model === ytext (or fills
+  // an empty model) and binds cleanly.
+  if (entry.doc.getText('monaco').length > 0) {
+    entry.binding = new MonacoBinding(entry.doc.getText('monaco'), model, editors, entry.awareness)
+    return
+  }
+
+  // A resumed session starts with an empty doc (see resumeSession). Binding it
+  // now would let y-monaco's constructor force the model to '' to match the
+  // empty ytext, blanking a tab that already shows its real on-disk content.
+  // Instead wait for the doc's first update - the backend replays its cached
+  // full-state snapshot right after we connect (specification.md §4.4), and a
+  // live peer's sync would do the same - and bind then, so the model keeps
+  // showing its current content until real state actually arrives. No timeout
+  // fallback: as long as the session is alive server-side (resumeSession
+  // already confirmed that via workTogetherGetStatus), the backend has a
+  // snapshot to send, so this fires promptly; if it somehow never does, the
+  // tab stays on its real content rather than being blanked.
+  const onFirstUpdate = (): void => {
+    entry.cancelPendingBind?.()
+    if (entry.binding) return
+    const liveModel = monaco.editor.getModel(monaco.Uri.parse(path))
+    if (!liveModel) return
+    entry.binding = new MonacoBinding(
+      entry.doc.getText('monaco'),
+      liveModel,
+      editors,
+      entry.awareness
+    )
+  }
+  entry.doc.on('update', onFirstUpdate)
+  entry.cancelPendingBind = () => {
+    entry.doc.off('update', onFirstUpdate)
+    entry.cancelPendingBind = undefined
+  }
 }
 
 export interface UseWorkTogetherResult {
@@ -358,12 +401,14 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
   // Reconnects to a session that was still live when AuraPad last quit or
   // reloaded (see persistSession/the effect below). Deliberately does not
   // seed the Yjs doc from local content the way ensureSession does for a
-  // brand-new session: the backend has already been holding this session's
-  // real (possibly guest-edited-since) document the whole time, so an empty
-  // doc plus the ordinary sync handshake in provider.connect() is what
-  // brings it up to date - exactly like a guest joining fresh. Seeding it
-  // here too would insert a second, independent copy of the text once the
-  // real state merges in.
+  // brand-new session: unlike a fresh share, a resumed session may have been
+  // edited by a still-connected guest while this Host was away, so an empty
+  // doc brought up to date by the backend's replayed snapshot (or a live
+  // peer's sync) is what reflects the true current state - exactly like a
+  // guest joining fresh. Seeding it here too would insert a second,
+  // independent copy of the text once the real state merges in. bindEntryModel
+  // holds off binding this empty doc until that first update lands, so the tab
+  // keeps showing its on-disk content in the meantime rather than blanking.
   const resumeSession = useCallback(
     async (persisted: WorkTogetherResumableSession): Promise<void> => {
       if (sessionsRef.current.has(persisted.path)) return

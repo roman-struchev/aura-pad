@@ -11,6 +11,29 @@ import * as decoding from 'lib0/decoding'
 // WebSocket (see main/workTogether.ts for why).
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
+// specification.md §4.4. A snapshot frame is [MESSAGE_SNAPSHOT][a full sync
+// message]: we push our whole document state so the backend can cache it and
+// replay it to a participant that (re)connects when no live peer is around to
+// answer their sync handshake - the fix for a reconnect landing on a blank
+// document. Tag 4 (not 3, which y-websocket uses for queryAwareness) so the
+// stock y-websocket guest page can never be mistaken for pushing a snapshot;
+// the backend strips this tag and stores the plain sync message underneath, so
+// what it later replays is applied through ordinary sync handling (no
+// snapshot-specific receive path needed here or on the guest).
+const MESSAGE_SNAPSHOT = 4
+
+// Throttle for pushing a fresh snapshot after local edits: at most one push
+// per window (a snapshot is the whole document, so this keeps a burst of
+// keystrokes from re-encoding and re-sending it on every character). Kept
+// generous because a snapshot only matters in the rare "everyone dropped at
+// once, someone reconnects into an empty room" case (specification.md §4.4):
+// while any peer stays online, a reconnecting client resyncs from it via the
+// relay right up to the latest keystroke, since ordinary edits still go out
+// immediately as sync-update deltas - the snapshot is only the fallback. So a
+// longer window just trims traffic; its only cost is that, in that rare case,
+// the cached snapshot can trail the last edit by up to this long (and the
+// Host re-pushes a current one the moment it reconnects anyway).
+const SNAPSHOT_DEBOUNCE_MS = 20_000
 
 // Terminal close codes from specification.md §5.1: the session/token is gone
 // for good, so reconnecting would just fail forever. Every other close (a
@@ -54,6 +77,7 @@ export class WorkTogetherProvider {
   private opening = false
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private snapshotTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(sessionId: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness) {
     this.sessionId = sessionId
@@ -132,7 +156,45 @@ export class WorkTogetherProvider {
       this.send(encoding.toUint8Array(awarenessEncoder))
     }
 
+    // Seed the backend's snapshot cache with our current full state right
+    // after connecting, but only if we already hold content (a freshly-shared
+    // tab whose Host seeded the doc, or a doc still populated from before a
+    // reconnect). A resumed session's doc is empty here and must NOT push -
+    // that would overwrite the backend's good snapshot with a blank one before
+    // the incoming sync has refilled us.
+    if (this.hasContent()) this.sendSnapshot()
+
     return { success: true }
+  }
+
+  // A brand-new Y.Doc encodes its state vector as a single 0 byte; anything
+  // with content encodes longer. Cheaper and more robust than reaching into a
+  // specific shared type, since the provider is type-agnostic.
+  private hasContent(): boolean {
+    return Y.encodeStateVector(this.doc).length > 1
+  }
+
+  // Pushes our whole document state to the backend as a snapshot frame (§4.4).
+  // The inner bytes are an ordinary sync-update message; the backend strips
+  // the outer tag and caches exactly that, replaying it to future joiners.
+  private sendSnapshot(): void {
+    if (!this.connected) return
+    const inner = encoding.createEncoder()
+    encoding.writeVarUint(inner, MESSAGE_SYNC)
+    syncProtocol.writeUpdate(inner, Y.encodeStateAsUpdate(this.doc))
+    const innerBytes = encoding.toUint8Array(inner)
+    const frame = new Uint8Array(innerBytes.length + 1)
+    frame[0] = MESSAGE_SNAPSHOT
+    frame.set(innerBytes, 1)
+    this.send(frame)
+  }
+
+  private scheduleSnapshot(): void {
+    if (this.snapshotTimer !== null) return
+    this.snapshotTimer = setTimeout(() => {
+      this.snapshotTimer = null
+      this.sendSnapshot()
+    }, SNAPSHOT_DEBOUNCE_MS)
   }
 
   disconnect(): void {
@@ -143,6 +205,10 @@ export class WorkTogetherProvider {
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
+    }
+    if (this.snapshotTimer !== null) {
+      clearTimeout(this.snapshotTimer)
+      this.snapshotTimer = null
     }
     if (!this.connected) return
     this.connected = false
@@ -211,6 +277,11 @@ export class WorkTogetherProvider {
     encoding.writeVarUint(encoder, MESSAGE_SYNC)
     syncProtocol.writeUpdate(encoder, update)
     this.send(encoding.toUint8Array(encoder))
+    // Refresh the backend's cached snapshot so a later solo reconnect resyncs
+    // to these edits, not a stale earlier state. Only for our own local edits
+    // (origin !== this means a Monaco/user change, not a remote update we just
+    // applied) - the peer that authored a remote change pushes its own.
+    this.scheduleSnapshot()
   }
 
   private handleAwarenessUpdate = (

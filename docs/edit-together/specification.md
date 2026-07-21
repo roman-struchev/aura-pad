@@ -178,7 +178,8 @@ Message framing: reuse `y-websocket`'s convention — first byte is a message-ty
 (`0` = sync, `1` = awareness), binary frames. A backend that already speaks this wire
 format is drop-in compatible with the Yjs client ecosystem; a backend implementing a
 custom encoding must still preserve the two categories below since they have different
-permission rules (§4.1).
+permission rules (§4.1). Two further tags are used outside the plain relay path:
+`2` = control (server → Host only, §5) and `4` = snapshot (client → backend only, §4.4).
 
 ### 4.1 Enforcing read-only
 
@@ -259,6 +260,40 @@ monaco.editor.onDidCreateModel((model) => {
   });
 });
 ```
+
+### 4.4 Snapshot resync (reconnect into an empty room)
+
+The relay in §4 step 3 only works while at least one participant stays connected to
+answer a (re)connecting client's sync handshake. When *every* participant drops at once
+— the common case after a shared Wi-Fi outage — a client that reconnects first finds no
+live peer to sync from, and (since the backend is a relay that holds no Yjs document of
+its own, §3.1) would be left with a blank editor. Without this section, that is exactly
+the "reconnect shows an empty tab" failure.
+
+To close this without turning the backend into a full Yjs host, the backend keeps a
+single **opaque snapshot** per session:
+
+- **Push (client → backend), tag `4`:** a `write`/`host` connection MAY send a snapshot
+  frame `[4][<a complete sync message>]` — the inner bytes being an ordinary sync
+  **update** message (tag `0`) encoding the client's full document state
+  (`Y.encodeStateAsUpdate`). The backend stores the inner message **verbatim**,
+  replacing any previous snapshot; it MUST NOT decode the Yjs payload, and MUST NOT
+  relay a snapshot frame to other participants. A `read` connection's snapshot frame is
+  dropped (same rule as §4.1). Clients SHOULD push once right after connecting if they
+  already hold content, and debounced after local edits.
+- **Replay (backend → client):** immediately after accepting any new WebSocket
+  connection, the backend sends the stored snapshot (if any) to just that client, as-is.
+  Because the stored bytes are a plain sync message, the client applies them through its
+  normal sync handling — a stock `y-websocket` client needs no snapshot-specific code on
+  the receive side. `Y.applyUpdate` is idempotent, so a snapshot that turns out
+  redundant (a live peer also answers) is harmless.
+
+Tag `4` is used (rather than `3`) specifically because `y-websocket` clients emit tag
+`3` (queryAwareness) on connect; keeping snapshot on `4` means a stock guest's
+queryAwareness can never be misread as a snapshot push.
+
+The snapshot is in-memory and per-session; it is discarded when the session ends (§3.4),
+consistent with §7 (no document persistence beyond a session's lifetime).
 
 ## 5. Session lifecycle events (control plane)
 
