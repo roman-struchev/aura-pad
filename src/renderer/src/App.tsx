@@ -92,7 +92,7 @@ function App(): React.JSX.Element {
   )
   // Lets tab close/cleanup skip disposing the Monaco model for a path that's
   // still being shared (see the isPathShared guard in removeTabFromState).
-  const tabs = useTabs(settings.tabsEnabled, workTogether.isSharing)
+  const tabs = useTabs(settings.tabsEnabled, workTogether.isSharing, workTogether.stop)
   // Lets a resumed session whose model didn't exist yet at reconnect time
   // (the tab wasn't open, or wasn't the active one) bind to it once it
   // actually becomes the active tab.

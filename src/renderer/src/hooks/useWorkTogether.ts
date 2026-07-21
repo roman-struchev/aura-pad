@@ -223,7 +223,11 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       const binding = model ? new MonacoBinding(yText, model, editorsRef.current, awareness) : null
 
       const provider = new WorkTogetherProvider(created.data.sessionId, doc, awareness)
-      provider.onStatus = (status) => patchView(path, { status })
+      // Clear any prior closedReason once we're back up: the provider now
+      // auto-reconnects after a transient drop, and a stale reason must not
+      // outlive the reconnection.
+      provider.onStatus = (status) =>
+        patchView(path, status === 'connected' ? { status, closedReason: null } : { status })
       provider.onClosed = (code, reason) =>
         patchView(path, { closedReason: reason || `connection closed (code ${code})` })
       // Kept as a named reference (not an inline arrow) so disposeEntry can
@@ -396,7 +400,11 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       })
 
       const provider = new WorkTogetherProvider(persisted.sessionId, doc, awareness)
-      provider.onStatus = (s) => patchView(persisted.path, { status: s })
+      provider.onStatus = (s) =>
+        patchView(
+          persisted.path,
+          s === 'connected' ? { status: s, closedReason: null } : { status: s }
+        )
       provider.onClosed = (code, reason) =>
         patchView(persisted.path, { closedReason: reason || `connection closed (code ${code})` })
       const onAwarenessChange = (): void => refreshParticipants(persisted.path, awareness, doc)

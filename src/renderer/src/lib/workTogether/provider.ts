@@ -12,6 +12,16 @@ import * as decoding from 'lib0/decoding'
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
 
+// Terminal close codes from specification.md §5.1: the session/token is gone
+// for good, so reconnecting would just fail forever. Every other close (a
+// network drop, a backend restart, an abnormal 1006) is transient and worth
+// retrying.
+const TERMINAL_CLOSE_CODES = new Set([4001, 4002, 4003, 4004])
+
+// Reconnect backoff: first retry after 1s, doubling up to 30s, then steady.
+const RECONNECT_BASE_MS = 1_000
+const RECONNECT_MAX_MS = 30_000
+
 export type WorkTogetherProviderStatus = 'connecting' | 'connected' | 'disconnected'
 
 // Bridges a Y.Doc + Awareness instance to the backend through the main
@@ -34,6 +44,17 @@ export class WorkTogetherProvider {
   private unsubscribeClosed: (() => void) | null = null
   private connected = false
 
+  // Reconnection state. `backendUrl`/`token` are captured on the first
+  // connect() so a later retry can reuse them; `wantConnection` stays true
+  // until disconnect()/destroy() or a terminal close, and gates whether a
+  // dropped socket schedules a retry.
+  private backendUrl = ''
+  private token = ''
+  private wantConnection = false
+  private opening = false
+  private reconnectAttempts = 0
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
   constructor(sessionId: string, doc: Y.Doc, awareness: awarenessProtocol.Awareness) {
     this.sessionId = sessionId
     this.doc = doc
@@ -43,24 +64,53 @@ export class WorkTogetherProvider {
   }
 
   async connect(backendUrl: string, token: string): Promise<{ success: boolean; error?: string }> {
+    this.backendUrl = backendUrl
+    this.token = token
+    this.wantConnection = true
+
+    // Subscribed once here, not per attempt: the per-session IPC channels are
+    // keyed on sessionId (stable across reconnects), and the main process
+    // re-points them at each new socket, so resubscribing on every retry would
+    // just pile up duplicate listeners.
     this.unsubscribeMessage = window.api.onWorkTogetherMessage(this.sessionId, this.handleMessage)
     this.unsubscribeClosed = window.api.onWorkTogetherClosed(this.sessionId, (code, reason) => {
       this.connected = false
       this.onStatus?.('disconnected')
       this.onClosed?.(code, reason)
+      // A clean, expected shutdown (we asked to stop, or the session/token is
+      // permanently gone) must not trigger the retry loop.
+      if (TERMINAL_CLOSE_CODES.has(code)) this.wantConnection = false
+      this.scheduleReconnect()
     })
 
-    this.onStatus?.('connecting')
-    const result = await window.api.workTogetherConnect(this.sessionId, backendUrl, token)
-    if (!result.success) {
-      this.onStatus?.('disconnected')
+    const result = await this.open()
+    if (!result.success && !this.wantConnection) {
+      // A first connect that failed for good (terminal / caller gave up):
+      // tear the subscriptions back down, matching the old behavior.
       this.unsubscribeMessage?.()
       this.unsubscribeClosed?.()
       this.unsubscribeMessage = null
       this.unsubscribeClosed = null
+    }
+    return result
+  }
+
+  // One connect attempt against the backend, including the sync/awareness
+  // handshake on success. A failure while we still want a connection schedules
+  // a retry; the Yjs handshake on the next successful open re-syncs anything
+  // edited while offline (state-vector exchange), so no local edits are lost.
+  private async open(): Promise<{ success: boolean; error?: string }> {
+    this.opening = true
+    this.onStatus?.('connecting')
+    const result = await window.api.workTogetherConnect(this.sessionId, this.backendUrl, this.token)
+    this.opening = false
+    if (!result.success) {
+      this.onStatus?.('disconnected')
+      this.scheduleReconnect()
       return result
     }
     this.connected = true
+    this.reconnectAttempts = 0
     this.onStatus?.('connected')
 
     const syncEncoder = encoding.createEncoder()
@@ -86,9 +136,31 @@ export class WorkTogetherProvider {
   }
 
   disconnect(): void {
+    // Always clears the retry intent/timer, even mid-backoff (connected is
+    // false during the wait) - otherwise a pending timer could fire after
+    // destroy() and reopen a socket for a session we're tearing down.
+    this.wantConnection = false
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     if (!this.connected) return
     this.connected = false
     window.api.workTogetherDisconnect(this.sessionId)
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.wantConnection) return
+    if (this.reconnectTimer !== null) return // one already pending
+    if (this.opening) return // an attempt is in flight; it will reschedule on failure
+    if (this.connected) return // already back up
+    const delay = Math.min(RECONNECT_BASE_MS * 2 ** this.reconnectAttempts, RECONNECT_MAX_MS)
+    this.reconnectAttempts++
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      if (!this.wantConnection || this.connected) return
+      void this.open()
+    }, delay)
   }
 
   destroy(): void {

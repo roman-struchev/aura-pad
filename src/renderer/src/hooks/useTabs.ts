@@ -28,7 +28,18 @@ export type JumpTarget = { line: number; col?: number; matchLen?: number }
 // specific model instance live at share time and never re-resolves it later,
 // so disposing that model out from under it (and letting the tab reopen spin
 // up a fresh one) silently breaks sync until the user re-shares.
-export function useTabs(tabsEnabled: boolean, isPathShared?: (path: string) => boolean) {
+//
+// `stopSharing` covers the cases where the model *must* go away regardless -
+// the shared file is renamed/moved or deleted in the tree, so the path it was
+// shared under no longer exists. Ending the session first (synchronously
+// destroys its MonacoBinding) means the model can then be disposed safely,
+// instead of leaving a live binding pointing at a disposed model (whose next
+// remote update throws) and a session orphaned under a path nothing maps to.
+export function useTabs(
+  tabsEnabled: boolean,
+  isPathShared?: (path: string) => boolean,
+  stopSharing?: (path: string) => void
+) {
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
 
@@ -433,6 +444,10 @@ export function useTabs(tabsEnabled: boolean, isPathShared?: (path: string) => b
       })
     )
     for (const oldTabPath of affectedOldPaths) {
+      // A live share under the old path can't follow the rename (its session
+      // is keyed to that path on the backend), so end it before freeing the
+      // model its binding holds.
+      if (isPathShared?.(oldTabPath)) stopSharing?.(oldTabPath)
       monaco.editor.getModel(monaco.Uri.parse(oldTabPath))?.dispose()
     }
     setActiveTabPath((prev) => {
@@ -457,6 +472,9 @@ export function useTabs(tabsEnabled: boolean, isPathShared?: (path: string) => b
     // removeTabFromState) and drop them from the reopen stack, where they
     // could only fail to reopen.
     for (const tab of closing) {
+      // The file is gone from disk, so a share under it can't continue - end
+      // the session before disposing the model its binding holds.
+      if (isPathShared?.(tab.path)) stopSharing?.(tab.path)
       monaco.editor.getModel(monaco.Uri.parse(tab.path))?.dispose()
     }
     closedStackRef.current = closedStackRef.current.filter((p) => !isAffected(p))

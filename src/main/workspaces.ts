@@ -62,7 +62,12 @@ async function buildFileTree(
   dirPath: string,
   rootPath: string,
   ig: Ignore,
-  isRoot = false
+  isRoot = false,
+  // Real (symlink-resolved) paths of this directory and every ancestor. A
+  // symlink pointing back at one of them (e.g. `link -> .` or `link -> ..`)
+  // would otherwise recurse forever, hanging the tree build - and, via the
+  // fs.watch trigger, pinning the CPU on every structural change.
+  ancestors: ReadonlySet<string> = new Set()
 ): Promise<FileNode> {
   const name = path.basename(dirPath)
   const item: FileNode = { name, path: dirPath, type: 'directory', children: [], isRoot }
@@ -84,7 +89,18 @@ async function buildFileTree(
           ? (await fs.promises.stat(fullPath)).isDirectory()
           : entry.isDirectory()
         if (isDirectory) {
-          item.children!.push(await buildFileTree(fullPath, rootPath, ig))
+          // Resolve the real target so a symlink cycle is detected regardless
+          // of the path used to reach it.
+          let real: string
+          try {
+            real = await fs.promises.realpath(fullPath)
+          } catch {
+            real = fullPath
+          }
+          if (ancestors.has(real)) continue
+          item.children!.push(
+            await buildFileTree(fullPath, rootPath, ig, false, new Set(ancestors).add(real))
+          )
         } else {
           item.children!.push({ name: file, path: fullPath, type: 'file' })
         }
@@ -106,7 +122,13 @@ export async function getWorkspaceTrees(): Promise<FileNode[]> {
   const trees: FileNode[] = []
   for (const p of paths) {
     if (fs.existsSync(p)) {
-      trees.push(await buildFileTree(p, p, loadGitignore(p), true))
+      let rootReal: string
+      try {
+        rootReal = await fs.promises.realpath(p)
+      } catch {
+        rootReal = p
+      }
+      trees.push(await buildFileTree(p, p, loadGitignore(p), true, new Set([rootReal])))
     }
   }
   return trees
@@ -146,7 +168,15 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
   // uses) so each readdir/stat/readFile call yields to the event loop -
   // otherwise a large workspace would freeze every other IPC call (saves,
   // git status, terminal I/O) for as long as the whole recursive scan takes.
-  async function searchDir(rootPath: string, ig: Ignore, currentPath: string): Promise<void> {
+  async function searchDir(
+    rootPath: string,
+    ig: Ignore,
+    currentPath: string,
+    // Real paths of the ancestor chain - see buildFileTree; stat() follows
+    // symlinks, so without this a cyclic link recurses forever on every
+    // keystroke.
+    ancestors: ReadonlySet<string>
+  ): Promise<void> {
     let files: string[]
     try {
       files = await fs.promises.readdir(currentPath)
@@ -170,7 +200,14 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
       }
 
       if (stat.isDirectory()) {
-        await searchDir(rootPath, ig, fullPath)
+        let real: string
+        try {
+          real = await fs.promises.realpath(fullPath)
+        } catch {
+          real = fullPath
+        }
+        if (ancestors.has(real)) continue
+        await searchDir(rootPath, ig, fullPath, new Set(ancestors).add(real))
       } else if (SEARCHABLE_EXTENSION_RE.test(file) && stat.size <= MAX_SEARCHABLE_FILE_BYTES) {
         let content: string
         try {
@@ -205,8 +242,14 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
 
   for (const rootPath of workspacePaths) {
     if (!fs.existsSync(rootPath)) continue
+    let rootReal: string
     try {
-      await searchDir(rootPath, loadGitignore(rootPath), rootPath)
+      rootReal = await fs.promises.realpath(rootPath)
+    } catch {
+      rootReal = rootPath
+    }
+    try {
+      await searchDir(rootPath, loadGitignore(rootPath), rootPath, new Set([rootReal]))
     } catch (e) {
       if (e instanceof SearchSuperseded) return []
       if (e instanceof SearchCapReached) break
