@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { X, Pin, PinOff } from 'lucide-react'
+import { X, Pin, PinOff, Share2 } from 'lucide-react'
 import type { OpenTab } from '../hooks/useTabs'
 import { TabContextMenu } from './TabContextMenu'
 import { extensionTabInfo } from '../lib/extensions'
@@ -15,6 +15,7 @@ interface TabBarProps {
   togglePin: (path: string) => void
   reorderTab: (sourcePath: string, targetPath: string) => void
   heightClassName: string
+  isPathShared?: (path: string) => boolean
 }
 
 // The tab strip: click to switch, drag to reorder, hover for a pin toggle and
@@ -32,7 +33,8 @@ export const TabBar: React.FC<TabBarProps> = React.memo(function TabBar({
   closeAllTabs,
   togglePin,
   reorderTab,
-  heightClassName
+  heightClassName,
+  isPathShared
 }) {
   const [draggedTab, setDraggedTab] = useState<string | null>(null)
   const [dragOverTab, setDragOverTab] = useState<string | null>(null)
@@ -103,6 +105,11 @@ export const TabBar: React.FC<TabBarProps> = React.memo(function TabBar({
             )
           })()}
           {!tab.isSaved && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
+          {isPathShared?.(tab.path) && (
+            <span className="shrink-0" title="Shared via Work Together">
+              <Share2 size={11} className="text-blue-400" />
+            </span>
+          )}
           {tab.pinned ? (
             <Pin
               size={12}

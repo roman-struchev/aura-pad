@@ -22,7 +22,13 @@ export type JumpTarget = { line: number; col?: number; matchLen?: number }
 // Manages the set of open files (tab-bar style): opening/closing/saving,
 // autosave, reacting to external changes on disk, and keeping tab paths in
 // sync when a file is renamed/moved/deleted elsewhere (the file tree).
-export function useTabs(tabsEnabled: boolean) {
+//
+// `isPathShared` lets a still-active Work Together session veto the usual
+// dispose-on-close: that session's MonacoBinding was constructed against the
+// specific model instance live at share time and never re-resolves it later,
+// so disposing that model out from under it (and letting the tab reopen spin
+// up a fresh one) silently breaks sync until the user re-shares.
+export function useTabs(tabsEnabled: boolean, isPathShared?: (path: string) => boolean) {
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
 
@@ -293,7 +299,13 @@ export function useTabs(tabsEnabled: boolean) {
     // and edit history for the rest of the session. `Uri.parse` (not
     // `Uri.file`) to match the URI @monaco-editor/react itself builds from
     // the `path` prop internally.
-    monaco.editor.getModel(monaco.Uri.parse(path))?.dispose()
+    //
+    // Unless the path is still shared: a live Work Together session's
+    // MonacoBinding is wired to this exact model object, not to whatever
+    // `getModel(uri)` returns later. Disposing it here would silently
+    // detach the session from the tab a reopen would spin up next - the
+    // model has to keep living for as long as the session does.
+    if (!isPathShared?.(path)) monaco.editor.getModel(monaco.Uri.parse(path))?.dispose()
   }
 
   const closeTab = async (path: string): Promise<void> => {

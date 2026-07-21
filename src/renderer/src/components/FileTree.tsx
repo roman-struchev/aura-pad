@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { FilePlus, FolderPlus, Play, Eye, GitBranch } from 'lucide-react'
+import { FilePlus, FolderPlus, Play, Eye, GitBranch, Share2 } from 'lucide-react'
 import clsx from 'clsx'
 import type { FileNode } from '../../../shared/fileNode'
 import type { GitFileState } from '../../../shared/gitStatus'
@@ -35,6 +35,8 @@ interface FileTreeProps {
   // than closing over it) so the same stable callback can be passed to every
   // root without breaking the memo below.
   onOpenGit?: (rootPath: string) => void
+  isPathShared?: (path: string) => boolean
+  onOpenShare?: (path: string) => void
   level?: number
 }
 
@@ -68,6 +70,8 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
   gitStatus,
   rootBranch,
   onOpenGit,
+  isPathShared,
+  onOpenShare,
   level = 0
 }) {
   const [expanded, setExpanded] = useState<boolean>(level === 0)
@@ -200,6 +204,18 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
         )}
         {!isDirectory && (
           <div className="ml-1 shrink-0 flex items-center">
+            {isPathShared?.(node.path) && (
+              <button
+                className="mr-1 flex items-center hover:opacity-70"
+                title="Shared via Work Together"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenShare?.(node.path)
+                }}
+              >
+                <Share2 size={11} className="text-blue-400" />
+              </button>
+            )}
             {gitStatus?.[node.path] && (
               <span
                 className={clsx(
@@ -280,6 +296,8 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
               revealRequest={revealRequest}
               rowPadding={rowPadding}
               gitStatus={gitStatus}
+              isPathShared={isPathShared}
+              onOpenShare={onOpenShare}
               level={level + 1}
             />
           ))}

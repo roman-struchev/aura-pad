@@ -86,8 +86,12 @@ function App(): React.JSX.Element {
   )
 
   const terminal = useTerminals()
-  const tabs = useTabs(settings.tabsEnabled)
   const workTogether = useWorkTogether(settings.extensions.workTogether.backendUrl, 'Host')
+  // workTogether.isSharing is a stable (empty-deps) callback, so passing it
+  // here doesn't churn useTabs' own deps - it lets tab close/cleanup skip
+  // disposing the Monaco model for a path that's still being shared (see the
+  // isPathShared guard in removeTabFromState).
+  const tabs = useTabs(settings.tabsEnabled, workTogether.isSharing)
   // useTabs (like most of this file's hooks) returns a fresh object literal
   // every render, so effects that only need to *call* something on it (not
   // react to one of its values changing) read it through this ref instead of
@@ -336,6 +340,14 @@ function App(): React.JSX.Element {
   const [showGoogleTasksConfig, setShowGoogleTasksConfig] = useState(false)
   const [showWorkTogetherConfig, setShowWorkTogetherConfig] = useState(false)
   const [showShareDialog, setShowShareDialog] = useState(false)
+  // The file tree's share badge can point at a shared file that isn't the
+  // active tab (or isn't open at all, if it was closed while still shared) -
+  // open it first so ShareDialog's `tabs.selectedPath` lookup resolves to
+  // the right session.
+  const openShareDialogFor = async (path: string): Promise<void> => {
+    await tabs.openTab(path)
+    setShowShareDialog(true)
+  }
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
   // Which repo the git panel shows; set by the file tree's per-root badge.
   const [gitPanelRoot, setGitPanelRoot] = useState<string | null>(null)
@@ -712,6 +724,7 @@ function App(): React.JSX.Element {
               togglePin={handleTabTogglePin}
               reorderTab={handleTabReorder}
               heightClassName={density.tabBarHeight}
+              isPathShared={workTogether.isSharing}
             />
           )}
 
@@ -830,6 +843,8 @@ function App(): React.JSX.Element {
               gitPanelRoot={gitPanelRoot}
               onSelectGitRoot={setGitPanelRoot}
               onOpenGit={openGitPanel}
+              isPathShared={workTogether.isSharing}
+              onOpenShare={openShareDialogFor}
             />
           </div>
         )}

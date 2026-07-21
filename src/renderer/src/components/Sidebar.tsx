@@ -32,6 +32,8 @@ interface SidebarProps {
   onSelectGitRoot: (root: string) => void
   // Receives the workspace root's path; App resolves it to the repo root.
   onOpenGit: (rootPath: string) => void
+  isPathShared?: (path: string) => boolean
+  onOpenShare?: (path: string) => void
 }
 
 // The sidebar's own content (the outer w-64/border chrome stays in App.tsx,
@@ -58,7 +60,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   git,
   gitPanelRoot,
   onSelectGitRoot,
-  onOpenGit
+  onOpenGit,
+  isPathShared,
+  onOpenShare
 }) => {
   return (
     <>
@@ -122,6 +126,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     gitStatus={git.fileStates}
                     rootBranch={repo?.branch}
                     onOpenGit={repo ? onOpenGit : undefined}
+                    isPathShared={isPathShared}
+                    onOpenShare={onOpenShare}
                   />
                 )
               })}
