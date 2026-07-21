@@ -68,6 +68,11 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   const setRootNodes = (trees: FileNode[]): void => {
     setRawRootNodes((prev) => mergeForest(prev, trees))
   }
+  // False until the initial workspace scan resolves, so callers that need to
+  // tell "no workspaces configured" apart from "still loading" (e.g. the
+  // outside-workspace reconciliation in App.tsx) don't act on a root list
+  // that's merely empty because it hasn't loaded yet.
+  const [rootsLoaded, setRootsLoaded] = useState(false)
   // Each reveal carries a fresh seq so revealing the same path twice (e.g.
   // the "select opened file" button after the user collapsed folders) still
   // re-expands and re-scrolls - the tree reacts to a *change* of the request.
@@ -96,6 +101,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   useEffect(() => {
     window.api.getWorkspaces().then((trees) => {
       setRootNodes(trees || [])
+      setRootsLoaded(true)
     })
 
     const unsubscribe = window.api.onWorkspacesChanged((trees) => {
@@ -230,6 +236,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
 
   return {
     rootNodes,
+    rootsLoaded,
     revealRequest,
     setRevealPath,
     contextMenu,

@@ -299,15 +299,26 @@ function App(): React.JSX.Element {
   // Record every open tab that falls outside all workspace roots, so it
   // shows up in the sidebar's "Recently Opened" list even after the tab
   // closes. Keyed on the path lists (not the object references) so this
-  // only re-runs when a tab or workspace root actually changes.
+  // only re-runs when a tab or workspace root actually changes. Gated on
+  // rootsLoaded because on startup the tab-restore effect resolves before
+  // the workspace tree finishes its (slower, filesystem-walking) initial
+  // scan - running this against a still-empty root list would wrongly
+  // flag every restored workspace tab as "outside".
   const openTabPathsKey = tabs.tabs.map((t) => t.path).join('\n')
   const rootPathsKey = tree.rootNodes.map((r) => r.path).join('\n')
   useEffect(() => {
+    if (!tree.rootsLoaded) return
     const rootPaths = tree.rootNodes.map((r) => r.path)
     for (const tabPath of tabs.tabs.map((t) => t.path)) {
       if (!isUnderAnyRoot(tabPath, rootPaths)) recentExternalFiles.touch(tabPath)
     }
-  }, [openTabPathsKey, rootPathsKey])
+    // Undo any past mis-touches (e.g. from this same race before this fix,
+    // or a workspace added after a file was opened externally) - an entry
+    // that now resolves under a root doesn't belong in the outside list.
+    for (const entry of recentExternalFiles.entries) {
+      if (isUnderAnyRoot(entry.path, rootPaths)) recentExternalFiles.remove(entry.path)
+    }
+  }, [openTabPathsKey, rootPathsKey, tree.rootsLoaded])
   const sidebarWidth = useSidebarWidth(settings.sidebarWidth, settings.sidebarPosition, (w) =>
     updateSetting('sidebarWidth', w)
   )
