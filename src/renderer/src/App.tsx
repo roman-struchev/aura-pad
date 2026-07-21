@@ -86,7 +86,10 @@ function App(): React.JSX.Element {
   )
 
   const terminal = useTerminals()
-  const workTogether = useWorkTogether(settings.extensions.workTogether.backendUrl, 'Host')
+  const workTogether = useWorkTogether(
+    settings.extensions.workTogether.backendUrl,
+    settings.extensions.workTogether.displayName || 'Host'
+  )
   // Lets tab close/cleanup skip disposing the Monaco model for a path that's
   // still being shared (see the isPathShared guard in removeTabFromState).
   const tabs = useTabs(settings.tabsEnabled, workTogether.isSharing)

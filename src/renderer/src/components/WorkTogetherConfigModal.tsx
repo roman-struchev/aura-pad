@@ -60,6 +60,20 @@ export const WorkTogetherConfigModal: React.FC<WorkTogetherConfigModalProps> = (
           />
         </label>
 
+        <label className="flex flex-col gap-1">
+          <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
+            Display Name
+          </span>
+          <input
+            type="text"
+            placeholder="Host"
+            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text outline-none focus:border-blue-500"
+            value={workTogether.displayName}
+            spellCheck={false}
+            onChange={(e) => patch({ displayName: e.target.value })}
+          />
+        </label>
+
         <span className={clsx(density.settingsDescriptionClass, 'text-gray-600')}>
           The address of the Work Together backend - a separate, self-hosted service that relays
           edits and mints the share links. It must implement the{' '}

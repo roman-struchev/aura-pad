@@ -54,6 +54,10 @@ export class WorkTogetherProvider {
     const result = await window.api.workTogetherConnect(this.sessionId, backendUrl, token)
     if (!result.success) {
       this.onStatus?.('disconnected')
+      this.unsubscribeMessage?.()
+      this.unsubscribeClosed?.()
+      this.unsubscribeMessage = null
+      this.unsubscribeClosed = null
       return result
     }
     this.connected = true

@@ -26,6 +26,7 @@ export interface WorkTogetherParticipant {
   role: WorkTogetherRole
   displayName: string
   joinedAt: string
+  color?: string
 }
 
 export interface WorkTogetherLinkStatus {

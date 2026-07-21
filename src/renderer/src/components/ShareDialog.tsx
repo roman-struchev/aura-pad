@@ -182,7 +182,10 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
           </span>
           {participants.map((p) => (
             <div key={p.connectionId} className="flex items-center gap-2 text-xs text-fleet-text">
-              <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: p.color || '#5B8DEF' }}
+              />
               <span className="truncate">{p.displayName}</span>
               <span className="text-gray-500 shrink-0">
                 {p.role === 'write' ? 'read & write' : 'read only'}

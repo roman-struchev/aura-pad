@@ -142,7 +142,8 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
           connectionId: String(clientId),
           role: (state.role as WorkTogetherParticipant['role']) ?? 'read',
           displayName: user.name || 'Guest',
-          joinedAt: ''
+          joinedAt: '',
+          color: user.color || colorForClient(clientId)
         })
       })
       patchView(path, { participants })
@@ -266,7 +267,7 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       if (!entry) return { error: error ?? 'Failed to start the session.' }
 
       const minted = await window.api.workTogetherMintLink(
-        backendUrl,
+        entry.backendUrl,
         entry.sessionId,
         entry.hostToken,
         role,
@@ -278,19 +279,24 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       patchView(path, { links: [...entry.links] })
       return { link: minted.data }
     },
-    [backendUrl, ensureSession, patchView, persistSession]
+    [ensureSession, patchView, persistSession]
   )
 
   const revokeLink = useCallback(
     async (path: string, linkId: string): Promise<void> => {
       const entry = sessionsRef.current.get(path)
       if (!entry) return
-      await window.api.workTogetherRevokeLink(backendUrl, entry.sessionId, entry.hostToken, linkId)
+      await window.api.workTogetherRevokeLink(
+        entry.backendUrl,
+        entry.sessionId,
+        entry.hostToken,
+        linkId
+      )
       entry.links = entry.links.filter((l) => l.linkId !== linkId)
       await persistSession(path)
       patchView(path, { links: [...entry.links] })
     },
-    [backendUrl, patchView, persistSession]
+    [patchView, persistSession]
   )
 
   const stop = useCallback(
