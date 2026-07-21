@@ -170,7 +170,10 @@ upgraded to a WebSocket. `token` is the `hostToken` (role `host`) or a link `tok
    connecting client the document's current state (sync step 1/2), matching what
    `y-websocket`'s reference server does — reusing `y-protocols/sync` and
    `y-protocols/awareness` encoding directly is strongly recommended so the Host side
-   can use the stock `y-websocket` client provider unmodified.
+   can use the stock `y-websocket` client provider unmodified. A relay-only backend
+   (§3.1) that holds no Yjs document of its own satisfies this by replaying its cached
+   snapshot (§4.4) on connect and letting other live participants answer the client's
+   own sync-step-1 through the relay.
 3. Thereafter relay every sync **update** message it receives to all other connected
    participants in the same session, and likewise relay every **awareness** message.
 
@@ -280,7 +283,10 @@ single **opaque snapshot** per session:
   replacing any previous snapshot; it MUST NOT decode the Yjs payload, and MUST NOT
   relay a snapshot frame to other participants. A `read` connection's snapshot frame is
   dropped (same rule as §4.1). Clients SHOULD push once right after connecting if they
-  already hold content, and debounced after local edits.
+  already hold content, and then throttled after local edits (a snapshot is the whole
+  document, so pushing on every keystroke is wasteful — the reference clients rate-limit
+  to at most one push every ~20s, which is fine because ordinary edits already relay
+  immediately as sync updates; the snapshot only backstops the all-offline case).
 - **Replay (backend → client):** immediately after accepting any new WebSocket
   connection, the backend sends the stored snapshot (if any) to just that client, as-is.
   Because the stored bytes are a plain sync message, the client applies them through its
