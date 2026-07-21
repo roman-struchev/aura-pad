@@ -81,20 +81,38 @@ export function applyUpdate(): void {
     return
   }
   if (process.platform === 'darwin') {
-    // Hand the reinstall to the install script: it quits this app, swaps
-    // /Applications/AuraPad.app for the new version, and relaunches it.
-    // Detached + unref'd so it keeps running after this process exits.
+    // Hand the download + bundle swap to the install script, but keep the
+    // restart in our own hands: AURAPAD_MANAGED_RELAUNCH tells the script to
+    // leave the running app alone (no quit, no `open`) and just replace
+    // /Applications/AuraPad.app in place. We then relaunch ourselves once it
+    // exits cleanly.
+    //
+    // The script's own quit-and-`open` path (used for a fresh terminal
+    // install) races `open` against a just-SIGKILLed process: if this app
+    // can't quit gracefully at update time (unsaved-changes prompt, active
+    // Work Together session), the kill goes to SIGKILL and `open` lands while
+    // LaunchServices still has the dying instance registered, so it just
+    // re-activates the old window instead of launching the new build - the
+    // "focus returns but nothing restarts" symptom. app.relaunch() execs the
+    // replaced binary directly after we exit, with no `open`/single-instance
+    // race in the middle.
     const child = spawn('/bin/bash', ['-c', `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`], {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      env: { ...process.env, AURAPAD_MANAGED_RELAUNCH: '1' }
     })
-    // On success the script kills this process before these can fire, so
-    // they only ever report an early failure (offline, GitHub down) - the
-    // renderer's "Installing…" spinner would otherwise spin forever over
-    // nothing happening.
     child.once('error', notifyApplyFailed)
     child.once('exit', (code) => {
-      if (code !== 0) notifyApplyFailed()
+      if (code !== 0) {
+        notifyApplyFailed()
+        return
+      }
+      // Bundle is swapped on disk. Relaunch the (now-updated) executable at
+      // our own path, then quit through the normal close guard so unsaved
+      // work still gets its prompt. If the user cancels the quit, the new
+      // build simply takes effect on their next restart.
+      app.relaunch()
+      app.quit()
     })
     child.unref()
     return

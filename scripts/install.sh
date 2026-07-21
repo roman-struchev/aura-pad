@@ -56,25 +56,34 @@ install_macos() {
     exit 1
   fi
 
-  # Quit a running copy so the binary isn't replaced under it AND so the
-  # relaunch below actually starts a fresh instance: `open` on an app that's
-  # still running only re-activates it (single-instance lock), which is
-  # exactly the "spinner hangs, no restart" symptom. Ask politely via
-  # AppleScript first, but the app's own close handler defers a quit to its
-  # renderer (unsaved-changes check), so a polite quit - and even SIGTERM -
-  # can be held off indefinitely. Force the issue with SIGKILL, which nothing
-  # can intercept, so the process definitely dies and releases the lock.
-  if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
-    echo "Quitting running ${APP_NAME}..."
-    osascript -e "tell application \"${APP_NAME}\" to quit" 2>/dev/null || true
-    for _ in 1 2 3 4 5 6; do
-      pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
-      sleep 0.5
-    done
-    pkill -9 -x "$APP_NAME" 2>/dev/null || true
-    # Give the OS a moment to release the single-instance lock and file
-    # handles before we overwrite the bundle and relaunch.
-    sleep 1
+  # When AURAPAD_MANAGED_RELAUNCH is set, the in-app updater is driving this
+  # and will quit + relaunch itself once we return (see main/updater.ts). We
+  # must NOT touch the running app then: macOS lets us replace a running
+  # bundle in place (the live process keeps its open inode), and the app's own
+  # app.relaunch() restarts into the new build with no `open`/single-instance
+  # race. Only a fresh terminal install (no such app to relaunch itself) still
+  # needs the quit-and-`open` dance below.
+  if [ -z "${AURAPAD_MANAGED_RELAUNCH:-}" ]; then
+    # Quit a running copy so the binary isn't replaced under it AND so the
+    # relaunch below actually starts a fresh instance: `open` on an app that's
+    # still running only re-activates it (single-instance lock), which is
+    # exactly the "spinner hangs, no restart" symptom. Ask politely via
+    # AppleScript first, but the app's own close handler defers a quit to its
+    # renderer (unsaved-changes check), so a polite quit - and even SIGTERM -
+    # can be held off indefinitely. Force the issue with SIGKILL, which nothing
+    # can intercept, so the process definitely dies and releases the lock.
+    if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+      echo "Quitting running ${APP_NAME}..."
+      osascript -e "tell application \"${APP_NAME}\" to quit" 2>/dev/null || true
+      for _ in 1 2 3 4 5 6; do
+        pgrep -x "$APP_NAME" >/dev/null 2>&1 || break
+        sleep 0.5
+      done
+      pkill -9 -x "$APP_NAME" 2>/dev/null || true
+      # Give the OS a moment to release the single-instance lock and file
+      # handles before we overwrite the bundle and relaunch.
+      sleep 1
+    fi
   fi
 
   echo "Installing to ${install_dir}/${APP_NAME}.app..."
@@ -88,8 +97,12 @@ install_macos() {
   # from a browser or the attribute got inherited some other way.
   xattr -cr "${install_dir}/${APP_NAME}.app" 2>/dev/null || true
 
-  echo "Done. Launching ${APP_NAME}..."
-  open "${install_dir}/${APP_NAME}.app"
+  if [ -n "${AURAPAD_MANAGED_RELAUNCH:-}" ]; then
+    echo "Done. ${APP_NAME} will relaunch itself."
+  else
+    echo "Done. Launching ${APP_NAME}..."
+    open "${install_dir}/${APP_NAME}.app"
+  fi
 }
 
 install_linux() {
