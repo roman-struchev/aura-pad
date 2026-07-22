@@ -36,12 +36,8 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
     })
 
   return (
-    <Modal onClose={onClose} width="w-[26rem]">
+    <Modal title="Google Tasks" onClose={onClose} width="w-[26rem]">
       <div className="flex flex-col gap-4">
-        <span className={clsx(density.settingsLabelClass, 'font-medium text-fleet-textHover')}>
-          Google Tasks
-        </span>
-
         <SettingToggle
           label="Enabled"
           description="Show the Google Tasks button and tab"

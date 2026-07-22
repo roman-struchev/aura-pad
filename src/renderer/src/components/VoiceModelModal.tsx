@@ -53,15 +53,14 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
   }
 
   return (
-    <Modal onClose={onClose} width="w-[26rem]">
-      <div className="text-sm font-medium text-fleet-text mb-1">Voice Dictation</div>
+    <Modal title="Voice Dictation" onClose={onClose} width="w-[26rem]">
       <div className="text-xs text-gray-400 mb-3">
         Dictation runs entirely on this computer - audio never leaves it. It needs a speech model,
         downloaded once from huggingface.co and stored locally.
       </div>
 
       {enabled !== undefined && onEnabledChange && (
-        <div className="border-y border-fleet-border py-3 mb-3">
+        <div className="border-y border-fleet-border py-2.5 mb-2.5">
           <SettingToggle
             label="Enabled"
             description="Show the dictation button and enable its shortcut"
@@ -149,13 +148,7 @@ export const VoiceModelModal: React.FC<VoiceModelModalProps> = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 mt-4">
-        <button
-          className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
-          onClick={onClose}
-        >
-          Cancel
-        </button>
+      <div className="flex justify-end mt-4">
         <button
           className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           disabled={downloading}

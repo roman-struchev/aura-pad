@@ -51,8 +51,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
   }
 
   return (
-    <Modal onClose={onClose} width="w-[26rem]">
-      <div className="text-sm font-medium text-fleet-text mb-1">Translation</div>
+    <Modal title="Translation" onClose={onClose} width="w-[26rem]">
       <div className="text-xs text-gray-400 mb-3">
         {selected === 'google-web'
           ? 'Google Translate is an online service: the selected text is sent to Google on every translation. Nothing is downloaded or stored.'
@@ -60,7 +59,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
         The direction is picked automatically from the selected text&apos;s language.
       </div>
 
-      <div className="border-y border-fleet-border py-3 mb-3">
+      <div className="border-y border-fleet-border py-2.5 mb-2.5">
         <SettingToggle
           label="Enabled"
           description="Show the Translate Selection menu item and shortcut"
@@ -150,13 +149,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 mt-4">
-        <button
-          className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
-          onClick={onClose}
-        >
-          Cancel
-        </button>
+      <div className="flex justify-end mt-4">
         <button
           className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           disabled={downloading}

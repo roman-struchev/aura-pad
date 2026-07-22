@@ -31,12 +31,8 @@ export const WorkTogetherConfigModal: React.FC<WorkTogetherConfigModalProps> = (
     })
 
   return (
-    <Modal onClose={onClose} width="w-[26rem]">
+    <Modal title="Work Together" onClose={onClose} width="w-[26rem]">
       <div className="flex flex-col gap-4">
-        <span className={clsx(density.settingsLabelClass, 'font-medium text-fleet-textHover')}>
-          Work Together
-        </span>
-
         <SettingToggle
           label="Enabled"
           description="Show the Share button on the active file"

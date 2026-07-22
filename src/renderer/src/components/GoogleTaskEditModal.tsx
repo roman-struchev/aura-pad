@@ -130,11 +130,8 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
 
   return (
     <>
-      <Modal onClose={onClose} width="w-96">
+      <Modal title={mode === 'create' ? 'New Task' : 'Edit Task'} onClose={onClose} width="w-96">
         <div className="flex flex-col gap-3">
-          <span className="text-sm font-medium text-fleet-textHover">
-            {mode === 'create' ? 'New Task' : 'Edit Task'}
-          </span>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-gray-500">Title</span>
             <div className="relative">
@@ -204,13 +201,7 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
               ))}
             </div>
           </label>
-          <div className="flex items-center justify-end gap-2 mt-1">
-            <button
-              className="px-3 py-1.5 text-xs rounded border border-fleet-border hover:bg-fleet-active text-fleet-text"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
+          <div className="flex items-center justify-end mt-1">
             <button
               className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white"
               disabled={!canSave}

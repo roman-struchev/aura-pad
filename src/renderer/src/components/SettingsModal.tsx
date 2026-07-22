@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import clsx from 'clsx'
-import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import type { AppSettings, ExtensionSettings } from '../../../shared/settings'
 import type { UpdateNotification } from '../../../shared/updateNotification'
 import {
@@ -52,6 +52,18 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   }
 ]
 
+// Obsidian-style grouping: a left nav of categories, each showing its own set
+// of settings in the content pane on the right - instead of one long list.
+type CategoryId = 'appearance' | 'editor' | 'extensions' | 'voice' | 'shortcuts'
+
+const CATEGORIES: { id: CategoryId; label: string }[] = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'editor', label: 'Editor' },
+  { id: 'extensions', label: 'Extensions' },
+  { id: 'voice', label: 'Voice & Language' },
+  { id: 'shortcuts', label: 'Shortcuts' }
+]
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   updateSetting,
@@ -67,7 +79,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onConfigureWorkTogether,
   onClose
 }) => {
-  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [category, setCategory] = useState<CategoryId>('appearance')
 
   // Extension settings are namespaced (settings.extensions.<id>.<key>) so
   // each extension owns its block; this patches one block without the
@@ -81,187 +93,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       [id]: { ...settings.extensions[id], ...patch }
     })
 
+  // The "<Feature> · <status>" rows that open a dedicated config dialog all
+  // share this shape, so render them from one helper.
+  const configureRow = (label: string, sub: string, onClick: () => void): React.ReactElement => (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col min-w-0">
+        <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>{label}</span>
+        <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>{sub}</span>
+      </div>
+      <button
+        className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
+        onClick={onClick}
+      >
+        Configure…
+      </button>
+    </div>
+  )
+
   return (
-    <Modal onClose={onClose} width="w-[30rem]">
-      <div className="flex flex-col gap-4">
-        <SettingSelect
-          label="Theme"
-          description="Dark, light, follow the OS, or a full color scheme"
-          value={settings.theme}
-          options={THEME_MODES}
-          onChange={(v) => updateSetting('theme', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingSelect
-          label="Mode"
-          description="UI density - editor font size, row height, spacing"
-          value={settings.uiMode}
-          options={UI_MODES}
-          onChange={(v) => updateSetting('uiMode', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingSelect
-          label="Sidebar"
-          description="Which side the file tree sits on"
-          value={settings.sidebarPosition}
-          options={SIDEBAR_POSITIONS}
-          onChange={(v) => updateSetting('sidebarPosition', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingToggle
-          label="Line Numbers"
-          description="Show line numbers in the editor"
-          checked={settings.lineNumbersEnabled}
-          onChange={(v) => updateSetting('lineNumbersEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <SettingToggle
-          label="Tabs"
-          description="Keep multiple files open at once"
-          checked={settings.tabsEnabled}
-          onChange={(v) => updateSetting('tabsEnabled', v)}
-          labelClassName={density.settingsLabelClass}
-          descriptionClassName={density.settingsDescriptionClass}
-        />
-        <div className="border-t border-fleet-border pt-3 flex flex-col gap-4">
-          <span
-            className={clsx(
-              density.settingsDescriptionClass,
-              'uppercase tracking-wider text-gray-500'
-            )}
-          >
-            Extensions
-          </span>
-          <SettingToggle
-            label="Git"
-            description="Status badges in the file tree and the per-project Git tab"
-            checked={settings.extensions.git.enabled}
-            onChange={(v) => updateExtension('git', { enabled: v })}
-            labelClassName={density.settingsLabelClass}
-            descriptionClassName={density.settingsDescriptionClass}
-          />
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col min-w-0">
-              <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>
-                Google Tasks
-              </span>
-              <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-                {settings.extensions.googleTasks.enabled ? 'Enabled' : 'Disabled'} · accounts and
-                OAuth client
-              </span>
-            </div>
+    <Modal
+      title="Settings"
+      onClose={onClose}
+      width="w-[46rem]"
+      height="h-[34rem]"
+      bodyClassName="flex min-h-0 flex-1"
+    >
+      {/* Left: category nav + version/update footer */}
+      <div className="w-44 shrink-0 border-r border-fleet-border flex flex-col">
+        <div className={clsx('flex flex-col gap-0.5 overflow-y-auto', density.settingsPad)}>
+          {CATEGORIES.map((c) => (
             <button
-              className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
-              onClick={onConfigureGoogleTasks}
+              key={c.id}
+              onClick={() => setCategory(c.id)}
+              className={clsx(
+                'text-left px-2.5 py-1.5 rounded text-sm transition-colors',
+                category === c.id
+                  ? 'bg-fleet-active text-fleet-text'
+                  : 'text-gray-400 hover:text-fleet-text hover:bg-fleet-bg'
+              )}
             >
-              Configure…
+              {c.label}
             </button>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col min-w-0">
-              <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>
-                Work Together
-              </span>
-              <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-                {settings.extensions.workTogether.enabled ? 'Enabled' : 'Disabled'} · share the
-                active file by a time-limited link
-              </span>
-            </div>
-            <button
-              className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
-              onClick={onConfigureWorkTogether}
-            >
-              Configure…
-            </button>
-          </div>
+          ))}
         </div>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-col min-w-0">
-            <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Dictation</span>
-            <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-              {settings.dictationEnabled ? 'Enabled' : 'Disabled'} · Whisper {settings.voiceModel} ·{' '}
-              {settings.voiceLanguage}
-            </span>
-          </div>
-          <button
-            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
-            onClick={onConfigureDictation}
-          >
-            Configure…
-          </button>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-col min-w-0">
-            <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Read Aloud</span>
-            <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-              {settings.readAloudEnabled ? 'Enabled' : 'Disabled'} · Voices:{' '}
-              {settings.readVoices.en.replace('_', ' ')} / {settings.readVoices.ru}
-            </span>
-          </div>
-          <button
-            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
-            onClick={onConfigureReadAloud}
-          >
-            Configure…
-          </button>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-col min-w-0">
-            <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Translation</span>
-            <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-              {settings.translateEnabled ? 'Enabled' : 'Disabled'} ·{' '}
-              {TRANSLATE_MODEL_LABELS[settings.translateModel]} ·{' '}
-              {TRANSLATE_PAIR_LABELS[settings.translatePair]}
-            </span>
-          </div>
-          <button
-            className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text hover:bg-fleet-active shrink-0"
-            onClick={onConfigureTranslate}
-          >
-            Configure…
-          </button>
-        </div>
-      </div>
-
-      <div className="border-t border-fleet-border mt-4 pt-3">
-        <button
+        <div
           className={clsx(
-            density.settingsLabelClass,
-            'font-medium text-fleet-textHover flex items-center gap-1 w-full'
+            'mt-auto border-t border-fleet-border flex flex-col gap-1.5',
+            density.settingsPad
           )}
-          onClick={() => setShowShortcuts((v) => !v)}
         >
-          {showShortcuts ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          Shortcuts
-        </button>
-        {showShortcuts && (
-          <div className="flex flex-col gap-1.5 mt-2">
-            {SHORTCUTS.map((s) => (
-              <div key={s.description} className="flex items-center justify-between gap-3">
-                <span className={clsx(density.settingsDescriptionClass, 'text-gray-400')}>
-                  {s.description}
-                </span>
-                <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-gray-300 font-mono shrink-0">
-                  {s.keys}
-                </kbd>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-between items-center mt-6">
-        <div className="flex items-center gap-2">
           {appVersion && (
             <a
               href={`https://github.com/roman-struchev/aura-pad/releases/tag/v${appVersion}`}
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] text-gray-500 hover:text-gray-400 hover:underline font-mono tracking-wide translate-y-[1px] transition-colors"
+              className="text-[11px] text-gray-500 hover:text-gray-400 hover:underline font-mono tracking-wide transition-colors"
               title="View release notes"
             >
               v{appVersion}
@@ -276,7 +162,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </span>
             ) : (
               <button
-                className="text-[11px] text-blue-400 hover:text-blue-300 underline"
+                className="text-[11px] text-blue-400 hover:text-blue-300 underline text-left"
                 onClick={onUpdateAction}
               >
                 {updateNotification.mode === 'install'
@@ -287,12 +173,120 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             ))}
         </div>
-        <button
-          className="px-4 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-          onClick={onClose}
-        >
-          Done
-        </button>
+      </div>
+
+      {/* Right: the selected category's settings */}
+      <div className={clsx('flex-1 min-w-0 overflow-y-auto', density.settingsPad)}>
+        {category === 'appearance' && (
+          <div className={clsx('flex flex-col', density.settingsGap)}>
+            <SettingSelect
+              label="Theme"
+              description="Dark, light, follow the OS, or a full color scheme"
+              value={settings.theme}
+              options={THEME_MODES}
+              onChange={(v) => updateSetting('theme', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingSelect
+              label="Mode"
+              description="UI density - editor font size, row height, spacing"
+              value={settings.uiMode}
+              options={UI_MODES}
+              onChange={(v) => updateSetting('uiMode', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingSelect
+              label="Sidebar"
+              description="Which side the file tree sits on"
+              value={settings.sidebarPosition}
+              options={SIDEBAR_POSITIONS}
+              onChange={(v) => updateSetting('sidebarPosition', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+          </div>
+        )}
+
+        {category === 'editor' && (
+          <div className={clsx('flex flex-col', density.settingsGap)}>
+            <SettingToggle
+              label="Line Numbers"
+              description="Show line numbers in the editor"
+              checked={settings.lineNumbersEnabled}
+              onChange={(v) => updateSetting('lineNumbersEnabled', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingToggle
+              label="Tabs"
+              description="Keep multiple files open at once"
+              checked={settings.tabsEnabled}
+              onChange={(v) => updateSetting('tabsEnabled', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+          </div>
+        )}
+
+        {category === 'extensions' && (
+          <div className={clsx('flex flex-col', density.settingsGap)}>
+            <SettingToggle
+              label="Git"
+              description="Status badges in the file tree and the per-project Git tab"
+              checked={settings.extensions.git.enabled}
+              onChange={(v) => updateExtension('git', { enabled: v })}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            {configureRow(
+              'Google Tasks',
+              `${settings.extensions.googleTasks.enabled ? 'Enabled' : 'Disabled'} · accounts and OAuth client`,
+              onConfigureGoogleTasks
+            )}
+            {configureRow(
+              'Work Together',
+              `${settings.extensions.workTogether.enabled ? 'Enabled' : 'Disabled'} · share the active file by a time-limited link`,
+              onConfigureWorkTogether
+            )}
+          </div>
+        )}
+
+        {category === 'voice' && (
+          <div className={clsx('flex flex-col', density.settingsGap)}>
+            {configureRow(
+              'Dictation',
+              `${settings.dictationEnabled ? 'Enabled' : 'Disabled'} · Whisper ${settings.voiceModel} · ${settings.voiceLanguage}`,
+              onConfigureDictation
+            )}
+            {configureRow(
+              'Read Aloud',
+              `${settings.readAloudEnabled ? 'Enabled' : 'Disabled'} · Voices: ${settings.readVoices.en.replace('_', ' ')} / ${settings.readVoices.ru}`,
+              onConfigureReadAloud
+            )}
+            {configureRow(
+              'Translation',
+              `${settings.translateEnabled ? 'Enabled' : 'Disabled'} · ${TRANSLATE_MODEL_LABELS[settings.translateModel]} · ${TRANSLATE_PAIR_LABELS[settings.translatePair]}`,
+              onConfigureTranslate
+            )}
+          </div>
+        )}
+
+        {category === 'shortcuts' && (
+          <div className="flex flex-col gap-1.5">
+            {SHORTCUTS.map((s) => (
+              <div key={s.description} className="flex items-center justify-between gap-3">
+                <span className={clsx(density.settingsDescriptionClass, 'text-gray-400')}>
+                  {s.description}
+                </span>
+                <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-gray-300 font-mono shrink-0">
+                  {s.keys}
+                </kbd>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   )

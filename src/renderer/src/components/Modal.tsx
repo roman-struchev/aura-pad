@@ -1,10 +1,19 @@
 import React, { useEffect, useRef } from 'react'
+import { X } from 'lucide-react'
 
 interface ModalProps {
   onClose: () => void
   children: React.ReactNode
   width?: string
   height?: string
+  // When set, the dialog renders a header row with this title and a close (✕)
+  // button - the standard way to dismiss a dialog, so consumers no longer need
+  // their own "Done"/"Close" footer button.
+  title?: string
+  // Overrides the default padded, vertically scrolling body wrapper - e.g. the
+  // settings dialog uses a two-pane row layout that scrolls only its content
+  // pane.
+  bodyClassName?: string
 }
 
 // Open modals in mount order. Every instance listens for Escape on window,
@@ -21,7 +30,14 @@ const FOCUSABLE_SELECTOR =
 // settings/confirm/alert), so backdrop-click-to-close, Escape-to-close, and
 // keyboard focus handling behave the same everywhere instead of being
 // reimplemented ad hoc per dialog.
-export const Modal: React.FC<ModalProps> = ({ onClose, children, width = 'w-80', height }) => {
+export const Modal: React.FC<ModalProps> = ({
+  onClose,
+  children,
+  width = 'w-80',
+  height,
+  title,
+  bodyClassName
+}) => {
   const stackIdRef = useRef(Symbol('modal'))
   const cardRef = useRef<HTMLDivElement>(null)
 
@@ -101,10 +117,24 @@ export const Modal: React.FC<ModalProps> = ({ onClose, children, width = 'w-80',
         ref={cardRef}
         role="dialog"
         aria-modal="true"
-        className={`bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl p-4 flex flex-col max-h-[85vh] overflow-y-auto ${width} ${height || ''}`}
+        className={`bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden ${width} ${height || ''}`}
         onClick={(e) => e.stopPropagation()}
       >
-        {children}
+        {title !== undefined && (
+          <div className="flex items-center justify-between gap-4 px-4 py-2.5 border-b border-fleet-border shrink-0">
+            <span className="text-sm font-medium text-fleet-text truncate">{title}</span>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="p-1 -mr-1 rounded text-gray-400 hover:text-white hover:bg-fleet-active transition-colors shrink-0"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        <div className={bodyClassName ?? 'p-4 flex flex-col flex-1 min-h-0 overflow-y-auto'}>
+          {children}
+        </div>
       </div>
     </div>
   )

@@ -704,6 +704,7 @@ function App(): React.JSX.Element {
         }
         terminalShown={terminal.showTerminal}
         sidebarVisible={settings.sidebarVisible}
+        sidebarPosition={settings.sidebarPosition}
         voice={voice}
         readAloud={readAloud}
         onRevealActiveFile={() => {

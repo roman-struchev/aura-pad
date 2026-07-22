@@ -15,7 +15,8 @@ interface NameInputModalProps {
 }
 
 // The rename/create-file dialogs are the same modal with different labels -
-// one text input, Enter to confirm, Cancel/primary buttons.
+// one text input, Enter to confirm, and the primary button; Esc / the header
+// ✕ cancel.
 export const NameInputModal: React.FC<NameInputModalProps> = ({
   title,
   value,
@@ -26,8 +27,7 @@ export const NameInputModal: React.FC<NameInputModalProps> = ({
   onConfirm,
   onCancel
 }) => (
-  <Modal onClose={onCancel}>
-    <div className="text-xs text-gray-400 mb-2 truncate">{title}</div>
+  <Modal title={title} onClose={onCancel}>
     <input
       ref={inputRef}
       data-autofocus
@@ -39,13 +39,7 @@ export const NameInputModal: React.FC<NameInputModalProps> = ({
         if (e.key === 'Enter') onConfirm()
       }}
     />
-    <div className="flex justify-end gap-2 mt-3">
-      <button
-        className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
-        onClick={onCancel}
-      >
-        Cancel
-      </button>
+    <div className="flex justify-end mt-3">
       <button
         className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white"
         onClick={onConfirm}

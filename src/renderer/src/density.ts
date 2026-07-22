@@ -13,43 +13,56 @@ export interface DensityPreset {
   terminalFontSize: number
   settingsLabelClass: string
   settingsDescriptionClass: string
+  // Vertical gap between rows within a settings pane, and the padding that
+  // separates content from the dialog's dividing lines (header/nav/footer).
+  // Both scale with density so a tighter Mode also tightens the spacing.
+  settingsGap: string
+  settingsPad: string
 }
 
 export const DENSITY: Record<UiMode, DensityPreset> = {
   micro: {
     uiFontSize: 11,
     editorFontSize: 11,
-    treeRowPadding: 'py-0.5',
+    treeRowPadding: 'py-0',
     tabBarHeight: 'h-7',
     terminalFontSize: 11,
     settingsLabelClass: 'text-xs',
-    settingsDescriptionClass: 'text-[10px]'
+    settingsDescriptionClass: 'text-[10px]',
+    settingsGap: 'gap-2',
+    settingsPad: 'p-2'
   },
   compact: {
     uiFontSize: 12,
     editorFontSize: 12,
-    treeRowPadding: 'py-1',
+    treeRowPadding: 'py-0.5',
     tabBarHeight: 'h-8',
     terminalFontSize: 12,
     settingsLabelClass: 'text-sm',
-    settingsDescriptionClass: 'text-xs'
+    settingsDescriptionClass: 'text-xs',
+    settingsGap: 'gap-2.5',
+    settingsPad: 'p-2.5'
   },
   normal: {
     uiFontSize: 13,
     editorFontSize: 13,
-    treeRowPadding: 'py-1.5',
+    treeRowPadding: 'py-1',
     tabBarHeight: 'h-9',
     terminalFontSize: 13,
     settingsLabelClass: 'text-base',
-    settingsDescriptionClass: 'text-sm'
+    settingsDescriptionClass: 'text-sm',
+    settingsGap: 'gap-3',
+    settingsPad: 'p-3'
   },
   large: {
     uiFontSize: 14,
     editorFontSize: 15,
-    treeRowPadding: 'py-2',
+    treeRowPadding: 'py-1.5',
     tabBarHeight: 'h-10',
     terminalFontSize: 15,
     settingsLabelClass: 'text-lg',
-    settingsDescriptionClass: 'text-base'
+    settingsDescriptionClass: 'text-base',
+    settingsGap: 'gap-4',
+    settingsPad: 'p-4'
   }
 }

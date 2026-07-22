@@ -107,15 +107,14 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   }
 
   return (
-    <Modal onClose={onClose} width="w-[26rem]">
-      <div className="text-sm font-medium text-fleet-text mb-1">Read Aloud</div>
+    <Modal title="Read Aloud" onClose={onClose} width="w-[26rem]">
       <div className="text-xs text-gray-400 mb-3">
         Natural-sounding voices run entirely on this computer - downloaded once from huggingface.co
         and stored locally. The choice is remembered in Settings.
       </div>
 
       {enabled !== undefined && onEnabledChange && (
-        <div className="border-y border-fleet-border py-3 mb-3">
+        <div className="border-y border-fleet-border py-2.5 mb-2.5">
           <SettingToggle
             label="Enabled"
             description="Show the Read Aloud button and menu item"
@@ -173,13 +172,7 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-2 mt-3">
-        <button
-          className="px-3 py-1 text-xs rounded hover:bg-fleet-active text-gray-400"
-          onClick={onClose}
-        >
-          Cancel
-        </button>
+      <div className="flex justify-end mt-3">
         <button
           className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
           disabled={downloading}

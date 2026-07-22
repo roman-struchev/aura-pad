@@ -68,12 +68,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
   const participants = session?.participants ?? []
 
   return (
-    <Modal onClose={onClose} width="w-[26rem]">
+    <Modal title="Share" onClose={onClose} width="w-[26rem]">
       <div className="flex flex-col gap-4">
-        <div className="flex items-baseline justify-between gap-3 min-w-0">
-          <span className="font-medium text-sm text-fleet-textHover shrink-0">Share</span>
-          <span className="text-xs text-gray-500 truncate">{fileName}</span>
-        </div>
+        <div className="text-xs text-gray-500 truncate">{fileName}</div>
 
         {session && (
           <div className="flex items-center gap-1.5 text-xs">
@@ -194,8 +191,8 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
           ))}
         </div>
 
-        <div className="flex justify-between items-center border-t border-fleet-border pt-3">
-          {session ? (
+        {session && (
+          <div className="flex items-center border-t border-fleet-border pt-3">
             <button
               className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40 flex items-center gap-1.5"
               disabled={stopping}
@@ -204,16 +201,8 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
               {stopping && <Loader2 size={12} className="animate-spin" />}
               Stop Sharing
             </button>
-          ) : (
-            <span />
-          )}
-          <button
-            className="px-4 py-1.5 text-xs font-medium rounded bg-fleet-bg border border-fleet-border hover:bg-fleet-active text-fleet-text"
-            onClick={onClose}
-          >
-            Done
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </Modal>
   )

@@ -7,8 +7,9 @@ interface ToolbarButtonProps {
   active?: boolean
   title?: string
   // Tooltips center under the button by default; buttons hugging the window's
-  // right edge should pass 'right' so theirs doesn't get clipped.
-  tooltipAlign?: 'center' | 'right'
+  // right (or left) edge should pass 'right' (or 'left') so theirs doesn't get
+  // clipped.
+  tooltipAlign?: 'center' | 'right' | 'left'
   ariaLabel?: string
   colorClassName?: string
   children: React.ReactNode
@@ -48,7 +49,11 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
       <span
         className={clsx(
           'absolute top-full mt-1.5 z-50 hidden group-hover:block whitespace-nowrap rounded border border-fleet-border bg-fleet-sidebar px-2 py-1 text-[11px] font-normal text-fleet-text shadow-lg pointer-events-none',
-          tooltipAlign === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2'
+          tooltipAlign === 'right'
+            ? 'right-0'
+            : tooltipAlign === 'left'
+              ? 'left-0'
+              : 'left-1/2 -translate-x-1/2'
         )}
       >
         {title}
