@@ -1,7 +1,10 @@
 # Feature Ideas & Improvements
+- На вкладках Files и Git можно убрать имя
+- Посмотри на favicon на сервере, тут аналогично лучше сделать
+- Добавь информацию в readme про реализонный сервер по фиче work together
+- Табы и шапку схлопнуть как в obsidian, а иконки действий для файла тоже вынести как в obsidian или прям на табе показывать, если он активен
+- Меню тоже посмотри как в obsidian и сделай какие-то групировки, кнопка Done внизу не нужна, она ничего не делает, крестика достаточно. На модалках аналогично
 
-Curated backlog from a full code review (v1.27.0). Ordered by expected value for AuraPad's
-positioning: a fast, zero-config editor that stays out of the way.
 
 
 ## Next up: toggle the file-tree sidebar (detailed spec)
