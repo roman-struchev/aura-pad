@@ -426,7 +426,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
               return (
                 <div
                   key={list.id}
-                  className="border border-fleet-border rounded-lg p-2 min-w-0 bg-fleet-sidebar/40"
+                  className="border border-fleet-border rounded-lg p-2 min-w-0 bg-fleet-header shadow-sm"
                 >
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 mb-1 border-b border-fleet-border">
                     <span className="text-xs font-medium text-fleet-textHover truncate flex-1">

@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
 import { AppHeader } from './components/AppHeader'
+import { FileActions } from './components/FileActions'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateToast } from './components/UpdateToast'
 import { NameInputModal } from './components/NameInputModal'
@@ -616,26 +617,6 @@ function App(): React.JSX.Element {
   // for the "selected file". Google Tasks has no root - it falls through to
   // the no-selection defaults.
   const activeExt = tabs.selectedPath ? parseExtensionPath(tabs.selectedPath) : null
-  const breadcrumbPath = activeExt ? activeExt.root : tabs.selectedPath
-  // Show just the workspace the active file belongs to, not every open
-  // workspace - the breadcrumb should say where you are, not list everything
-  // that happens to be open.
-  const activeRoot = breadcrumbPath
-    ? tree.rootNodes.find(
-        (r) => breadcrumbPath === r.path || breadcrumbPath.startsWith(r.path + '/')
-      )
-    : null
-  // A file open from outside every workspace (the "Recently Opened" list)
-  // isn't part of any of them, so it should show neither - not fall back to
-  // listing every open workspace, which was just as misleading.
-  const projectLabel = breadcrumbPath
-    ? (activeRoot?.name ?? 'AuraPad')
-    : tree.rootNodes.length > 0
-      ? tree.rootNodes.map((r) => r.name).join(', ')
-      : 'AuraPad'
-  const headerRepo = breadcrumbPath
-    ? activeRoot && findRepoForRoot(git.repos, activeRoot.path)
-    : git.repos[0]
   const hasFileActions = !!tabs.selectedPath && !activeExt
 
   // Entry point from the file tree's per-root branch badge: focus that
@@ -679,51 +660,30 @@ function App(): React.JSX.Element {
       onDrop={handleWindowDrop}
     >
       <AppHeader
-        projectLabel={projectLabel}
-        headerRepo={headerRepo}
-        git={git}
-        selectedPath={tabs.selectedPath}
-        isFileInWorkspace={
-          !!tabs.selectedPath &&
-          isUnderAnyRoot(
-            tabs.selectedPath,
-            tree.rootNodes.map((r) => r.path)
-          )
-        }
-        hasFileActions={hasFileActions}
-        showPreview={tabs.showMarkdownPreview}
-        isPreviewable={isPreviewablePath(tabs.selectedPath)}
-        canDictate={canDictate}
-        isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
-        googleTasksEnabled={settings.extensions.googleTasks.enabled}
-        googleTasksActive={activeExt?.id === 'google-tasks'}
-        workTogetherEnabled={settings.extensions.workTogether.enabled}
-        workTogetherSharing={!!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)}
-        workTogetherParticipantCount={
-          (tabs.selectedPath && workTogether.sessions[tabs.selectedPath]?.participants.length) || 0
-        }
-        terminalShown={terminal.showTerminal}
         sidebarVisible={settings.sidebarVisible}
         sidebarPosition={settings.sidebarPosition}
-        voice={voice}
-        readAloud={readAloud}
-        onRevealActiveFile={() => {
-          if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
-          setSidebarView('files')
-          if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
-        }}
-        onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
-        onFormatDocument={formatActiveDocument}
-        onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
-        onToggleDictation={toggleDictation}
-        onStartReadAloud={startReadAloud}
+        googleTasksEnabled={settings.extensions.googleTasks.enabled}
+        googleTasksActive={activeExt?.id === 'google-tasks'}
+        terminalShown={terminal.showTerminal}
+        onToggleSidebar={toggleSidebar}
         onOpenGlobalSearch={openGlobalSearch}
         onAddFolder={tree.handleAddFolder}
         onOpenGoogleTasks={() => tabs.openTab(makeExtensionPath('google-tasks'))}
-        onOpenShare={() => setShowShareDialog(true)}
         onToggleTerminal={toggleTerminal}
-        onToggleSidebar={toggleSidebar}
         onOpenSettings={() => setShowSettings(true)}
+        tabBar={
+          <TabBar
+            tabs={tabs.tabs}
+            activeTabPath={tabs.activeTabPath}
+            setActiveTabPath={tabs.setActiveTabPath}
+            closeTab={handleTabClose}
+            closeOtherTabs={handleTabCloseOthers}
+            closeAllTabs={handleTabCloseAll}
+            togglePin={handleTabTogglePin}
+            reorderTab={handleTabReorder}
+            isPathShared={workTogether.isSharing}
+          />
+        }
       />
 
       <div className="flex flex-1 overflow-hidden relative">
@@ -733,19 +693,47 @@ function App(): React.JSX.Element {
             settings.sidebarPosition === 'left' && 'order-2'
           )}
         >
-          {settings.tabsEnabled && (
-            <TabBar
-              tabs={tabs.tabs}
-              activeTabPath={tabs.activeTabPath}
-              setActiveTabPath={tabs.setActiveTabPath}
-              closeTab={handleTabClose}
-              closeOtherTabs={handleTabCloseOthers}
-              closeAllTabs={handleTabCloseAll}
-              togglePin={handleTabTogglePin}
-              reorderTab={handleTabReorder}
-              heightClassName={density.tabBarHeight}
-              isPathShared={workTogether.isSharing}
-            />
+          {/* The active file's actions float over the editor's top-right
+              corner, Obsidian-style, rather than living in the title bar. */}
+          {hasFileActions && (
+            <div className="absolute top-1 right-2 z-20">
+              <FileActions
+                selectedPath={tabs.selectedPath}
+                isFileInWorkspace={
+                  !!tabs.selectedPath &&
+                  isUnderAnyRoot(
+                    tabs.selectedPath,
+                    tree.rootNodes.map((r) => r.path)
+                  )
+                }
+                showPreview={tabs.showMarkdownPreview}
+                isPreviewable={isPreviewablePath(tabs.selectedPath)}
+                canDictate={canDictate}
+                isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
+                workTogetherEnabled={settings.extensions.workTogether.enabled}
+                workTogetherSharing={
+                  !!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)
+                }
+                workTogetherParticipantCount={
+                  (tabs.selectedPath &&
+                    workTogether.sessions[tabs.selectedPath]?.participants.length) ||
+                  0
+                }
+                voice={voice}
+                readAloud={readAloud}
+                onRevealActiveFile={() => {
+                  if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
+                  setSidebarView('files')
+                  if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
+                }}
+                onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+                onFormatDocument={formatActiveDocument}
+                onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
+                onToggleDictation={toggleDictation}
+                onStartReadAloud={startReadAloud}
+                onOpenShare={() => setShowShareDialog(true)}
+              />
+            </div>
           )}
 
           {tabs.externalChangeAvailable && (

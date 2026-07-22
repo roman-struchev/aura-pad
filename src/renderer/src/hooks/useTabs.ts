@@ -376,9 +376,25 @@ export function useTabs(
   // closure from whenever they subscribed.
   const getUnsavedCount = (): number => tabsRef.current.filter((t) => !t.isSaved).length
 
+  // Pinning clusters tabs at the front of the strip: a freshly pinned tab
+  // slides in right after the last already-pinned tab (so it becomes the last
+  // of the pinned group), and unpinning drops it back to the same spot - i.e.
+  // the first unpinned position. Both cases insert right after the last pinned
+  // tab, so the pinned cluster always stays contiguous and leftmost.
   const togglePin = (path: string): void => {
-    const tab = tabs.find((t) => t.path === path)
-    if (tab) updateTab(path, { pinned: !tab.pinned })
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.path === path)
+      if (idx === -1) return prev
+      const moved = { ...prev[idx], pinned: !prev[idx].pinned }
+      const rest = prev.filter((_, i) => i !== idx)
+      let lastPinned = -1
+      rest.forEach((t, i) => {
+        if (t.pinned) lastPinned = i
+      })
+      const next = [...rest]
+      next.splice(lastPinned + 1, 0, moved)
+      return next
+    })
   }
 
   // Flip a tab's preview mode, reading its current state inside the functional

@@ -183,3 +183,38 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #525252;
 }
+
+/* Opt-in: keep an element scrollable but hide its scrollbar entirely (the tab
+   strip and the file tree - a visible bar there just makes content jump). */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The active tab melts into the editor pane below: besides its rounded top and
+   flush bottom (same background as the editor), two small concave "flares" at
+   the bottom corners are filled with the editor colour, so the tab widens into
+   the pane instead of ending in hard corners - the Obsidian tab shape. */
+.tab-flow::before,
+.tab-flow::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  background: var(--fleet-bg);
+  pointer-events: none;
+}
+.tab-flow::before {
+  left: -8px;
+  -webkit-mask: radial-gradient(circle 8px at top left, #0000 98%, #000 100%);
+  mask: radial-gradient(circle 8px at top left, #0000 98%, #000 100%);
+}
+.tab-flow::after {
+  right: -8px;
+  -webkit-mask: radial-gradient(circle 8px at top right, #0000 98%, #000 100%);
+  mask: radial-gradient(circle 8px at top right, #0000 98%, #000 100%);
+}

@@ -104,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 pt-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar p-2 pt-3">
           {rootNodes.length > 0 ? (
             <div className="flex flex-col gap-2">
               {rootNodes.map((rootNode) => {

@@ -1,6 +1,4 @@
 # Feature Ideas & Improvements
-- Табы и шапку схлопнуть как в obsidian (т.е. табы налазиют на шапку), а иконки действий для файла тоже вынести как в obsidian или прям на табе показывать (я бы так сделал, но подумай), если он активен. Если есть вопросы - задай
-
 ## Next up: toggle the file-tree sidebar (detailed spec)
 
 Goal: hide/show the whole sidebar (file tree + git panel) with a button and a shortcut,

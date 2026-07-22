@@ -3,7 +3,9 @@ import React from 'react'
 interface TabContextMenuProps {
   x: number
   y: number
+  pinned: boolean
   onDismiss: () => void
+  onTogglePin: () => void
   onCloseTab: () => void
   onCloseOthers: () => void
   onCloseAll: () => void
@@ -13,7 +15,9 @@ interface TabContextMenuProps {
 export const TabContextMenu: React.FC<TabContextMenuProps> = ({
   x,
   y,
+  pinned,
   onDismiss,
+  onTogglePin,
   onCloseTab,
   onCloseOthers,
   onCloseAll,
@@ -29,6 +33,13 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
       className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]"
       style={{ top: y, left: x }}
     >
+      <button
+        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
+        onClick={() => run(onTogglePin)}
+      >
+        {pinned ? 'Unpin' : 'Pin'}
+      </button>
+      <div className="my-1 h-px bg-fleet-border" />
       <button
         className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
         onClick={() => run(onCloseTab)}

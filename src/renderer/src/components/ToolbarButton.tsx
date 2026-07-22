@@ -10,8 +10,15 @@ interface ToolbarButtonProps {
   // right (or left) edge should pass 'right' (or 'left') so theirs doesn't get
   // clipped.
   tooltipAlign?: 'center' | 'right' | 'left'
+  // Which side of the button the tooltip opens on. Buttons near the window's
+  // bottom edge (e.g. the sidebar footer) should pass 'top' so the tooltip
+  // isn't clipped off-screen. Defaults to 'bottom'.
+  tooltipSide?: 'top' | 'bottom'
   ariaLabel?: string
   colorClassName?: string
+  // Tighter padding for buttons packed into a small container (e.g. the
+  // active tab's file-action row), where the default p-1.5 is too heavy.
+  dense?: boolean
   children: React.ReactNode
 }
 
@@ -26,8 +33,10 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   active,
   title,
   tooltipAlign = 'center',
+  tooltipSide = 'bottom',
   ariaLabel,
   colorClassName = 'text-gray-400',
+  dense,
   children
 }) => (
   <button
@@ -40,7 +49,8 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     disabled={disabled}
     aria-label={ariaLabel ?? title}
     className={clsx(
-      'group relative p-1.5 rounded hover:bg-fleet-active transition-colors',
+      'group relative rounded hover:bg-fleet-active transition-colors',
+      dense ? 'p-1' : 'p-1.5',
       active ? 'text-white bg-fleet-active' : colorClassName
     )}
   >
@@ -48,7 +58,8 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     {title && (
       <span
         className={clsx(
-          'absolute top-full mt-1.5 z-50 hidden group-hover:block whitespace-nowrap rounded border border-fleet-border bg-fleet-sidebar px-2 py-1 text-[11px] font-normal text-fleet-text shadow-lg pointer-events-none',
+          'absolute z-50 hidden group-hover:block whitespace-nowrap rounded border border-fleet-border bg-fleet-sidebar px-2 py-1 text-[11px] font-normal text-fleet-text shadow-lg pointer-events-none',
+          tooltipSide === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
           tooltipAlign === 'right'
             ? 'right-0'
             : tooltipAlign === 'left'
