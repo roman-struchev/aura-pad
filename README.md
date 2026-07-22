@@ -31,6 +31,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - **Translate in place** — select text and hit `Option+Cmd+T`: Google Translate for best
   quality, or fully offline local models.
 - **Git built in** — status badges, diffs, stage/commit/push/pull without leaving the editor.
+- **Work Together** — share a live link to any open tab; others edit or view it in a
+  plain browser, no install needed.
 - **Instant startup, small footprint** — opens folders and large files without ceremony.
 
 ## Features
@@ -77,6 +79,12 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 - A real terminal inside the app: multiple tabs, resizable panel, opens at any folder from
   the file tree.
+
+**Work Together**
+
+- Share any open tab as a live link — others edit or read it in a regular browser, no
+  install needed, with read-only/read-write and an expiry you set.
+- Self-hostable backend: [aura-server](https://github.com/roman-struchev/aura-server).
 
 The full list of keyboard shortcuts is available in the app under Settings.
 
