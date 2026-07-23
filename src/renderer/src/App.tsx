@@ -17,7 +17,7 @@ import { GoogleTasksTab } from './components/GoogleTasksTab'
 import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
 import { WorkTogetherConfigModal } from './components/WorkTogetherConfigModal'
 import { ShareDialog } from './components/ShareDialog'
-import { makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
+import { isExtensionPath, makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
 import { EXTENSIONS } from './lib/extensions'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { DENSITY } from './density'
@@ -328,13 +328,18 @@ function App(): React.JSX.Element {
     if (!tree.rootsLoaded) return
     const rootPaths = tree.rootNodes.map((r) => r.path)
     for (const tabPath of tabs.tabs.map((t) => t.path)) {
+      // Extension tabs (ext://...) are synthetic, not real files, so they
+      // never belong in the "Recently Opened (Outside)" list.
+      if (isExtensionPath(tabPath)) continue
       if (!isUnderAnyRoot(tabPath, rootPaths)) recentExternalFiles.touch(tabPath)
     }
     // Undo any past mis-touches (e.g. from this same race before this fix,
     // or a workspace added after a file was opened externally) - an entry
-    // that now resolves under a root doesn't belong in the outside list.
+    // that now resolves under a root, or a synthetic extension path that
+    // slipped in from an older version, doesn't belong in the outside list.
     for (const entry of recentExternalFiles.entries) {
-      if (isUnderAnyRoot(entry.path, rootPaths)) recentExternalFiles.remove(entry.path)
+      if (isExtensionPath(entry.path) || isUnderAnyRoot(entry.path, rootPaths))
+        recentExternalFiles.remove(entry.path)
     }
   }, [openTabPathsKey, rootPathsKey, tree.rootsLoaded])
   const sidebarWidth = useSidebarWidth(settings.sidebarWidth, settings.sidebarPosition, (w) =>
@@ -695,7 +700,6 @@ function App(): React.JSX.Element {
         terminalShown={terminal.showTerminal}
         onToggleSidebar={toggleSidebar}
         onOpenGlobalSearch={openGlobalSearch}
-        onAddFolder={tree.handleAddFolder}
         onToggleTerminal={toggleTerminal}
         onOpenSettings={() => setShowSettings(true)}
         tabBar={
@@ -866,6 +870,7 @@ function App(): React.JSX.Element {
               sidebarView={sidebarView}
               setSidebarView={setSidebarView}
               rootNodes={tree.rootNodes}
+              onAddFolder={tree.handleAddFolder}
               extensions={enabledExtensions}
               activeExtensionId={activeExt?.id ?? null}
               onOpenExtension={(id) => tabs.openTab(makeExtensionPath(id))}

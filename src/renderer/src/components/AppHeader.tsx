@@ -1,7 +1,6 @@
 import React from 'react'
 import clsx from 'clsx'
 import {
-  FolderOpen,
   PanelLeft,
   PanelLeftClose,
   Search,
@@ -18,7 +17,6 @@ interface AppHeaderProps {
   // The tab strip, filling the row next to the toolbar.
   tabBar: React.ReactNode
   onOpenGlobalSearch: () => void
-  onAddFolder: () => void
   onToggleTerminal: () => void
   onToggleSidebar: () => void
   onOpenSettings: () => void
@@ -37,7 +35,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   sidebarPosition,
   tabBar,
   onOpenGlobalSearch,
-  onAddFolder,
   onToggleTerminal,
   onToggleSidebar,
   onOpenSettings
@@ -69,15 +66,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       colorClassName="text-gray-400 hover:text-white"
     >
       <Search size={16} />
-    </ToolbarButton>,
-    <ToolbarButton
-      key="folder"
-      onClick={onAddFolder}
-      title="Add Folder"
-      tooltipAlign={align}
-      colorClassName="text-gray-400 hover:text-white"
-    >
-      <FolderOpen size={16} />
     </ToolbarButton>,
     <ToolbarButton
       key="terminal"

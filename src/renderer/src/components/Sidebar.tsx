@@ -1,5 +1,5 @@
 import React from 'react'
-import { Files, GitBranch, X } from 'lucide-react'
+import { Files, FolderOpen, GitBranch, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { FileTree, type FileNode, type RevealRequest } from './FileTree'
@@ -15,6 +15,7 @@ interface SidebarProps {
   setSidebarView: (view: 'files' | 'git') => void
   // File tree
   rootNodes: FileNode[]
+  onAddFolder: () => void
   // Enabled built-in extensions that open as tabs (see lib/extensions.ts).
   // The section is hidden when this is empty.
   extensions: { id: string; icon: LucideIcon; label: string }[]
@@ -52,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sidebarView,
   setSidebarView,
   rootNodes,
+  onAddFolder,
   extensions,
   activeExtensionId,
   onOpenExtension,
@@ -114,39 +116,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar p-2 pt-3">
-          {rootNodes.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {rootNodes.map((rootNode) => {
-                const repo = findRepoForRoot(git.repos, rootNode.path)
-                return (
-                  <FileTree
-                    key={rootNode.path}
-                    node={rootNode}
-                    onSelect={onSelect}
-                    onContextMenu={onContextMenu}
-                    onCreateNew={onCreateNew}
-                    onMove={onMove}
-                    onFocusNode={onFocusNode}
-                    onRunPython={onRunPython}
-                    onPreviewMarkdown={onPreviewMarkdown}
-                    selectedPath={selectedPath}
-                    revealRequest={revealRequest}
-                    rowPadding={rowPadding}
-                    gitStatus={git.fileStates}
-                    rootBranch={repo?.branch}
-                    onOpenGit={repo ? onOpenGit : undefined}
-                    isPathShared={isPathShared}
-                    onOpenShare={onOpenShare}
-                  />
-                )
-              })}
+          <div>
+            <div className="flex items-center justify-between mb-1 px-2">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">Workspaces</span>
+              <button
+                className="p-0.5 rounded text-gray-400 hover:text-white hover:bg-fleet-border"
+                title="Open Folder"
+                onClick={onAddFolder}
+              >
+                <FolderOpen size={13} />
+              </button>
             </div>
-          ) : recentExternalFiles.length === 0 && extensions.length === 0 ? (
-            <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
-          ) : null}
+            {rootNodes.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {rootNodes.map((rootNode) => {
+                  const repo = findRepoForRoot(git.repos, rootNode.path)
+                  return (
+                    <FileTree
+                      key={rootNode.path}
+                      node={rootNode}
+                      onSelect={onSelect}
+                      onContextMenu={onContextMenu}
+                      onCreateNew={onCreateNew}
+                      onMove={onMove}
+                      onFocusNode={onFocusNode}
+                      onRunPython={onRunPython}
+                      onPreviewMarkdown={onPreviewMarkdown}
+                      selectedPath={selectedPath}
+                      revealRequest={revealRequest}
+                      rowPadding={rowPadding}
+                      gitStatus={git.fileStates}
+                      rootBranch={repo?.branch}
+                      onOpenGit={repo ? onOpenGit : undefined}
+                      isPathShared={isPathShared}
+                      onOpenShare={onOpenShare}
+                    />
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="px-2 text-xs text-gray-500">No folder opened.</div>
+            )}
+          </div>
 
           {extensions.length > 0 && (
-            <div className={rootNodes.length > 0 ? 'mt-3' : ''}>
+            <div className="mt-3">
               <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
                 Extensions
               </div>
@@ -171,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {recentExternalFiles.length > 0 && (
-            <div className={rootNodes.length > 0 || extensions.length > 0 ? 'mt-3' : ''}>
+            <div className="mt-3">
               <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
                 Recently Opened (Outside)
               </div>
