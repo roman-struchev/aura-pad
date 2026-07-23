@@ -217,8 +217,8 @@ function registerGoogleTasksIpc(): void {
   handleInvoke('gtasks-update-task', (email, listId, taskId, input) =>
     gtasksUpdateTask(email, listId, taskId, input)
   )
-  handleInvoke('gtasks-move-task', (email, listId, taskId, previousTaskId) =>
-    gtasksMoveTask(email, listId, taskId, previousTaskId)
+  handleInvoke('gtasks-move-task', (email, listId, taskId, previousTaskId, destinationListId) =>
+    gtasksMoveTask(email, listId, taskId, previousTaskId, destinationListId)
   )
 }
 

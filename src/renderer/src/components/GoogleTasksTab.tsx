@@ -8,7 +8,8 @@ import {
   CheckCircle2,
   Loader2,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  CalendarArrowDown
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { GTask, GTaskInput, GTaskList } from '../../../shared/googleTasks'
@@ -36,6 +37,17 @@ function sortTasks(tasks: GTask[]): GTask[] {
     .filter((t) => t.status === 'completed')
     .sort((a, b) => (b.completed ?? '').localeCompare(a.completed ?? ''))
   return [...open, ...done]
+}
+
+// Ascending by due (reminder) date; undated tasks sink to the bottom, keeping
+// their relative manual order. Used when the "sort by due date" toggle is on.
+function orderByDue(tasks: GTask[]): GTask[] {
+  return [...tasks].sort((a, b) => {
+    if (!a.due && !b.due) return 0
+    if (!a.due) return 1
+    if (!b.due) return -1
+    return a.due.localeCompare(b.due)
+  })
 }
 
 // `due` carries only a date; render it date-only and flag overdue ones.
@@ -175,7 +187,17 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
     task?: GTask
   } | null>(null)
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
+  // The list a drag started from, so a drop can tell same-list reordering from
+  // a cross-list move.
+  const [draggedListId, setDraggedListId] = useState<string | null>(null)
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null)
+  // The list currently hovered during a drag - highlights the drop target and,
+  // for empty spots, appends to that list's end.
+  const [dragOverListId, setDragOverListId] = useState<string | null>(null)
+  // The list whose open tasks are currently being reordered by due date on
+  // the server (a one-shot action, not a persistent view mode). Its sort
+  // button shows a spinner and every list's button is disabled while it runs.
+  const [sortingListId, setSortingListId] = useState<string | null>(null)
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null)
   // Bumped by the refresh button; the fetch effect keys on it.
   const [refreshSeq, setRefreshSeq] = useState(0)
@@ -274,46 +296,88 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
     return true
   }
 
-  // Reorders open tasks within one list by moving sourceTaskId to just before
-  // targetTaskId (same drag semantics as the tab bar's reorderTab). Applied
-  // optimistically and left in place on success - Google's `move` endpoint
-  // is known to lag behind its own list() for a beat, so refetching right
-  // after a successful move would overwrite the correct new order with a
-  // stale read and visibly snap the drop back to where it started. Only a
-  // failed move triggers a refetch, to revert to the server's real order.
-  const reorderTask = async (
-    listId: string,
+  // Handles both drag gestures against open tasks:
+  //   - same source/target list: reorder, inserting sourceTaskId just before
+  //     targetTaskId (the tab bar's reorderTab semantics);
+  //   - different lists: move the task into targetListId, before targetTaskId
+  //     (or appended when targetTaskId is undefined, e.g. dropped on empty
+  //     space), via the Tasks API's `destinationTasklist` move param.
+  // Applied optimistically and left in place on success - Google's `move`
+  // endpoint is known to lag behind its own list() for a beat, so refetching
+  // right after a successful move would overwrite the correct new order with a
+  // stale read and visibly snap the drop back. Only a failure triggers a
+  // refetch, to revert to the server's real order.
+  const moveTask = async (
+    sourceListId: string,
     sourceTaskId: string,
-    targetTaskId: string
+    targetListId: string,
+    targetTaskId?: string
   ): Promise<void> => {
-    if (!activeEmail || sourceTaskId === targetTaskId) return
-    const entry = (listsByEmail[activeEmail] ?? []).find((e) => e.list.id === listId)
-    if (!entry) return
-    const open = entry.tasks.filter((t) => t.status === 'needsAction')
-    const completedTasks = entry.tasks.filter((t) => t.status === 'completed')
-    const sourceIdx = open.findIndex((t) => t.id === sourceTaskId)
-    const targetIdx = open.findIndex((t) => t.id === targetTaskId)
-    if (sourceIdx === -1 || targetIdx === -1) return
+    if (!activeEmail) return
+    const entries = listsByEmail[activeEmail] ?? []
+    const sourceEntry = entries.find((e) => e.list.id === sourceListId)
+    const targetEntry = entries.find((e) => e.list.id === targetListId)
+    if (!sourceEntry || !targetEntry) return
+    const moved = sourceEntry.tasks.find((t) => t.id === sourceTaskId)
+    if (!moved || moved.status !== 'needsAction') return
 
-    const reordered = [...open]
-    const [moved] = reordered.splice(sourceIdx, 1)
-    reordered.splice(targetIdx, 0, moved)
+    const sameList = sourceListId === targetListId
+    // A same-list drop onto self / nowhere is a no-op.
+    if (sameList && (!targetTaskId || sourceTaskId === targetTaskId)) return
+
+    const sourceDone = sourceEntry.tasks.filter((t) => t.status === 'completed')
+    const sourceOpenRemaining = sourceEntry.tasks.filter(
+      (t) => t.status === 'needsAction' && t.id !== sourceTaskId
+    )
+
+    // Destination open order with the task inserted at the drop position.
+    const targetBaseOpen = sameList
+      ? sourceOpenRemaining
+      : targetEntry.tasks.filter((t) => t.status === 'needsAction')
+    const targetDone = sameList
+      ? sourceDone
+      : targetEntry.tasks.filter((t) => t.status === 'completed')
+    const insertIdx = targetTaskId
+      ? targetBaseOpen.findIndex((t) => t.id === targetTaskId)
+      : targetBaseOpen.length
+    const newTargetOpen = [...targetBaseOpen]
+    newTargetOpen.splice(insertIdx === -1 ? newTargetOpen.length : insertIdx, 0, moved)
 
     setListsByEmail((prev) => ({
       ...prev,
-      [activeEmail]: (prev[activeEmail] ?? []).map((e) =>
-        e.list.id === listId ? { ...e, tasks: [...reordered, ...completedTasks] } : e
-      )
+      [activeEmail]: (prev[activeEmail] ?? []).map((e) => {
+        if (e.list.id === targetListId) return { ...e, tasks: [...newTargetOpen, ...targetDone] }
+        if (e.list.id === sourceListId)
+          return { ...e, tasks: [...sourceOpenRemaining, ...sourceDone] }
+        return e
+      })
     }))
 
-    const movedIdx = reordered.findIndex((t) => t.id === sourceTaskId)
-    const previousId = movedIdx > 0 ? reordered[movedIdx - 1].id : undefined
-    const result = await window.api.gtasksMoveTask(activeEmail, listId, sourceTaskId, previousId)
+    const movedIdx = newTargetOpen.findIndex((t) => t.id === sourceTaskId)
+    const previousId = movedIdx > 0 ? newTargetOpen[movedIdx - 1].id : undefined
+    const result = await window.api.gtasksMoveTask(
+      activeEmail,
+      sourceListId,
+      sourceTaskId,
+      previousId,
+      sameList ? undefined : targetListId
+    )
     if (!result.success) {
       await alertDialog(result.error)
       // The move never took effect server-side - resync with the real order.
-      await refetchList(activeEmail, listId)
+      await refetchList(activeEmail, sourceListId)
+      if (!sameList) await refetchList(activeEmail, targetListId)
     }
+  }
+
+  // Clears every transient drag flag - called from both drop handlers and
+  // onDragEnd (a cross-list drop unmounts the source row before its dragend
+  // fires, so drop must reset too or the moved task stays dimmed).
+  const endDrag = (): void => {
+    setDraggedTaskId(null)
+    setDraggedListId(null)
+    setDragOverTaskId(null)
+    setDragOverListId(null)
   }
 
   const toggleShowCompleted = (listId: string): void => {
@@ -323,6 +387,47 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
       else next.add(listId)
       return next
     })
+  }
+
+  // One-shot "sort by due date": permanently reorders this list's open tasks
+  // on the server (ascending due date, undated last) via sequential move
+  // calls, so the order sticks rather than being a local-only view. Applied
+  // optimistically with a spinner on the button; a failure reverts via
+  // refetch. Per the move-endpoint lag note we don't refetch on success.
+  const sortListByDue = async (listId: string): Promise<void> => {
+    if (!activeEmail || sortingListId) return
+    const entry = (listsByEmail[activeEmail] ?? []).find((e) => e.list.id === listId)
+    if (!entry) return
+    const open = entry.tasks.filter((t) => t.status === 'needsAction')
+    const done = entry.tasks.filter((t) => t.status === 'completed')
+    const ordered = orderByDue(open)
+    // Nothing to do if it's already in due-date order.
+    if (ordered.every((t, i) => t.id === open[i]?.id)) return
+
+    setSortingListId(listId)
+    setListsByEmail((prev) => ({
+      ...prev,
+      [activeEmail]: (prev[activeEmail] ?? []).map((e) =>
+        e.list.id === listId ? { ...e, tasks: [...ordered, ...done] } : e
+      )
+    }))
+    try {
+      // Position each task just after its predecessor, front to back - each
+      // move is relative to a sibling the previous iteration already placed,
+      // so the final order is exactly `ordered` regardless of the start state.
+      let previousId: string | undefined
+      for (const task of ordered) {
+        const result = await window.api.gtasksMoveTask(activeEmail, listId, task.id, previousId)
+        if (!result.success) {
+          await alertDialog(result.error)
+          await refetchList(activeEmail, listId)
+          return
+        }
+        previousId = task.id
+      }
+    } finally {
+      setSortingListId(null)
+    }
   }
 
   const addAccount = async (): Promise<void> => {
@@ -423,16 +528,56 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
               const open = tasks.filter((t) => t.status === 'needsAction')
               const completed = tasks.filter((t) => t.status === 'completed')
               const showCompleted = expandedCompleted.has(list.id)
+              const sorting = sortingListId === list.id
+              // A drag from another list can drop anywhere on this card (not
+              // just onto a row), so the whole card is a drop target that
+              // appends to the list's end.
+              const isDropTarget =
+                dragOverListId === list.id && draggedListId !== list.id && !dragOverTaskId
               return (
                 <div
                   key={list.id}
-                  className="border border-fleet-border rounded-lg p-2 min-w-0 bg-fleet-header shadow-sm"
+                  className={clsx(
+                    'border rounded-lg p-2 min-w-0 bg-fleet-header shadow-sm',
+                    isDropTarget ? 'border-blue-500/60 bg-blue-500/5' : 'border-fleet-border'
+                  )}
+                  onDragOver={(e) => {
+                    if (!draggedTaskId || draggedListId === list.id) return
+                    e.preventDefault()
+                    setDragOverListId(list.id)
+                  }}
+                  onDragLeave={(e) => {
+                    // Only clear when the pointer actually leaves the card, not
+                    // when it moves between the card's own children.
+                    if (!e.currentTarget.contains(e.relatedTarget as Node))
+                      setDragOverListId((id) => (id === list.id ? null : id))
+                  }}
+                  onDrop={(e) => {
+                    if (!draggedTaskId || !draggedListId || draggedListId === list.id) return
+                    e.preventDefault()
+                    const src = draggedListId
+                    const id = draggedTaskId
+                    endDrag()
+                    moveTask(src, id, list.id)
+                  }}
                 >
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 mb-1 border-b border-fleet-border">
                     <span className="text-xs font-medium text-fleet-textHover truncate flex-1">
                       {list.title}
                     </span>
                     <span className="text-[10px] text-gray-500 shrink-0">{open.length}</span>
+                    <button
+                      className="p-0.5 rounded shrink-0 hover:bg-fleet-border text-gray-400 hover:text-white disabled:opacity-50 disabled:hover:bg-transparent"
+                      title="Sort by due date"
+                      disabled={!!sortingListId}
+                      onClick={() => sortListByDue(list.id)}
+                    >
+                      {sorting ? (
+                        <Loader2 size={12} className="animate-spin text-blue-400" />
+                      ) : (
+                        <CalendarArrowDown size={12} />
+                      )}
+                    </button>
                     <button
                       className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
                       title="New Task"
@@ -458,21 +603,32 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                           togglePending={togglingTaskId === task.id}
                           onToggleComplete={() => toggleComplete(task, list.id)}
                           onEdit={() => setEditState({ mode: 'edit', listId: list.id, task })}
-                          onDragStart={() => setDraggedTaskId(task.id)}
-                          onDragEnd={() => {
-                            setDraggedTaskId(null)
-                            setDragOverTaskId(null)
+                          onDragStart={() => {
+                            setDraggedTaskId(task.id)
+                            setDraggedListId(list.id)
                           }}
+                          onDragEnd={endDrag}
                           onDragOver={(e) => {
+                            if (!draggedTaskId || draggedTaskId === task.id) return
                             e.preventDefault()
-                            if (draggedTaskId && draggedTaskId !== task.id)
-                              setDragOverTaskId(task.id)
+                            e.stopPropagation()
+                            setDragOverTaskId(task.id)
+                            setDragOverListId(list.id)
                           }}
                           onDragLeave={() => setDragOverTaskId(null)}
                           onDrop={(e) => {
                             e.preventDefault()
-                            setDragOverTaskId(null)
-                            if (draggedTaskId) reorderTask(list.id, draggedTaskId, task.id)
+                            e.stopPropagation()
+                            if (draggedTaskId && draggedListId) {
+                              const src = draggedListId
+                              const id = draggedTaskId
+                              // Reset drag state now, not just in onDragEnd: a
+                              // cross-list move unmounts the source row, so its
+                              // dragend may never fire, leaving the moved task
+                              // stuck at opacity-40 (isDragging) in its new list.
+                              endDrag()
+                              moveTask(src, id, list.id, task.id)
+                            } else endDrag()
                           }}
                         />
                       ))}

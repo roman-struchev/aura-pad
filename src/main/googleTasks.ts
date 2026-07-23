@@ -363,15 +363,22 @@ export function createTask(
 
 // Reordering within a list isn't a field you PATCH - the Tasks API has a
 // dedicated move endpoint that repositions a task relative to a sibling.
-// Omitting `previous` moves it to the very front of the list.
+// Omitting `previous` moves it to the very front of the list. Passing
+// `destinationListId` moves the task into another list (of the same account)
+// - `listId` is always the task's *current* list, the destination is a
+// separate query param.
 export function moveTask(
   email: string,
   listId: string,
   taskId: string,
-  previousTaskId?: string
+  previousTaskId?: string,
+  destinationListId?: string
 ): Promise<ApiResult<GTask>> {
   return wrap(async () => {
-    const query = previousTaskId ? `?previous=${encodeURIComponent(previousTaskId)}` : ''
+    const params = new URLSearchParams()
+    if (previousTaskId) params.set('previous', previousTaskId)
+    if (destinationListId) params.set('destinationTasklist', destinationListId)
+    const query = params.toString() ? `?${params.toString()}` : ''
     const data = await apiRequest(
       email,
       'POST',

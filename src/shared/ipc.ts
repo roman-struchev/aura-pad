@@ -136,7 +136,13 @@ export interface InvokeContracts {
     result: GTasksResult<GTask>
   }
   'gtasks-move-task': {
-    args: [email: string, listId: string, taskId: string, previousTaskId?: string]
+    args: [
+      email: string,
+      listId: string,
+      taskId: string,
+      previousTaskId?: string,
+      destinationListId?: string
+    ]
     result: GTasksResult<GTask>
   }
   'lint-python': { args: [absPath: string]; result: LintMarker | null }
