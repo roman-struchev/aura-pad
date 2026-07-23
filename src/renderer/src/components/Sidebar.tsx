@@ -1,5 +1,6 @@
 import React from 'react'
 import { Files, GitBranch, X } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { FileTree, type FileNode, type RevealRequest } from './FileTree'
 import { GitPanel } from './GitPanel'
@@ -14,6 +15,11 @@ interface SidebarProps {
   setSidebarView: (view: 'files' | 'git') => void
   // File tree
   rootNodes: FileNode[]
+  // Enabled built-in extensions that open as tabs (see lib/extensions.ts).
+  // The section is hidden when this is empty.
+  extensions: { id: string; icon: LucideIcon; label: string }[]
+  activeExtensionId: string | null
+  onOpenExtension: (id: string) => void
   recentExternalFiles: string[]
   onRemoveRecentExternalFile: (path: string) => void
   selectedPath: string | null
@@ -46,6 +52,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sidebarView,
   setSidebarView,
   rootNodes,
+  extensions,
+  activeExtensionId,
+  onOpenExtension,
   recentExternalFiles,
   onRemoveRecentExternalFile,
   selectedPath,
@@ -132,12 +141,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )
               })}
             </div>
-          ) : recentExternalFiles.length === 0 ? (
+          ) : recentExternalFiles.length === 0 && extensions.length === 0 ? (
             <div className="text-center mt-10 text-gray-500 text-sm p-4">No folder opened.</div>
           ) : null}
 
-          {recentExternalFiles.length > 0 && (
+          {extensions.length > 0 && (
             <div className={rootNodes.length > 0 ? 'mt-3' : ''}>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
+                Extensions
+              </div>
+              {extensions.map((ext) => (
+                <div
+                  key={ext.id}
+                  className={clsx(
+                    'group flex items-center px-2 cursor-pointer leading-normal hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
+                    rowPadding,
+                    activeExtensionId === ext.id && 'bg-fleet-active text-fleet-textHover'
+                  )}
+                  title={ext.label}
+                  onClick={() => onOpenExtension(ext.id)}
+                >
+                  <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
+                    <ext.icon size={14} />
+                  </span>
+                  <span className="truncate flex-1">{ext.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {recentExternalFiles.length > 0 && (
+            <div className={rootNodes.length > 0 || extensions.length > 0 ? 'mt-3' : ''}>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
                 Recently Opened (Outside)
               </div>

@@ -6,15 +6,12 @@ import {
   PanelLeftClose,
   Search,
   Settings as SettingsIcon,
-  SquareCheckBig,
   Terminal as TerminalIcon
 } from 'lucide-react'
 import { ToolbarButton } from './ToolbarButton'
 import type { SidebarPosition } from '../../../shared/settings'
 
 interface AppHeaderProps {
-  googleTasksEnabled: boolean
-  googleTasksActive: boolean
   terminalShown: boolean
   sidebarVisible: boolean
   sidebarPosition: SidebarPosition
@@ -22,7 +19,6 @@ interface AppHeaderProps {
   tabBar: React.ReactNode
   onOpenGlobalSearch: () => void
   onAddFolder: () => void
-  onOpenGoogleTasks: () => void
   onToggleTerminal: () => void
   onToggleSidebar: () => void
   onOpenSettings: () => void
@@ -36,15 +32,12 @@ interface AppHeaderProps {
 // sidebar (and thus the toolbar) moves to the other side. The macOS
 // traffic-light gap (ml-24) stays on whichever group is leftmost.
 export const AppHeader: React.FC<AppHeaderProps> = ({
-  googleTasksEnabled,
-  googleTasksActive,
   terminalShown,
   sidebarVisible,
   sidebarPosition,
   tabBar,
   onOpenGlobalSearch,
   onAddFolder,
-  onOpenGoogleTasks,
   onToggleTerminal,
   onToggleSidebar,
   onOpenSettings
@@ -86,20 +79,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     >
       <FolderOpen size={16} />
     </ToolbarButton>,
-    ...(googleTasksEnabled
-      ? [
-          <ToolbarButton
-            key="tasks"
-            onClick={onOpenGoogleTasks}
-            active={googleTasksActive}
-            title="Google Tasks"
-            tooltipAlign={align}
-            colorClassName="text-gray-400 hover:text-white"
-          >
-            <SquareCheckBig size={16} />
-          </ToolbarButton>
-        ]
-      : []),
     <ToolbarButton
       key="terminal"
       onClick={onToggleTerminal}

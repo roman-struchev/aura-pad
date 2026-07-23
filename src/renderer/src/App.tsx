@@ -18,6 +18,7 @@ import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
 import { WorkTogetherConfigModal } from './components/WorkTogetherConfigModal'
 import { ShareDialog } from './components/ShareDialog'
 import { makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
+import { EXTENSIONS } from './lib/extensions'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
@@ -635,6 +636,19 @@ function App(): React.JSX.Element {
   const activeExt = tabs.selectedPath ? parseExtensionPath(tabs.selectedPath) : null
   const hasFileActions = !!tabs.selectedPath && !activeExt
 
+  // Enabled built-in extensions that open as tabs, listed in the sidebar's
+  // Extensions section. Currently only Google Tasks; the section is hidden
+  // when the list is empty.
+  const enabledExtensions = settings.extensions.googleTasks.enabled
+    ? [
+        {
+          id: 'google-tasks',
+          icon: EXTENSIONS['google-tasks'].icon,
+          label: EXTENSIONS['google-tasks'].title(null)
+        }
+      ]
+    : []
+
   // Entry point from the file tree's per-root branch badge: focus that
   // root's repo in the git panel and reveal the panel. Also un-hides the
   // sidebar, since the git panel lives inside it.
@@ -678,13 +692,10 @@ function App(): React.JSX.Element {
       <AppHeader
         sidebarVisible={settings.sidebarVisible}
         sidebarPosition={settings.sidebarPosition}
-        googleTasksEnabled={settings.extensions.googleTasks.enabled}
-        googleTasksActive={activeExt?.id === 'google-tasks'}
         terminalShown={terminal.showTerminal}
         onToggleSidebar={toggleSidebar}
         onOpenGlobalSearch={openGlobalSearch}
         onAddFolder={tree.handleAddFolder}
-        onOpenGoogleTasks={() => tabs.openTab(makeExtensionPath('google-tasks'))}
         onToggleTerminal={toggleTerminal}
         onOpenSettings={() => setShowSettings(true)}
         tabBar={
@@ -855,6 +866,9 @@ function App(): React.JSX.Element {
               sidebarView={sidebarView}
               setSidebarView={setSidebarView}
               rootNodes={tree.rootNodes}
+              extensions={enabledExtensions}
+              activeExtensionId={activeExt?.id ?? null}
+              onOpenExtension={(id) => tabs.openTab(makeExtensionPath(id))}
               recentExternalFiles={recentExternalPaths}
               onRemoveRecentExternalFile={handleRemoveRecent}
               selectedPath={tabs.selectedPath}
