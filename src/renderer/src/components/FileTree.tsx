@@ -167,7 +167,7 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
       <div
         ref={rowRef}
         className={clsx(
-          'group flex items-center px-2 cursor-pointer leading-tight hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400/60',
+          'group flex items-center px-2 cursor-pointer leading-normal hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors outline-none focus:ring-1 focus:ring-inset focus:ring-gray-400/60',
           rowPadding,
           isSelected && 'bg-fleet-active text-fleet-textHover',
           isDragOver && 'bg-blue-500/20 ring-1 ring-inset ring-blue-500',
