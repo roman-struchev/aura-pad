@@ -1,6 +1,8 @@
 import React from 'react'
 import {
   AlignLeft,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Code2,
   Crosshair,
   Eye,
@@ -22,6 +24,8 @@ interface FileActionsProps {
   isFileInWorkspace: boolean
   showPreview: boolean
   isPreviewable: boolean
+  canFold: boolean
+  foldedAll: boolean
   canDictate: boolean
   isProse: boolean
   workTogetherEnabled: boolean
@@ -32,6 +36,7 @@ interface FileActionsProps {
   onRevealActiveFile: () => void
   onRunPython: () => void
   onFormatDocument: () => void
+  onToggleFold: () => void
   onTogglePreview: () => void
   onToggleDictation: () => void
   onStartReadAloud: () => void
@@ -47,6 +52,8 @@ export const FileActions: React.FC<FileActionsProps> = ({
   isFileInWorkspace,
   showPreview,
   isPreviewable,
+  canFold,
+  foldedAll,
   canDictate,
   isProse,
   workTogetherEnabled,
@@ -57,6 +64,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
   onRevealActiveFile,
   onRunPython,
   onFormatDocument,
+  onToggleFold,
   onTogglePreview,
   onToggleDictation,
   onStartReadAloud,
@@ -95,6 +103,16 @@ export const FileActions: React.FC<FileActionsProps> = ({
           colorClassName={muted}
         >
           <AlignLeft size={16} />
+        </ToolbarButton>
+      )}
+      {canFold && (
+        <ToolbarButton
+          onClick={onToggleFold}
+          active={foldedAll}
+          colorClassName={muted}
+          title={foldedAll ? 'Unfold All' : 'Fold All'}
+        >
+          {foldedAll ? <ChevronsUpDown size={16} /> : <ChevronsDownUp size={16} />}
         </ToolbarButton>
       )}
       {isPreviewable && (

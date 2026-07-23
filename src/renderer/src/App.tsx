@@ -262,6 +262,22 @@ function App(): React.JSX.Element {
     readAloudRef.current.speak(text, { markdown })
   }
 
+  // Fold-all / unfold-all toggle for the toolbar. Monaco ships both commands
+  // (editor.foldAll / editor.unfoldAll) but wires no UI to them; a single
+  // button flips between the two. Monaco has no "is everything folded" query,
+  // so we track which file we last folded and derive the toggle state from
+  // that - switching files naturally shows "fold" again (folds are per-model
+  // view state and don't carry a shared "all folded" flag).
+  const [foldedPath, setFoldedPath] = useState<string | null>(null)
+  const foldedAll = !!tabs.selectedPath && foldedPath === tabs.selectedPath
+  const toggleFold = (): void => {
+    const editor = editorInstanceRef.current
+    if (!editor) return
+    const next = !foldedAll
+    editor.getAction(next ? 'editor.foldAll' : 'editor.unfoldAll')?.run()
+    setFoldedPath(next ? tabs.selectedPath : null)
+  }
+
   const handleEditorMount = (editor: monaco.editor.IStandaloneCodeEditor): void => {
     tabs.handleEditorDidMount(editor)
     workTogether.registerEditor(editor)
@@ -708,6 +724,8 @@ function App(): React.JSX.Element {
                 }
                 showPreview={tabs.showMarkdownPreview}
                 isPreviewable={isPreviewablePath(tabs.selectedPath)}
+                canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
+                foldedAll={foldedAll}
                 canDictate={canDictate}
                 isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
                 workTogetherEnabled={settings.extensions.workTogether.enabled}
@@ -728,6 +746,7 @@ function App(): React.JSX.Element {
                 }}
                 onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
                 onFormatDocument={formatActiveDocument}
+                onToggleFold={toggleFold}
                 onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
                 onToggleDictation={toggleDictation}
                 onStartReadAloud={startReadAloud}
