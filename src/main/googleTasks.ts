@@ -326,7 +326,8 @@ function toGTask(t: Record<string, unknown>): GTask {
     status: t.status === 'completed' ? ('completed' as const) : ('needsAction' as const),
     due: t.due ? String(t.due) : undefined,
     completed: t.completed ? String(t.completed) : undefined,
-    updated: t.updated ? String(t.updated) : undefined
+    updated: t.updated ? String(t.updated) : undefined,
+    position: t.position ? String(t.position) : undefined
   }
 }
 

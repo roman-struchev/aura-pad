@@ -14,6 +14,12 @@ export interface GTask {
   due?: string
   completed?: string
   updated?: string
+  // Manual-order sort key the API assigns/updates on create and move() - a
+  // zero-padded numeric string, so plain lexicographic comparison sorts
+  // correctly. tasks.list() does NOT guarantee its response is already in
+  // this order (a documented API quirk), so callers must sort by it
+  // themselves to get the order the Google Tasks app shows.
+  position?: string
 }
 
 // Payload for creating/updating a task. `due`, when present, is either a full

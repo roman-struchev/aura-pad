@@ -29,10 +29,15 @@ interface ListWithTasks {
   error?: string
 }
 
-// Open tasks first in the API's own (manual) order, completed ones after,
-// newest completion first.
+// Open tasks first, sorted by the API's manual-order `position` key -
+// tasks.list() doesn't guarantee its response is already in that order (a
+// documented Tasks API quirk), so a drag-reorder can look reverted on the
+// next fetch/reload if the raw response order is trusted instead. Completed
+// ones come after, newest completion first.
 function sortTasks(tasks: GTask[]): GTask[] {
-  const open = tasks.filter((t) => t.status === 'needsAction')
+  const open = tasks
+    .filter((t) => t.status === 'needsAction')
+    .sort((a, b) => (a.position ?? '').localeCompare(b.position ?? ''))
   const done = tasks
     .filter((t) => t.status === 'completed')
     .sort((a, b) => (b.completed ?? '').localeCompare(a.completed ?? ''))
