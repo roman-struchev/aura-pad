@@ -1,3 +1,4 @@
+import fs from 'fs'
 import iconv from 'iconv-lite'
 import jschardet from 'jschardet'
 
@@ -94,12 +95,29 @@ export function decodeFileBuffer(filePath: string, buf: Buffer): DecodedFile {
   return { content: iconv.decode(buf, detected.encoding) }
 }
 
+// Nothing is remembered for this path: it was never read in this session, or
+// its entry aged out of ENCODING_MAP_LIMIT while the tab stayed open. Falling
+// back to UTF-8 in the latter case would silently transcode a legacy-encoded
+// file on its next (auto)save, so re-detect from the bytes currently on disk
+// instead - decodeFileBuffer registers what it finds, same as a real read.
+// Only ever reached on the fallback path, so the extra read costs nothing in
+// the normal case, and a path with no file behind it (a brand-new file) still
+// ends up as UTF-8.
+function detectFromDisk(filePath: string): FileEncoding {
+  try {
+    decodeFileBuffer(filePath, fs.readFileSync(filePath))
+  } catch {
+    // Missing/unreadable - nothing to preserve.
+  }
+  return fileEncodings.get(filePath) ?? UTF8
+}
+
 // Encodes a buffer to write back to filePath, in the same encoding (and with
 // the same BOM) its last read detected; UTF-8 for never-read paths (new
 // files). Characters unrepresentable in a legacy target encoding become '?' -
 // iconv's standard behavior, and what most editors do.
 export function encodeFileContent(filePath: string, content: string): Buffer {
-  const enc = fileEncodings.get(filePath) ?? UTF8
+  const enc = fileEncodings.get(filePath) ?? detectFromDisk(filePath)
   if (enc.name === 'utf-8') {
     const body = Buffer.from(content, 'utf-8')
     return enc.hasBOM ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), body]) : body

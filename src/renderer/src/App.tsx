@@ -54,7 +54,7 @@ import * as monaco from 'monaco-editor'
 import clsx from 'clsx'
 
 function App(): React.JSX.Element {
-  const { settings, updateSetting } = useSettings()
+  const { settings, settingsLoaded, updateSetting } = useSettings()
   // Read through a ref by the once-subscribed handlers (menu accelerators,
   // Monaco actions) so their guards see the live enabled flags, not a stale
   // mount-time snapshot.
@@ -88,13 +88,22 @@ function App(): React.JSX.Element {
   )
 
   const terminal = useTerminals()
-  const workTogether = useWorkTogether(
-    settings.extensions.workTogether.backendUrl,
-    settings.extensions.workTogether.displayName || 'Host'
-  )
+  const workTogether = useWorkTogether({
+    enabled: settings.extensions.workTogether.enabled,
+    settingsLoaded,
+    backendUrl: settings.extensions.workTogether.backendUrl,
+    displayName: settings.extensions.workTogether.displayName || 'Host'
+  })
   // Lets tab close/cleanup skip disposing the Monaco model for a path that's
   // still being shared (see the isPathShared guard in removeTabFromState).
-  const tabs = useTabs(settings.tabsEnabled, workTogether.isSharing, workTogether.stop)
+  // `settingsLoaded` holds the session restore back until `tabsEnabled` is
+  // the user's real choice rather than the default.
+  const tabs = useTabs(
+    settings.tabsEnabled,
+    settingsLoaded,
+    workTogether.isSharing,
+    workTogether.stop
+  )
   // Lets a resumed session whose model didn't exist yet at reconnect time
   // (the tab wasn't open, or wasn't the active one) bind to it once it
   // actually becomes the active tab.
@@ -599,7 +608,7 @@ function App(): React.JSX.Element {
   }, [])
 
   const runPythonFile = (path: string): void => {
-    const quotedPath = quoteForShell(path, window.electron.process.platform)
+    const quotedPath = quoteForShell(path, window.api.platform)
     terminal.openNewTerminal(dirname(path), `python3 ${quotedPath}`)
   }
 

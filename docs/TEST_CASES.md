@@ -39,6 +39,7 @@ fs.writeFileSync('bin.dat', Buffer.from([1, 0, 2, 0, 3]))
 | 1.3 | `readFile(utf16.txt)` → edit → `saveFile` → read raw bytes | Content correct; first two bytes still `0xFF 0xFE` (UTF-16LE BOM preserved) |
 | 1.4 | `readFile(bin.dat)` | `success:false`, error "looks like a binary file" |
 | 1.5 | Open cp1251 file, edit one character, wait for autosave (~1.2 s) | On-disk bytes still valid cp1251 of the edited text — the original data-loss bug (autosave writing U+FFFD replacement chars) must not recur |
+| 1.6 | Without opening it first, `window.api.saveFile(cp1251.txt, 'Привет мир!\nправка\n')` (simulates an entry evicted from the encoding cache by `ENCODING_MAP_LIMIT`) | Bytes are still cp1251 — `encodeFileContent` re-detects from disk instead of defaulting to UTF-8 and transcoding the file |
 
 **Root bug:** everything was read as UTF-8, so legacy files showed `�` and
 autosave wrote the replacement chars back, corrupting the file irreversibly.
@@ -71,6 +72,8 @@ external-change handler in `useTabs.ts`.
 |---|-------|----------|
 | 3.1 | Type in a file (tab dirty, autosave timer armed), then switch git branch via the branch selector before the ~1.2 s autosave fires | The dirty tab is saved to the **current** branch first; the old branch's buffer is **not** written over the new branch's file after checkout |
 | 3.2 | Have a clean tab open; change the file on disk externally (git checkout in a terminal), and start typing in that tab within the read window | Your typed characters are not clobbered by the disk content; the "changed on disk" banner appears instead (the handler re-checks `isSaved` after the async read) |
+| 3.3 | Type in tab A, then switch to tab B **before** the ~1.2 s autosave fires and stay there | A is written to disk anyway (autosave covers every dirty tab, not just the active one) and its dirty dot clears. Autosave used to be keyed on the active tab, so leaving A left it unsaved until you came back |
+| 3.4 | Same as 3.3, but A is showing the "changed on disk" banner | A is **not** written — a tab whose file changed underneath it waits for the user's Reload/Ignore choice |
 
 ---
 
@@ -201,6 +204,36 @@ is simply: **the reports render.**
 |---|-------|----------|
 | 12.1 | Open each report in `~/git/java-guild/public/pages/*.html`, toggle preview | The report renders (tables/charts), including the "wrapper" ones (`report-port-component`, `report-aggregated`, `report-employees-stats`, `report-port-mentor-domain`) that `document.write` into a nested iframe |
 | 12.2 | If you change the iframe sandbox, re-run 12.1 | Dropping `allow-same-origin` (opaque origin) makes the wrapper reports render **blank** — that's the regression to avoid |
+
+---
+
+## 13. Startup waits for the persisted settings
+
+Guards: `settingsLoaded` in `useSettings.ts`, the restore effect in `useTabs.ts`,
+the resume/teardown effects in `useWorkTogether.ts`.
+
+Both of these run **once** at startup off a single setting, and `settings` starts
+out as `DEFAULT_SETTINGS` until main answers — so acting before that silently
+picks the default instead of the user's choice.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 13.1 | With two tabs open, set `tabsEnabled: false` in settings.json, relaunch | Only the previously active tab is restored, not the whole list (the restore used to run against the default `true`) |
+| 13.2 | Set `tabsEnabled: true`, relaunch with two tabs persisted | Both tabs come back — the gate must not break the normal path |
+| 13.3 | Plant a session in `<userDataDir>/workTogetherSessions.json` pointing at a dead backend (e.g. `http://127.0.0.1:9`), leave Work Together **disabled**, relaunch | The file is left untouched: nothing connects, nothing is resumed. A disabled extension used to reconnect every persisted session anyway (and would have dropped this one as gone) |
+| 13.4 | With that session planted, switch Work Together **on** in Settings → Configure… | Resume runs right away without a relaunch: the dead session is dropped from the file (`{"sessions":[]}`) |
+| 13.5 | Share a file, then switch Work Together **off** | The local session is torn down (no socket, no relaying) but its record survives, so 13.4 picks it back up. Ending it for good stays "Stop Sharing" only |
+
+---
+
+## 14. Preload exposes nothing but the typed api
+
+Guards: `src/preload/index.ts`, `src/preload/index.d.ts`.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 14.1 | In the renderer console: `typeof window.electron` | `"undefined"` — the generic `electronAPI` bridge (unrestricted `ipcRenderer` for any channel) must stay unexposed, especially while the HTML preview can run scripts in this renderer (§12) |
+| 14.2 | `window.api.platform` | The platform string (`darwin`/`win32`/`linux`) - what the old bridge was actually used for; the tree context menu's "Open in Finder"/"Reveal in File Explorer" wording and `runPythonFile`'s quoting depend on it |
 
 ---
 

@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import {
   INVOKE_CHANNELS,
   SEND_CHANNELS,
@@ -14,6 +13,14 @@ import {
 // window.api is generated from the channel maps in shared/ipc.ts - adding an
 // IPC endpoint means adding its contract + map entry there, nothing here.
 // Only the dynamic per-terminal channels and webUtils bridging are manual.
+//
+// Nothing else is exposed on purpose: @electron-toolkit/preload's generic
+// `electronAPI` bridge (which used to be published as window.electron) hands
+// the page an unrestricted ipcRenderer - invoke/send/on for *any* channel,
+// bypassing the typed contracts below and reachable by any script that gets
+// to run in this renderer (e.g. from the HTML preview). The only thing it was
+// actually used for was process.platform, which is now a plain value on the
+// api object.
 
 function buildInvokeApi(): InvokeApi {
   const out: Record<string, (...args: unknown[]) => Promise<unknown>> = {}
@@ -45,10 +52,15 @@ function buildEventApi(): EventApi {
   return out as unknown as EventApi
 }
 
-const api: AuraPadApi & { getPathForFile: (file: File) => string } = {
+const api: AuraPadApi & {
+  getPathForFile: (file: File) => string
+  platform: NodeJS.Platform
+} = {
   ...buildInvokeApi(),
   ...buildSendApi(),
   ...buildEventApi(),
+
+  platform: process.platform,
 
   onPtyData: (termId: string, callback: (data: string) => void) =>
     subscribe(`pty-data-${termId}`, callback as (...args: unknown[]) => void),
@@ -64,14 +76,11 @@ const api: AuraPadApi & { getPathForFile: (file: File) => string } = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

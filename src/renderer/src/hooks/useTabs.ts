@@ -35,8 +35,14 @@ export type JumpTarget = { line: number; col?: number; matchLen?: number }
 // destroys its MonacoBinding) means the model can then be disposed safely,
 // instead of leaving a live binding pointing at a disposed model (whose next
 // remote update throws) and a session orphaned under a path nothing maps to.
+//
+// `settingsLoaded` gates the once-only session restore below: `tabsEnabled`
+// starts out as its DEFAULT_SETTINGS value and only becomes the user's own
+// choice once main answers with the persisted settings, so restoring before
+// that would restore the whole tab list for someone who turned tabs off.
 export function useTabs(
   tabsEnabled: boolean,
+  settingsLoaded: boolean,
   isPathShared?: (path: string) => boolean,
   stopSharing?: (path: string) => void
 ) {
@@ -266,14 +272,20 @@ export function useTabs(
     }
   }
 
-  // Flushes every dirty file tab to disk. Called right before a branch
-  // switch: an armed autosave timer firing *after* the checkout would write
-  // the old branch's buffer over the new branch's file - and the watcher
-  // would then suppress that write's echo as a self-write, making the
-  // clobber completely silent.
+  // Flushes every dirty file tab to disk - this is also what autosave runs
+  // (see the effect below), so it deliberately covers background tabs, not
+  // just the active one. Called right before a branch switch too: an armed
+  // autosave timer firing *after* the checkout would write the old branch's
+  // buffer over the new branch's file - and the watcher would then suppress
+  // that write's echo as a self-write, making the clobber completely silent.
+  //
+  // Tabs flagged with externalChangeAvailable are skipped: the file changed
+  // on disk under them and the user hasn't decided yet (Reload/Ignore
+  // banner), so writing our buffer over it would silently discard the other
+  // side's change.
   const saveAllDirtyFileTabs = async (): Promise<void> => {
     for (const tab of tabsRef.current) {
-      if (tab.isSaved || isExtensionPath(tab.path)) continue
+      if (tab.isSaved || tab.externalChangeAvailable || isExtensionPath(tab.path)) continue
       const { path, content } = tab
       const result = await window.api.saveFile(path, content)
       // Same guard as handleSave: only mark saved if the buffer still holds
@@ -501,14 +513,23 @@ export function useTabs(
     })
   }
 
-  // Autosave: after a short pause in typing, save automatically.
+  // Autosave: after a short pause in typing, save automatically - every dirty
+  // tab, not just the active one. Keyed on `tabs` (a new array on every
+  // keystroke, since updateTab replaces it) so typing keeps pushing the
+  // deadline out; switching tabs doesn't touch `tabs`, so the armed timer
+  // survives it and still flushes the tab that was just left behind. Before,
+  // the timer was cleared by the activeTabPath dep and a dirty tab could sit
+  // unsaved indefinitely, with only the on-quit prompt catching it.
+  const hasDirtyFileTabs = tabs.some(
+    (t) => !t.isSaved && !t.externalChangeAvailable && !isExtensionPath(t.path)
+  )
   useEffect(() => {
-    if (!activeTabPath || isSaved || externalChangeAvailable) return
+    if (!hasDirtyFileTabs) return
     const timer = setTimeout(() => {
-      handleSave()
+      saveAllDirtyFileTabs()
     }, 1200)
     return () => clearTimeout(timer)
-  }, [fileContent, activeTabPath, isSaved, externalChangeAvailable])
+  }, [tabs, hasDirtyFileTabs])
 
   // React to a file changing on disk from outside the app (another editor,
   // git, another window of this app). If we have no local edits it's safe to
@@ -553,6 +574,10 @@ export function useTabs(
   // an error, since this isn't a user-initiated open. In single-tab mode
   // (tabsEnabled off) only the previously active file is restored.
   useEffect(() => {
+    // Waits for the real `tabsEnabled`: this effect runs once and then never
+    // again, so starting it while settings are still the defaults would
+    // permanently pick the wrong restore mode (see the hook's doc comment).
+    if (!settingsLoaded) return
     if (restoreStartedRef.current) return
     restoreStartedRef.current = true
     ;(async () => {
@@ -604,7 +629,7 @@ export function useTabs(
       }
       hasRestoredRef.current = true
     })()
-  }, [tabsEnabled])
+  }, [tabsEnabled, settingsLoaded])
 
   // Persist the open tab list (paths, active tab, pinned state - not
   // content, which is re-read from disk on restore) so it survives an app

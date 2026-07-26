@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
-import clsx from 'clsx'
-import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
-import { Modal } from './Modal'
-import { SettingToggle } from './SettingToggle'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ModelPickerModal, ModelPickerOption } from './ModelPickerModal'
+import { useDeleteAndRefresh } from '../lib/useDeleteAndRefresh'
 import { downloadedVoices, voiceInfo, type ReadLang } from '../hooks/useReadAloud'
 import { READ_VOICE_KEYS, type ReadVoices } from '../../../shared/settings'
 
@@ -24,10 +23,11 @@ interface ReadAloudModalProps {
 
 const LANG_TITLES: Record<ReadLang, string> = { ru: 'Russian voice', en: 'English voice' }
 
-// First-use read-aloud dialog, mirroring the dictation model dialog: a radio
-// list of voices per language the text needs - the OS's basic voice is one of
-// the options (no download) - with a progress bar while the chosen neural
-// voices fetch. The selection is saved to Settings by the confirm handler.
+// First-use read-aloud dialog, mirroring the dictation model dialog (both are
+// ModelPickerModal underneath): a radio list of voices per language the text
+// needs - the OS's basic voice is one of the options (no download) - with a
+// progress bar while the chosen neural voices fetch. The selection is saved to
+// Settings by the confirm handler.
 export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   langs,
   current,
@@ -44,16 +44,8 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   // Which language's voice list is open; starts on the first one so it's
   // immediately visible instead of a fully collapsed accordion.
   const [expanded, setExpanded] = useState<ReadLang>(langs[0])
-  // Bumped after a deletion so the "downloaded" marks re-read localStorage.
-  const [, setDeletedCount] = useState(0)
+  const handleDelete = useDeleteAndRefresh(onDeleteVoice)
   const downloaded = downloadedVoices()
-
-  const handleDelete = async (e: React.MouseEvent, voiceId: string): Promise<void> => {
-    e.preventDefault()
-    e.stopPropagation()
-    await onDeleteVoice(voiceId)
-    setDeletedCount((n) => n + 1)
-  }
 
   const needsDownload = langs.some((lang) => {
     const info = voiceInfo(lang, voices[lang])
@@ -68,64 +60,40 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
   ): React.ReactElement => {
     const info = voiceInfo(lang, key)
     return (
-      <label
+      <ModelPickerOption
         key={key}
-        className={clsx(
-          'flex items-center gap-2.5 rounded border px-2.5 py-1.5 cursor-pointer',
-          selected ? 'border-blue-500 bg-blue-500/10' : 'border-fleet-border hover:bg-fleet-active',
-          downloading && 'pointer-events-none opacity-60'
-        )}
-      >
-        <input
-          type="radio"
-          name={`read-voice-${lang}`}
-          className="accent-blue-500 shrink-0"
-          checked={selected}
-          disabled={downloading}
-          onChange={onSelect}
-        />
-        <span className="flex-1 text-xs text-fleet-text">
-          {info ? info.label : 'System voice'}
-          {info && downloaded.includes(info.id) && (
-            <span className="text-green-500"> - downloaded</span>
-          )}
-        </span>
-        <span className="text-[11px] text-gray-500">
-          {info ? info.approxDownload : 'no download'}
-        </span>
-        {info && downloaded.includes(info.id) && (
-          <button
-            className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-fleet-bg shrink-0"
-            title="Delete downloaded voice"
-            onClick={(e) => handleDelete(e, info.id)}
-          >
-            <Trash2 size={13} />
-          </button>
-        )}
-      </label>
+        name={`read-voice-${lang}`}
+        selected={selected}
+        disabled={downloading}
+        compact
+        label={info ? info.label : 'System voice'}
+        downloaded={!!info && downloaded.includes(info.id)}
+        trailing={info ? info.approxDownload : 'no download'}
+        onSelect={onSelect}
+        onDelete={info ? (e) => handleDelete(e, info.id) : undefined}
+        deleteTitle="Delete downloaded voice"
+      />
     )
   }
 
   return (
-    <Modal title="Read Aloud" onClose={onClose} width="w-[26rem]">
-      <div className="text-xs text-gray-400 mb-3">
-        Natural-sounding voices run entirely on this computer - downloaded once from huggingface.co
-        and stored locally. The choice is remembered in Settings.
-      </div>
-
-      {enabled !== undefined && onEnabledChange && (
-        <div className="border-y border-fleet-border py-2.5 mb-2.5">
-          <SettingToggle
-            label="Enabled"
-            description="Show the Read Aloud button and menu item"
-            checked={enabled}
-            onChange={onEnabledChange}
-            labelClassName="text-xs"
-            descriptionClassName="text-[11px]"
-          />
-        </div>
-      )}
-
+    <ModelPickerModal
+      title="Read Aloud"
+      intro="Natural-sounding voices run entirely on this computer - downloaded once from huggingface.co and stored locally. The choice is remembered in Settings."
+      enabled={enabled}
+      onEnabledChange={onEnabledChange}
+      enabledDescription="Show the Read Aloud button and menu item"
+      downloading={downloading}
+      progress={progress}
+      progressLabel="Downloading…"
+      confirmLabel={needsDownload ? 'Download' : mode === 'consent' ? 'Read' : 'Use Model'}
+      onConfirm={() => onConfirm(Object.fromEntries(langs.map((lang) => [lang, voices[lang]])))}
+      onClose={onClose}
+      // The accordions already carry their own bottom margin, so this dialog
+      // keeps the tighter spacing it had below them.
+      progressClassName="mt-1 mb-1"
+      footerClassName="mt-3"
+    >
       {langs.map((lang) => {
         const isOpen = expanded === lang
         const selectedInfo = voiceInfo(lang, voices[lang])
@@ -156,31 +124,6 @@ export const ReadAloudModal: React.FC<ReadAloudModalProps> = ({
           </div>
         )
       })}
-
-      {downloading && (
-        <div className="mt-1 mb-1">
-          <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-            <span>Downloading…</span>
-            <span>{progress ?? 0}%</span>
-          </div>
-          <div className="h-1.5 rounded bg-fleet-bg overflow-hidden">
-            <div
-              className="h-full bg-blue-500 transition-all duration-300"
-              style={{ width: `${progress ?? 0}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="flex justify-end mt-3">
-        <button
-          className="px-3 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
-          disabled={downloading}
-          onClick={() => onConfirm(Object.fromEntries(langs.map((lang) => [lang, voices[lang]])))}
-        >
-          {needsDownload ? 'Download' : mode === 'consent' ? 'Read' : 'Use Model'}
-        </button>
-      </div>
-    </Modal>
+    </ModelPickerModal>
   )
 }

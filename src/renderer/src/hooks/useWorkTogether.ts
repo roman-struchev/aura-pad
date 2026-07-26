@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { MonacoBinding } from 'y-monaco'
 import { WorkTogetherProvider, type WorkTogetherProviderStatus } from '../lib/workTogether/provider'
+import { alertDialog } from '../lib/dialogs'
 import type {
   WorkTogetherLink,
   WorkTogetherLinkRole,
@@ -144,7 +145,25 @@ export interface UseWorkTogetherResult {
 // doesn't end them server-side (specification.md §2), so their
 // sessionId/hostToken/links are persisted (see persistSession/forgetSession
 // below) and reconnected to - not re-created - on next launch (resumeSession).
-export function useWorkTogether(backendUrl: string, displayName: string): UseWorkTogetherResult {
+export interface UseWorkTogetherOptions {
+  // The extension's Settings flag. Nothing connects while it's off: the
+  // resume pass below is skipped, and any session still live when it's
+  // switched off is torn down locally.
+  enabled: boolean
+  // `enabled` is only the user's own choice once the persisted settings have
+  // arrived (it starts out as its DEFAULT_SETTINGS value) - the resume pass
+  // waits for this so it can't run against the default.
+  settingsLoaded: boolean
+  backendUrl: string
+  displayName: string
+}
+
+export function useWorkTogether({
+  enabled,
+  settingsLoaded,
+  backendUrl,
+  displayName
+}: UseWorkTogetherOptions): UseWorkTogetherResult {
   const [view, setView] = useState<Record<string, WorkTogetherSessionView>>({})
   // Backs isSharing. Kept separate from `view` (which also changes on every
   // participant/status patch, e.g. a remote cursor moving) so that a
@@ -370,8 +389,25 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
       // `view`, and patchView's "no entry yet" fallback would recreate it -
       // resurrecting a session for the "Stop Sharing" button to appear on.
       disposeEntry(entry)
-      await forgetSession(path)
-      await window.api.workTogetherEndSession(entry.backendUrl, entry.sessionId, entry.hostToken)
+      const ended = await window.api.workTogetherEndSession(
+        entry.backendUrl,
+        entry.sessionId,
+        entry.hostToken
+      )
+      // The persisted record is only dropped once the backend confirms the
+      // session is gone. If the call failed (offline, backend down), the
+      // session - and every link minted for it - is still live server-side,
+      // so forgetting it here would leave it running with no way back to it.
+      // Keeping the record means the next launch reconnects to it and "Stop
+      // Sharing" can be retried; say so instead of silently implying the
+      // share was closed.
+      if (ended.success) {
+        await forgetSession(path)
+      } else {
+        await alertDialog(
+          `Stopped sharing locally, but the session could not be ended on the server (${ended.error}). Existing links stay live until they expire - AuraPad will reconnect to this session on the next launch so you can stop it again.`
+        )
+      }
     },
     [forgetSession]
   )
@@ -488,6 +524,12 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
   // list - same pattern as useTabs' restoreStartedRef.
   const resumeStartedRef = useRef(false)
   useEffect(() => {
+    // Nothing reconnects until the real settings are in and the extension is
+    // actually on: a disabled extension used to still resume every persisted
+    // session on launch, quietly relaying the file's contents to the backend
+    // with no UI anywhere to reveal it. Not once-only by ref alone, so
+    // switching the extension on mid-session picks the sessions up too.
+    if (!settingsLoaded || !enabled) return
     if (resumeStartedRef.current) return
     resumeStartedRef.current = true
     ;(async () => {
@@ -496,7 +538,29 @@ export function useWorkTogether(backendUrl: string, displayName: string): UseWor
         await resumeSession(persisted)
       }
     })()
-  }, [resumeSession])
+  }, [settingsLoaded, enabled, resumeSession])
+
+  // Switched off mid-session: drop every live session locally (socket,
+  // provider, Yjs doc, MonacoBinding) so nothing is relayed while the
+  // extension is off. Deliberately local-only, exactly like the unmount
+  // teardown above - the sessions stay alive server-side (§2) and their
+  // persisted records are kept, so switching the extension back on (or the
+  // next launch) reconnects to them rather than orphaning links that were
+  // already handed out. Ending them for good is what "Stop Sharing" is for.
+  useEffect(() => {
+    if (enabled) return
+    resumeStartedRef.current = false
+    if (sessionsRef.current.size === 0) return
+    for (const entry of sessionsRef.current.values()) disposeEntry(entry)
+    sessionsRef.current.clear()
+    // Deferred out of the effect body: setting state synchronously from an
+    // effect is what react-hooks/set-state-in-effect forbids (same pattern as
+    // useTabs' extension-tab reconciliation).
+    void Promise.resolve().then(() => {
+      setView({})
+      setSharedPaths(new Set())
+    })
+  }, [enabled])
 
   const notifyActivePath = useCallback((path: string): void => {
     const entry = sessionsRef.current.get(path)
