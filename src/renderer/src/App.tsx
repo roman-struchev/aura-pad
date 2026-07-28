@@ -734,9 +734,16 @@ function App(): React.JSX.Element {
           )}
         >
           {/* The active file's actions float over the editor's top-right
-              corner, Obsidian-style, rather than living in the title bar. */}
+              corner, Obsidian-style, rather than living in the title bar.
+              The external-change banner is in-flow above the editor, so the
+              actions drop below it instead of overlapping its buttons. */}
           {hasFileActions && (
-            <div className="absolute top-1 right-2 z-20">
+            <div
+              className={clsx(
+                'absolute right-2 z-20',
+                tabs.externalChangeAvailable ? 'top-9' : 'top-1'
+              )}
+            >
               <FileActions
                 selectedPath={tabs.selectedPath}
                 isFileInWorkspace={
