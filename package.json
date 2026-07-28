@@ -1,6 +1,6 @@
 {
   "name": "aurapad",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "description": "AuraPad — a lightweight code editor built with Electron and React",
   "author": "Roman Struchev",
   "main": "./out/main/index.js",
