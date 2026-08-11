@@ -88,10 +88,14 @@ export function useGlobalHotkeys(options: UseGlobalHotkeysOptions): void {
       // last click was inside it, and focus isn't in a text field (Monaco and
       // xterm both park it on a hidden textarea) - so this never steals
       // Cmd+C/V from the editor, the terminal, or the git commit box.
+      // The remembered surface must also still be on screen: hiding the
+      // sidebar (Cmd+B) right after clicking a row would otherwise leave the
+      // shortcuts armed over a tree nobody can see.
       const active = document.activeElement
       const treeIsActive =
         hasTreeSelection &&
         !isTextEntry(active) &&
+        !!document.querySelector(TREE_SURFACE_SELECTOR) &&
         (treeSurfaceActive.current || !!active?.closest?.(TREE_SURFACE_SELECTOR))
       if (!treeIsActive) return
 

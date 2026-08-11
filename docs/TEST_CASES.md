@@ -129,7 +129,7 @@ Guards: `sidebarVisible` in `settings.ts`, toggle in `App.tsx`/`AppHeader.tsx`,
 | 7.2 | Press Cmd+B | Toggles the sidebar the same way |
 | 7.3 | Hide sidebar, then quit & relaunch | Sidebar stays hidden (persisted in `settings.json`) |
 | 7.4 | Hide sidebar, then click a file-tree git branch badge / "reveal in tree" | Sidebar re-appears (those actions un-hide it) |
-| 7.5 | Hide sidebar, use a tree keyboard shortcut region | No crash — `sidebarRef.current` is null and the hotkey guard is null-safe |
+| 7.5 | Hide sidebar, then press Cmd+C / Cmd+V / Backspace | No crash and nothing happens to the (now invisible) tree — the tree surface is gone, so `useGlobalHotkeys` can't match it |
 
 ---
 

@@ -41,10 +41,13 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⌥⌘L', description: 'Format document (JSON/HTML/XML)' },
   { keys: '⇧⌘P', description: 'Toggle Markdown/HTML preview' },
   { keys: '⌃`', description: 'Toggle the terminal' },
+  { keys: '⌘B', description: 'Show/hide the sidebar' },
+  { keys: '⌘,', description: 'Open Settings' },
   { keys: '⇧⌘F', description: 'Search in workspace' },
   { keys: 'Shift Shift', description: 'Quick open a file or folder' },
-  { keys: '⌘C / ⌘V', description: 'Copy/paste in the file tree (row focused)' },
-  { keys: 'Delete', description: 'Delete in the file tree (row focused)' },
+  { keys: '⌘ / ⇧ click', description: 'Select several files in the tree (add / range)' },
+  { keys: '⌘C / ⌘V', description: 'Copy/paste the file-tree selection (shared with Finder)' },
+  { keys: '⌫', description: 'Move the file-tree selection to Trash' },
   {
     keys: 'Esc',
     description:

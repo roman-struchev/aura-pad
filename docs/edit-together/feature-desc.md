@@ -1,5 +1,11 @@
 # Work Together — real-time collaborative editing via a shared link
 
+> The original design note for the feature, kept for the reasoning behind it. It shipped
+> essentially as described; the settings key ended up as
+> `{ enabled, backendUrl, displayName }` and `backendUrl` now defaults to a hosted
+> instance. The backend contract lives in [specification.md](./specification.md), which is
+> the document to follow when implementing one.
+
 ## Goal
 
 Let a user grab a link to a tab that's open in AuraPad and hand it to someone else —
@@ -14,7 +20,8 @@ should talk to (see [specification.md](./specification.md) for what that service
 implement). This mirrors how Google Tasks already asks for an OAuth client id/secret
 once its toggle is flipped on — same "off until configured" pattern
 (`src/shared/settings.ts`'s `ExtensionSettings`), so `workTogether` should live there
-as `{ enabled: boolean, backendUrl: string }`.
+as `{ enabled: boolean, backendUrl: string }` (shipped with a `displayName` alongside,
+for the name shown to guests).
 
 ## User-facing flow
 
