@@ -158,6 +158,29 @@ async function main() {
     process.exit(1)
   }
 
+  // Cold start: the dev server may still be pre-bundling Monaco, and the first
+  // editor mount can take tens of seconds. Absorbing that here - once, outside
+  // any case - keeps the per-check timeouts tight enough to catch real
+  // regressions instead of being padded for the worst case.
+  const warmStart = Date.now()
+  await cdp.evaluate(`(() => {
+    const row = [...document.querySelectorAll('[data-tree-row]')]
+      .find((r) => /\\.(txt|md|json)$/.test(r.dataset.path || ''))
+    row?.click()
+    return true
+  })()`)
+  const warm = await waitFor(cdp, `!!document.querySelector('.monaco-editor')`, {
+    timeoutMs: 90_000
+  })
+  const warmSeconds = ((Date.now() - warmStart) / 1000).toFixed(1)
+  if (!warm) {
+    console.error(`\nThe editor never mounted (${warmSeconds}s).\n${app.log.join('')}`)
+    await quitApp()
+    fixture.cleanup()
+    process.exit(1)
+  }
+  if (Number(warmSeconds) > 5) console.log(`\x1b[90m(editor warm-up took ${warmSeconds}s)\x1b[0m\n`)
+
   const ctx = {
     cdp,
     ui: makeUi(cdp),
@@ -182,6 +205,9 @@ async function main() {
       ctx.cdp = cdp
       ctx.ui = makeUi(cdp)
       await waitFor(cdp, `!!document.querySelector('[data-tree-row]')`, { timeoutMs: 30_000 })
+      // A relaunch restores the previous session, so the editor comes back on
+      // its own - wait for it rather than letting the next case race it.
+      await waitFor(cdp, `!!document.querySelector('.monaco-editor')`, { timeoutMs: 60_000 })
       return cdp
     }
   }

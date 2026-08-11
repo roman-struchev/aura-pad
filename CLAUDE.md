@@ -1,8 +1,14 @@
 # AuraPad — working notes for Claude
 
-Electron + React + Monaco editor. `src/main` (Node side), `src/preload` (the
-typed `window.api` bridge, generated from `src/shared/ipc.ts`), `src/renderer`
-(the app).
+A lightweight text/code editor: Electron + React + Monaco. `src/main` (Node
+side), `src/preload` (the typed `window.api` bridge, generated from
+`src/shared/ipc.ts`), `src/renderer` (the app).
+
+[README.md](README.md) is the user-facing description — what the app does,
+feature by feature, plus install and release. Read it when you need to know
+whether a behavior is intended, or when a change makes something there wrong:
+**a feature change that contradicts the README means the README is part of the
+change.**
 
 ## After you change anything
 
