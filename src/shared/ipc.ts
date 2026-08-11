@@ -42,6 +42,14 @@ export interface PathOpResult extends OpResult {
   trees?: FileNode[]
 }
 
+// The batch form of the above, for operations that run over a whole tree
+// selection (or an OS-clipboard file list): `error` carries the collected
+// per-entry failures, `trees` comes back even on partial failure.
+export interface PathsOpResult extends OpResult {
+  newPaths?: string[]
+  trees?: FileNode[]
+}
+
 // stage/unstage/discard/commit: success flag plus the post-operation repo
 // statuses, again to save the immediate follow-up status call.
 export interface GitMutationResult extends OpResult {
@@ -89,9 +97,13 @@ export interface InvokeContracts {
     args: [parentPath: string, name: string, type: 'file' | 'directory']
     result: PathOpResult
   }
-  'copy-path': { args: [sourcePath: string, targetDirPath: string]; result: PathOpResult }
-  'delete-path': { args: [targetPath: string]; result: PathOpResult }
+  'copy-paths': { args: [sourcePaths: string[], targetDirPath: string]; result: PathsOpResult }
+  'delete-paths': { args: [targetPaths: string[]]; result: PathsOpResult }
   'move-path': { args: [sourcePath: string, targetDirPath: string]; result: PathOpResult }
+  // File copy/paste against the OS clipboard, so Finder/Explorer and the
+  // tree share one clipboard in both directions.
+  'clipboard-write-files': { args: [paths: string[]]; result: OpResult }
+  'clipboard-read-files': { args: []; result: string[] }
   'get-theme': { args: []; result: boolean }
   'get-settings': { args: []; result: AppSettings }
   'save-settings': { args: [settings: AppSettings]; result: AppSettings }
@@ -220,9 +232,11 @@ export const INVOKE_CHANNELS = {
   saveFile: 'save-file',
   renamePath: 'rename-path',
   createPath: 'create-path',
-  copyPath: 'copy-path',
-  deletePath: 'delete-path',
+  copyPaths: 'copy-paths',
+  deletePaths: 'delete-paths',
   movePath: 'move-path',
+  writeClipboardFiles: 'clipboard-write-files',
+  readClipboardFiles: 'clipboard-read-files',
   getTheme: 'get-theme',
   getSettings: 'get-settings',
   saveSettings: 'save-settings',

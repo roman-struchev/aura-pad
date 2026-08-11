@@ -433,8 +433,6 @@ function App(): React.JSX.Element {
     else setUpdateInstalling(true)
   }
 
-  const sidebarRef = useRef<HTMLDivElement>(null)
-
   // Monaco's built-in widgets (e.g. the Find/Replace bar's icon buttons) use
   // native title="" attributes, which pop up an OS-style tooltip that clashes
   // with the app's look. Some of those widgets render in an overlay layer
@@ -505,6 +503,10 @@ function App(): React.JSX.Element {
     // else is going on; then dictation (stop recording, throw the take away);
     // then read-aloud (stop speaking).
     onEscape: () => {
+      if (treeRef.current.contextMenu) {
+        treeRef.current.setContextMenu(null)
+        return true
+      }
       if (translateRef.current.popup) {
         translateRef.current.closePopup()
         return true
@@ -520,12 +522,10 @@ function App(): React.JSX.Element {
       return false
     },
     onToggleQuickOpen: () => setShowFileSearch((prev) => !prev),
-    sidebarRef,
-    focusedNode: tree.focusedNode,
-    hasClipboard: !!tree.clipboard,
-    onCopyNode: (node) => tree.setClipboard({ path: node.path }),
-    onPasteIntoNode: tree.pasteIntoNode,
-    onDeleteNode: tree.deleteNode
+    hasTreeSelection: tree.selectedPaths.length > 0,
+    onCopySelection: tree.copySelection,
+    onPasteIntoSelection: tree.pasteIntoSelection,
+    onDeleteSelection: tree.deleteSelection
   })
 
   useEffect(() => {
@@ -682,7 +682,7 @@ function App(): React.JSX.Element {
   const handleTreeContextMenu = useStableCallback(tree.handleContextMenu)
   const handleTreeCreateNew = useStableCallback(tree.startCreate)
   const handleTreeMove = useStableCallback(tree.handleMove)
-  const handleTreeFocusNode = useStableCallback(tree.handleFocusNode)
+  const handleTreeRowClick = useStableCallback(tree.handleRowClick)
   const handleTreeRunPython = useStableCallback((node: FileNode) => runPythonFile(node.path))
   const handleTreePreview = useStableCallback(previewMarkdown)
   const handleRemoveRecent = useStableCallback(handleRemoveRecentExternalFile)
@@ -854,7 +854,6 @@ function App(): React.JSX.Element {
 
         {settings.sidebarVisible && (
           <div
-            ref={sidebarRef}
             className={clsx(
               'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
               settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
@@ -886,12 +885,13 @@ function App(): React.JSX.Element {
               recentExternalFiles={recentExternalPaths}
               onRemoveRecentExternalFile={handleRemoveRecent}
               selectedPath={tabs.selectedPath}
+              selectedPaths={tree.selectedPathSet}
               revealRequest={tree.revealRequest}
               onSelect={handleTreeSelect}
               onContextMenu={handleTreeContextMenu}
               onCreateNew={handleTreeCreateNew}
               onMove={handleTreeMove}
-              onFocusNode={handleTreeFocusNode}
+              onRowClick={handleTreeRowClick}
               onRunPython={handleTreeRunPython}
               onPreviewMarkdown={handleTreePreview}
               git={git}
@@ -947,14 +947,15 @@ function App(): React.JSX.Element {
           x={tree.contextMenu.x}
           y={tree.contextMenu.y}
           node={tree.contextMenu.node}
-          hasClipboard={!!tree.clipboard}
+          selectedNodes={tree.selectedNodes}
+          clipboardCount={tree.clipboardCount}
           onClose={() => tree.setContextMenu(null)}
           onOpenTerminalHere={openTerminalHere}
           onCreateNew={tree.startCreate}
           onRename={tree.startRename}
-          onCopy={(node) => tree.setClipboard({ path: node.path })}
+          onCopy={tree.copySelection}
           onPaste={tree.pasteIntoNode}
-          onDelete={tree.deleteNode}
+          onDelete={tree.deleteSelection}
           onRemoveFolder={tree.handleRemoveFolder}
         />
       )}

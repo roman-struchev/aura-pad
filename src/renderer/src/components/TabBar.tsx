@@ -60,7 +60,8 @@ export const TabBar: React.FC<TabBarProps> = ({
             onContextMenu={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              setContextMenu({ x: e.pageX, y: e.pageY, path: tab.path })
+              // Viewport coordinates: the menu is position: fixed.
+              setContextMenu({ x: e.clientX, y: e.clientY, path: tab.path })
             }}
             onDragStart={() => setDraggedTab(tab.path)}
             onDragEnd={() => {

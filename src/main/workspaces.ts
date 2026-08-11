@@ -266,6 +266,16 @@ interface PathOpResult {
   error?: string
 }
 
+// The batch counterpart (copy/delete of a whole selection): `error` collects
+// the per-entry failures, and `trees` is present either way so a partially
+// applied batch still refreshes the sidebar.
+interface PathsOpResult {
+  success: boolean
+  newPaths?: string[]
+  trees?: FileNode[]
+  error?: string
+}
+
 // A new/renamed entry's name must stay within its parent directory - reject
 // anything containing a path separator (or "." / "..") so it can't be used
 // to create/move a file outside the folder the user actually picked.
@@ -411,45 +421,66 @@ function getAvailableDestName(destDir: string, originalName: string): string {
   return candidate
 }
 
-export async function copyPath(
-  sourcePath: string,
-  requestedTargetDirPath: string
-): Promise<PathOpResult> {
-  try {
-    // Pasting onto the exact folder that was copied means "duplicate it",
-    // so copy alongside it (into its parent) instead of into itself.
-    const targetDirPath =
-      requestedTargetDirPath === sourcePath ? path.dirname(sourcePath) : requestedTargetDirPath
+function copyOne(sourcePath: string, requestedTargetDirPath: string): string {
+  // Pasting onto the exact folder that was copied means "duplicate it",
+  // so copy alongside it (into its parent) instead of into itself.
+  const targetDirPath =
+    requestedTargetDirPath === sourcePath ? path.dirname(sourcePath) : requestedTargetDirPath
 
-    const rel = path.relative(sourcePath, targetDirPath)
-    if (fs.statSync(sourcePath).isDirectory() && (rel === '' || !rel.startsWith('..'))) {
-      return { success: false, error: 'Cannot copy a folder into itself or its subfolder' }
+  const rel = path.relative(sourcePath, targetDirPath)
+  if (fs.statSync(sourcePath).isDirectory() && (rel === '' || !rel.startsWith('..'))) {
+    throw new Error(`Cannot copy "${path.basename(sourcePath)}" into itself or its subfolder`)
+  }
+
+  const destName = getAvailableDestName(targetDirPath, path.basename(sourcePath))
+  const newPath = path.join(targetDirPath, destName)
+  fs.cpSync(sourcePath, newPath, { recursive: true })
+  return newPath
+}
+
+// Batch by design: the sources come from a multi-selection or an OS-clipboard
+// file list, and one failing entry (a vanished path, a permission error) must
+// not abandon the rest - every source is attempted, the errors are collected,
+// and the trees are rebuilt once at the end.
+export async function copyPaths(
+  sourcePaths: string[],
+  targetDirPath: string
+): Promise<PathsOpResult> {
+  const newPaths: string[] = []
+  const errors: string[] = []
+  for (const sourcePath of sourcePaths) {
+    try {
+      newPaths.push(copyOne(sourcePath, targetDirPath))
+    } catch (e: any) {
+      errors.push(e.message)
     }
-
-    const destName = getAvailableDestName(targetDirPath, path.basename(sourcePath))
-    const newPath = path.join(targetDirPath, destName)
-    fs.cpSync(sourcePath, newPath, { recursive: true })
-
-    return { success: true, newPath, trees: await getWorkspaceTrees() }
-  } catch (e: any) {
-    return { success: false, error: e.message }
+  }
+  return {
+    success: errors.length === 0,
+    error: errors.length > 0 ? errors.join('\n') : undefined,
+    newPaths,
+    trees: await getWorkspaceTrees()
   }
 }
 
-export async function deletePath(
-  targetPath: string
-): Promise<{ success: boolean; trees?: FileNode[]; error?: string }> {
-  try {
-    await shell.trashItem(targetPath)
-
+export async function deletePaths(targetPaths: string[]): Promise<PathsOpResult> {
+  const errors: string[] = []
+  for (const targetPath of targetPaths) {
+    try {
+      await shell.trashItem(targetPath)
+    } catch (e: any) {
+      errors.push(e.message)
+      continue
+    }
     const workspacePaths = loadWorkspaces()
     if (workspacePaths.includes(targetPath)) {
       saveWorkspaces(workspacePaths.filter((p) => p !== targetPath))
     }
-
-    return { success: true, trees: await getWorkspaceTrees() }
-  } catch (e: any) {
-    return { success: false, error: e.message }
+  }
+  return {
+    success: errors.length === 0,
+    error: errors.length > 0 ? errors.join('\n') : undefined,
+    trees: await getWorkspaceTrees()
   }
 }
 

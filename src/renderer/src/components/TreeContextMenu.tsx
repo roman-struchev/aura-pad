@@ -1,20 +1,29 @@
 import React from 'react'
 import type { FileNode } from './FileTree'
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
 
 interface TreeContextMenuProps {
   x: number
   y: number
+  // The right-clicked row: the target for the actions that only make sense
+  // for one entry (terminal, reveal, create, rename) and the paste target.
   node: FileNode
-  hasClipboard: boolean
+  // Everything the selection-wide actions (copy, delete) cover. Always
+  // contains `node` - right-clicking outside the selection re-selects.
+  selectedNodes: FileNode[]
+  // Number of files/folders currently on the clipboard (ours or the OS's).
+  clipboardCount: number
   onClose: () => void
   onOpenTerminalHere: (node: FileNode) => void
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
   onRename: (node: FileNode) => void
-  onCopy: (node: FileNode) => void
+  onCopy: () => void
   onPaste: (node: FileNode) => void
-  onDelete: (node: FileNode) => void
+  onDelete: () => void
   onRemoveFolder: (path: string) => void
 }
+
+const plural = (count: number, noun: string): string => (count === 1 ? noun : `${count} ${noun}s`)
 
 // Every action closes the menu afterwards (via onClose), so callers don't
 // each need to remember to do it themselves.
@@ -22,7 +31,8 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
   x,
   y,
   node,
-  hasClipboard,
+  selectedNodes,
+  clipboardCount,
   onClose,
   onOpenTerminalHere,
   onCreateNew,
@@ -37,79 +47,54 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
     onClose()
   }
 
+  const copyCount = Math.max(selectedNodes.length, 1)
+  // Workspace roots are unlinked via "Remove from Workspace", never trashed.
+  const deleteCount = selectedNodes.filter((n) => !n.isRoot).length
+  const isMulti = copyCount > 1
+
   return (
-    <div
-      className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]"
-      style={{ top: y, left: x }}
-    >
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(() => onOpenTerminalHere(node))}
-      >
+    <ContextMenu x={x} y={y} surface="tree">
+      <ContextMenuItem onClick={() => run(() => onOpenTerminalHere(node))}>
         Open Terminal
-      </button>
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(() => window.api.revealInFinder(node.path))}
-      >
+      </ContextMenuItem>
+      <ContextMenuItem onClick={() => run(() => window.api.revealInFinder(node.path))}>
         {window.api.platform === 'darwin'
           ? 'Open in Finder'
           : window.api.platform === 'win32'
             ? 'Reveal in File Explorer'
             : 'Reveal in Files'}
-      </button>
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(() => onCreateNew(node, 'file'))}
-      >
+      </ContextMenuItem>
+      <ContextMenuItem onClick={() => run(() => onCreateNew(node, 'file'))}>
         New File
-      </button>
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(() => onCreateNew(node, 'directory'))}
-      >
+      </ContextMenuItem>
+      <ContextMenuItem onClick={() => run(() => onCreateNew(node, 'directory'))}>
         New Folder
-      </button>
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(() => onRename(node))}
-      >
-        Rename
-      </button>
-      <div className="h-px bg-fleet-border my-1" />
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(() => onCopy(node))}
-      >
-        Copy
-      </button>
-      {hasClipboard && (
-        <button
-          className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-          onClick={() => run(() => onPaste(node))}
-        >
-          Paste
-        </button>
+      </ContextMenuItem>
+      {!isMulti && (
+        <ContextMenuItem onClick={() => run(() => onRename(node))}>Rename</ContextMenuItem>
       )}
-      {!node.isRoot && (
-        <button
-          className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-          onClick={() => run(() => onDelete(node))}
-        >
-          Delete
-        </button>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={() => run(onCopy)}>
+        {isMulti ? `Copy ${plural(copyCount, 'Item')}` : 'Copy'}
+      </ContextMenuItem>
+      {clipboardCount > 0 && (
+        <ContextMenuItem onClick={() => run(() => onPaste(node))}>
+          {clipboardCount > 1 ? `Paste ${plural(clipboardCount, 'Item')}` : 'Paste'}
+        </ContextMenuItem>
+      )}
+      {deleteCount > 0 && (
+        <ContextMenuItem danger onClick={() => run(onDelete)}>
+          {deleteCount > 1 ? `Delete ${plural(deleteCount, 'Item')}` : 'Delete'}
+        </ContextMenuItem>
       )}
       {node.isRoot && (
         <>
-          <div className="h-px bg-fleet-border my-1" />
-          <button
-            className="px-4 py-1.5 text-left text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-            onClick={() => run(() => onRemoveFolder(node.path))}
-          >
+          <ContextMenuSeparator />
+          <ContextMenuItem danger onClick={() => run(() => onRemoveFolder(node.path))}>
             Remove from Workspace
-          </button>
+          </ContextMenuItem>
         </>
       )}
-    </div>
+    </ContextMenu>
   )
 }

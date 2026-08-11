@@ -9,10 +9,11 @@ import {
   writeFileContent,
   renamePath,
   createPath,
-  copyPath,
-  deletePath,
+  copyPaths,
+  deletePaths,
   movePath
 } from './workspaces'
+import { readFilesFromClipboard, writeFilesToClipboard } from './clipboardFiles'
 import { loadSettings, saveSettings } from './settings'
 import { loadOpenTabsState, saveOpenTabsState } from './openTabsState'
 import { loadWorkTogetherResumeState, saveWorkTogetherResumeState } from './workTogetherResumeState'
@@ -142,13 +143,19 @@ function registerWorkspaceIpc(): void {
 
   handleInvoke('create-path', (parentPath, name, type) => createPath(parentPath, name, type))
 
-  handleInvoke('copy-path', (sourcePath, targetDirPath) => copyPath(sourcePath, targetDirPath))
+  handleInvoke('copy-paths', (sourcePaths, targetDirPath) => copyPaths(sourcePaths, targetDirPath))
 
-  handleInvoke('delete-path', async (targetPath) => {
-    const result = await deletePath(targetPath)
-    if (result.success) setupWatchers()
+  handleInvoke('delete-paths', async (targetPaths) => {
+    const result = await deletePaths(targetPaths)
+    // Watchers are re-armed whenever anything was trashed - a partial batch
+    // still changed the tree, so this can't hang off `success` alone.
+    setupWatchers()
     return result
   })
+
+  handleInvoke('clipboard-write-files', (paths) => writeFilesToClipboard(paths))
+
+  handleInvoke('clipboard-read-files', () => readFilesFromClipboard())
 
   handleInvoke('move-path', async (sourcePath, targetDirPath) => {
     const result = await movePath(sourcePath, targetDirPath)

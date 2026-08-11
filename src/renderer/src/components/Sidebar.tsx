@@ -2,7 +2,7 @@ import React from 'react'
 import { Files, FolderOpen, GitBranch, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
-import { FileTree, type FileNode, type RevealRequest } from './FileTree'
+import { FileTree, type FileNode, type RevealRequest, type RowClickModifiers } from './FileTree'
 import { GitPanel } from './GitPanel'
 import { getFileIcon } from '../lib/fileIcon'
 import { findRepoForRoot } from '../lib/repoForRoot'
@@ -24,12 +24,13 @@ interface SidebarProps {
   recentExternalFiles: string[]
   onRemoveRecentExternalFile: (path: string) => void
   selectedPath: string | null
+  selectedPaths: ReadonlySet<string>
   revealRequest: RevealRequest | null
   onSelect: (path: string) => void
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
   onMove: (sourcePath: string, targetDirPath: string) => void
-  onFocusNode: (node: FileNode) => void
+  onRowClick: (node: FileNode, modifiers: RowClickModifiers) => void
   onRunPython: (node: FileNode) => void
   onPreviewMarkdown: (node: FileNode) => void
   // Git: the whole hook is passed down rather than a dozen callbacks - the
@@ -60,12 +61,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   recentExternalFiles,
   onRemoveRecentExternalFile,
   selectedPath,
+  selectedPaths,
   revealRequest,
   onSelect,
   onContextMenu,
   onCreateNew,
   onMove,
-  onFocusNode,
+  onRowClick,
   onRunPython,
   onPreviewMarkdown,
   git,
@@ -128,7 +130,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             </div>
             {rootNodes.length > 0 ? (
-              <div className="flex flex-col gap-2">
+              // data-surface scopes the tree's copy/paste/delete shortcuts:
+              // the file list and its context menu, but not the git panel or
+              // the lists below it (see useGlobalHotkeys).
+              <div className="flex flex-col gap-2" data-surface="tree">
                 {rootNodes.map((rootNode) => {
                   const repo = findRepoForRoot(git.repos, rootNode.path)
                   return (
@@ -139,10 +144,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onContextMenu={onContextMenu}
                       onCreateNew={onCreateNew}
                       onMove={onMove}
-                      onFocusNode={onFocusNode}
+                      onRowClick={onRowClick}
                       onRunPython={onRunPython}
                       onPreviewMarkdown={onPreviewMarkdown}
                       selectedPath={selectedPath}
+                      selectedPaths={selectedPaths}
                       revealRequest={revealRequest}
                       rowPadding={rowPadding}
                       gitStatus={git.fileStates}

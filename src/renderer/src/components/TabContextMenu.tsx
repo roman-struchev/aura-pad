@@ -1,4 +1,5 @@
 import React from 'react'
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
 
 interface TabContextMenuProps {
   x: number
@@ -29,36 +30,14 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
   }
 
   return (
-    <div
-      className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px]"
-      style={{ top: y, left: x }}
-    >
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(onTogglePin)}
-      >
-        {pinned ? 'Unpin' : 'Pin'}
-      </button>
-      <div className="my-1 h-px bg-fleet-border" />
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(onCloseTab)}
-      >
-        Close
-      </button>
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
-        disabled={!hasOtherTabs}
-        onClick={() => run(onCloseOthers)}
-      >
+    <ContextMenu x={x} y={y}>
+      <ContextMenuItem onClick={() => run(onTogglePin)}>{pinned ? 'Unpin' : 'Pin'}</ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={() => run(onCloseTab)}>Close</ContextMenuItem>
+      <ContextMenuItem disabled={!hasOtherTabs} onClick={() => run(onCloseOthers)}>
         Close Others
-      </button>
-      <button
-        className="px-4 py-1.5 text-left hover:bg-fleet-active hover:text-white"
-        onClick={() => run(onCloseAll)}
-      >
-        Close All
-      </button>
-    </div>
+      </ContextMenuItem>
+      <ContextMenuItem onClick={() => run(onCloseAll)}>Close All</ContextMenuItem>
+    </ContextMenu>
   )
 }

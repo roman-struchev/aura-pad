@@ -96,7 +96,7 @@ export function useGitStatus(enabled: boolean, beforeCheckout?: () => Promise<vo
   const discard = async (root: string, entry: GitFileEntry): Promise<void> => {
     if (entry.state === 'untracked') {
       if (!(await confirmDialog(`Move "${entry.relPath}" to Trash?`))) return
-      await window.api.deletePath(entry.path)
+      await window.api.deletePaths([entry.path])
       return
     }
     if (!(await confirmDialog(`Discard changes to "${entry.relPath}"? This can't be undone.`)))

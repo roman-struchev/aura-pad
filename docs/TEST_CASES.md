@@ -237,6 +237,30 @@ Guards: `src/preload/index.ts`, `src/preload/index.d.ts`.
 
 ---
 
+## 15. File tree selection, copy/paste, and context-menu placement
+
+Guards: selection + clipboard in `useWorkspaceTree.ts`, the shortcut scoping in
+`useGlobalHotkeys.ts` (`data-surface="tree"`), `src/main/clipboardFiles.ts`,
+`copyPaths`/`deletePaths` in `workspaces.ts`, `components/ContextMenu.tsx`.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 15.1 | Click a file, Cmd+C, click a folder, Cmd+V | The file is copied into that folder. Pasting onto a *file* targets its parent folder; pasting a folder onto itself duplicates it alongside ("name copy") |
+| 15.2 | Right-click a file → **Copy**, then click a folder and press Cmd+V | Works. The original bug: the menu's button took focus and was then unmounted, leaving `document.activeElement` on `<body>`, so the "is the tree focused" guard killed every tree shortcut right after a right-click |
+| 15.3 | Cmd-click a second row, Shift-click a third | Cmd toggles single rows, Shift takes the whole **visible** range (across roots and past collapsed folders); modified clicks never open a file or expand a folder |
+| 15.4 | Select several files → Cmd+C → paste into a folder | All of them land there; the menu reads "Copy N Items"; a failure on one entry still copies the rest and reports the failures afterwards |
+| 15.5 | Copy a file in Finder → Cmd+V in the tree | The real file is copied in. Reverse: Cmd+C in the tree, then paste in Finder (macOS writes `NSFilenamesPboardType`; Windows falls back to plain text, so only in-app paste works there) |
+| 15.6 | Select 2 files, press Backspace → Confirm | Both go to Trash in one batch; workspace roots are never trashed (they only offer "Remove from Workspace") |
+| 15.7 | Focus the editor or terminal (or the git commit box) and press Cmd+C / Cmd+V / Backspace | Nothing happens to the tree selection - the shortcuts only fire while the last click was inside `data-surface="tree"` and focus isn't in a text field |
+| 15.8 | Sidebar docked **right**: right-click the lowest row | The menu flips to the other side of the cursor and stays fully inside the window (the original bug: it ran off the right/bottom edge). In a window shorter than the menu it clamps and scrolls instead |
+| 15.9 | Right-click a row, press Escape | The menu closes (Escape is checked before dictation/read-aloud) |
+
+**Note:** Cmd+B and the other menu accelerators can't be exercised through
+CDP-injected key events - they're owned by the native menu (`menu.ts`), which
+only sees real keystrokes. Drive those through the toolbar button instead.
+
+---
+
 ## Fast pre-release smoke (5 min)
 
 1. Open a folder → tree loads; open a file → edits autosave to disk.

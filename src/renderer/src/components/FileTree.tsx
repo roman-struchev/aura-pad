@@ -5,6 +5,7 @@ import type { FileNode } from '../../../shared/fileNode'
 import type { GitFileState } from '../../../shared/gitStatus'
 import { getFileIcon } from '../lib/fileIcon'
 import { isPreviewablePath, isPythonPath } from '../lib/fileType'
+import { TREE_ROW_ATTR } from '../lib/treeRows'
 
 export type { FileNode }
 
@@ -15,16 +16,29 @@ export interface RevealRequest {
   seq: number
 }
 
+// Modifier state of a row click, for extending/toggling the tree selection.
+export interface RowClickModifiers {
+  // Cmd on macOS, Ctrl elsewhere: toggle this row in/out of the selection.
+  toggle: boolean
+  // Shift: select every visible row between the anchor and this one.
+  range: boolean
+}
+
 interface FileTreeProps {
   node: FileNode
   onSelect: (path: string) => void
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
   onMove: (sourcePath: string, targetDirPath: string) => void
-  onFocusNode: (node: FileNode) => void
+  // Every left-click on a row, modifiers included - drives the tree
+  // selection that copy/paste/delete operate on.
+  onRowClick: (node: FileNode, modifiers: RowClickModifiers) => void
   onRunPython: (node: FileNode) => void
   onPreviewMarkdown: (node: FileNode) => void
+  // The file open in the editor.
   selectedPath: string | null
+  // The tree's own selection (one or more rows).
+  selectedPaths: ReadonlySet<string>
   revealRequest?: RevealRequest | null
   rowPadding?: string
   gitStatus?: Record<string, GitFileState>
@@ -61,10 +75,11 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
   onContextMenu,
   onCreateNew,
   onMove,
-  onFocusNode,
+  onRowClick,
   onRunPython,
   onPreviewMarkdown,
   selectedPath,
+  selectedPaths,
   revealRequest,
   rowPadding = 'py-1',
   gitStatus,
@@ -79,7 +94,7 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
   const rowRef = useRef<HTMLDivElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const isSelected = selectedPath === node.path
+  const isSelected = selectedPath === node.path || selectedPaths.has(node.path)
   const isDirectory = node.type === 'directory'
   const isPreviewable = isPreviewablePath(node.name)
   const hasFileAction = !isDirectory && (isPythonPath(node.name) || isPreviewable)
@@ -112,6 +127,12 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    const toggle = e.metaKey || e.ctrlKey
+    const range = e.shiftKey
+    onRowClick(node, { toggle, range })
+    // A modified click is purely a selection gesture: it must not expand a
+    // folder or open a file out from under the selection being built.
+    if (toggle || range) return
     if (isDirectory) {
       setExpanded(!expanded)
     } else {
@@ -122,6 +143,10 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
+    // Right-click doesn't focus a row on its own, so take it explicitly -
+    // otherwise the keyboard shortcuts lose their anchor the moment the menu
+    // is used, which is exactly when the user reaches for Cmd+V next.
+    rowRef.current?.focus()
     onContextMenu(e, node)
   }
 
@@ -175,8 +200,9 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         tabIndex={-1}
+        {...{ [TREE_ROW_ATTR]: '' }}
+        data-path={node.path}
         onClick={handleClick}
-        onFocus={() => onFocusNode(node)}
         onContextMenu={handleContextMenu}
         draggable={!node.isRoot}
         onDragStart={handleDragStart}
@@ -289,10 +315,11 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
               onContextMenu={onContextMenu}
               onCreateNew={onCreateNew}
               onMove={onMove}
-              onFocusNode={onFocusNode}
+              onRowClick={onRowClick}
               onRunPython={onRunPython}
               onPreviewMarkdown={onPreviewMarkdown}
               selectedPath={selectedPath}
+              selectedPaths={selectedPaths}
               revealRequest={revealRequest}
               rowPadding={rowPadding}
               gitStatus={gitStatus}
