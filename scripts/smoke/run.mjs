@@ -42,7 +42,10 @@ const CASE_FILES = [
   'settings.mjs',
   'git.mjs',
   'http.mjs',
-  'security.mjs'
+  'security.mjs',
+  // Last: it closes and reopens the window, so anything after it would be
+  // talking to a renderer target that no longer exists.
+  'lifecycle.mjs'
 ]
 
 const results = []
@@ -193,6 +196,19 @@ async function main() {
     waitFor: (expression, options) => waitFor(cdp, expression, options),
     read: (...parts) => fs.readFileSync(fixture.file(...parts), 'utf-8'),
     readBytes: (...parts) => fs.readFileSync(fixture.file(...parts)),
+    // For cases that reach past the renderer into Electron itself - the
+    // caller owns the connection and closes it.
+    connectMain: () => connectMain(MAIN_PORT),
+    // Same process, new window (closed and reopened): the old page target is
+    // gone, so the suite's CDP connection has to be re-pointed at the new one.
+    reconnectRenderer: async () => {
+      cdp.close()
+      cdp = await connect(PORT)
+      await raiseWindow()
+      ctx.cdp = cdp
+      ctx.ui = makeUi(cdp)
+      return cdp
+    },
     // Cases that need a fresh process (session restore, settings applied at
     // startup) ask for this rather than assuming one.
     restart: async () => {

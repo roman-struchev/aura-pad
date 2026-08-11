@@ -49,6 +49,26 @@ app.on('before-quit', () => {
   quitRequested = true
 })
 
+// Dev only: electron-vite restarts the app by killing this process (and Ctrl+C
+// in its terminal signals the whole process group), which Electron turns into
+// a normal quit - close events included. The unsaved-changes veto above is
+// meant for a user closing a window, not for a parent that is already gone: a
+// vetoed signal leaves this process alive with its window on screen, while the
+// replacement instance exits immediately on the single-instance lock and takes
+// the dev server down with it. The result is an orphaned window that outlives
+// the terminal that started it. A terminating signal is not negotiable, so
+// tear the ptys down and go.
+if (is.dev) {
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(signal, () => {
+      killAllPtys()
+      disconnectAllSessions()
+      for (const win of BrowserWindow.getAllWindows()) win.destroy()
+      app.exit(0)
+    })
+  }
+}
+
 // Only protocols that open in a browser or mail client - renderer content
 // (e.g. a link in a previewed Markdown file from an untrusted repo) must not
 // be able to launch arbitrary protocol handlers (file:, smb:, vscode:, ...).
@@ -142,6 +162,13 @@ function createWindow(): void {
   mainWindow.on('close', (event) => {
     if (windowsAllowedToClose.has(mainWindow)) return
     if (mainWindow.webContents.isCrashed() || unresponsiveWindows.has(mainWindow)) return
+    // A renderer that hasn't announced itself yet has no 'request-close'
+    // subscription, so the message below would go nowhere and the veto would
+    // never be lifted - the window becomes unclosable. That window of time is
+    // real: the page is still loading right after launch, and again after
+    // every reload (see 'did-start-navigation' below). It also has nothing
+    // to protect, since a page that never mounted holds no unsaved buffers.
+    if (!rendererReady) return
     event.preventDefault()
     mainWindow.webContents.send('request-close')
   })
@@ -159,14 +186,19 @@ function createWindow(): void {
   // when the last window closes. The initial load also fires this, when the
   // map is still empty.
   //
-  // The reload also wipes the page's 'open-file-request' subscription, so
-  // rendererReady must drop back to false until the fresh page re-announces
-  // itself - otherwise a file opened via Finder mid-reload would be sent into
-  // the void instead of queued.
   mainWindow.webContents.on('did-navigate', () => {
-    rendererReady = false
     killAllPtys()
     disconnectAllSessions()
+  })
+
+  // A navigation also wipes the page's subscriptions - and it does so the
+  // moment it starts, not when the new document commits, so the flag has to
+  // drop here rather than on 'did-navigate'. In between, main would still
+  // believe a listener exists: a file opened via Finder mid-reload would be
+  // sent into the void instead of queued, and a close would be vetoed while
+  // waiting for a 'confirm-close' no one is left to send.
+  mainWindow.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) rendererReady = false
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {

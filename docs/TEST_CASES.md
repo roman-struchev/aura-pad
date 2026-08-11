@@ -71,6 +71,7 @@ prefers these:
 | A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
 | A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
 | A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request and the history records, reloads and clears (§16) |
+| A13 | Window lifecycle | A close is not vetoed by a renderer that never announced itself, and the window comes back with its workspace on activate (§2; macOS-only, runs last) |
 
 ---
 
@@ -112,18 +113,25 @@ autosave wrote the replacement chars back, corrupting the file irreversibly.
 
 ## 2. Window closes even when the renderer is dead/hung
 
-Guards: `mainWindow.on('close', …)`, `unresponsiveWindows`, `did-navigate` in
-`src/main/index.ts`.
+Guards: `mainWindow.on('close', …)`, `unresponsiveWindows`, `rendererReady`,
+`did-start-navigation`, and the dev signal handlers in `src/main/index.ts`.
 
 | # | Steps | Expected |
 |---|-------|----------|
 | 2.1 | With no unsaved tabs, click the window close button / Cmd+Q | App quits (macOS: Cmd+Q actually quits, not just closes the window) |
 | 2.2 | With unsaved tabs, Cmd+Q → decline the prompt | App stays open; a **later** plain window close does not wrongly quit the whole app |
 | 2.3 | Simulate a hung renderer (main inspector: block the renderer, or trust the `isCrashed()`/`unresponsive` guard), then close | Window closes without waiting forever for a `confirm-close` that can't arrive |
-| 2.4 | Open a file via Finder "Open With" during a Cmd+R reload | The file still opens (not dropped) — `rendererReady` resets on `did-navigate` and the open request is queued |
+| 2.4 | Open a file via Finder "Open With" during a Cmd+R reload | The file still opens (not dropped) — `rendererReady` resets when the navigation starts and the open request is queued |
+| 2.5 | `npm run dev`, then Ctrl+C in that terminal — first while the window is still painting its first frame, then with an unsaved tab open | The process exits both times and no window is left behind (`ps` shows no orphaned `Electron .` with PPID 1). Signals can't be delivered from CDP, so A13 only covers the veto half |
+| 2.6 | `npm run dev`, then touch a file under `src/main/` | electron-vite restarts the app: the old window goes away, one new window comes up, and the dev server keeps running |
 
-**Root bug:** `close` unconditionally waited for the renderer's
+**Root bug (2.3):** `close` unconditionally waited for the renderer's
 `confirm-close`; a crashed/hung renderer left the window (and Cmd+Q) stuck.
+
+**Root bug (2.5/2.6):** the same wait applied to a renderer that had never
+subscribed (still loading, or mid-reload), and to signal-driven quits. In dev
+the vetoed process outlived the terminal that started it, while its replacement
+exited on the single-instance lock — an orphaned window and a dead dev server.
 
 ---
 
