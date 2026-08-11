@@ -70,7 +70,7 @@ prefers these:
 | A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
 | A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
 | A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
-| A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request and the history records, reloads and clears (§16) |
+| A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request; the history starts collapsed, opens from the clock icon, records, refills the whole form (headers and body included) and clears (§16) |
 | A13 | Window lifecycle | A close is not vetoed by a renderer that never announced itself, and the window comes back with its workspace on activate (§2; macOS-only, runs last) |
 
 ---
@@ -366,6 +366,7 @@ curl-in-a-shell-script, refused flags, the HTTP Client tab, and the history.
 | 16.8 | Drag the pane's left edge, quit, relaunch | The width is restored (`httpPaneWidth` in settings.json) |
 | 16.9 | In the HTTP Client tab, copy a `curl` command to the clipboard and press the paste button | Method, URL, headers and body are filled in from it; an unsupported flag reports itself instead of filling half a request |
 | 16.10 | Send from the tab, quit, relaunch, reopen the tab | The form comes back as it was left (`extensions.httpClient.request`), and the history is still there (`httpHistory.json` in the app's data directory) |
+| 16.11 | Run a `.http` request whose body comes from a file (`< ./payload.json`) or a multipart form, then open it from the history | Method, URL and headers are filled in, and the form says outright which part of it can't live in a form - A12 only covers the text-body case |
 
 ---
 

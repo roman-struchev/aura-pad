@@ -34,11 +34,14 @@ function ago(timestamp: number): string {
 }
 
 // The path (with query) is what distinguishes two calls to the same API; the
-// host is the same for a whole session's worth of entries.
+// host is the same for a whole session's worth of entries - except when the
+// path is all there is to a URL, and a list of bare "/" rows tells nobody
+// which request is which.
 function shortUrl(url: string): string {
   try {
     const parsed = new URL(url)
-    return `${parsed.pathname}${parsed.search}` || '/'
+    const path = `${parsed.pathname}${parsed.search}`
+    return path === '/' || path === '' ? parsed.host : path
   } catch {
     return url
   }
@@ -73,6 +76,12 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   const [history, setHistory] = useState<HttpHistoryEntry[]>([])
 
   const running = !!exchange?.running
+  const historyCollapsed = settings.extensions.httpClient.historyCollapsed
+  const setHistoryCollapsed = (collapsed: boolean): void =>
+    updateSetting('extensions', {
+      ...settings.extensions,
+      httpClient: { ...settings.extensions.httpClient, historyCollapsed: collapsed }
+    })
 
   // Reloaded when the tab mounts and after each request settles - main
   // records the history for *both* routes into the client, so a request run
@@ -108,14 +117,28 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   const persistNow = useStableCallback(persist)
   useEffect(() => () => persistNow(), [persistNow])
 
+  // Everything the entry holds lands back in the form, so Send re-runs the
+  // same request rather than an emptied-out version of it. Two shapes the
+  // form has no field for (`-d @file` and multipart parts) are called out
+  // instead of being dropped in silence - they are the difference between a
+  // request that repeats and one that only looks like it.
   const loadFromHistory = (entry: HttpHistoryEntry): void => {
-    setMethod(entry.spec.method)
-    setUrl(entry.spec.url)
-    setHeaders(entry.spec.headers)
-    setBody(entry.spec.body ?? '')
-    setFollowRedirects(entry.spec.followRedirects)
-    setInsecure(entry.spec.insecure)
-    setImportError(null)
+    const { spec } = entry
+    setMethod(spec.method)
+    setUrl(spec.url)
+    setHeaders(spec.headers)
+    setBody(spec.body ?? '')
+    setFollowRedirects(spec.followRedirects)
+    setInsecure(spec.insecure)
+    const unsupported = spec.bodyFilePath
+      ? `Body came from a file (${spec.bodyFilePath}) - it is not part of this form`
+      : spec.form
+        ? 'The multipart form parts of this request are not editable here'
+        : null
+    setImportError(unsupported)
+    // A filled-in body is invisible while the Headers tab is up, which reads
+    // as "the body was lost".
+    if (spec.body || spec.bodyFilePath || spec.form) setTab('body')
   }
 
   const send = (): void => {
@@ -173,53 +196,63 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
 
   return (
     <div className="h-full flex min-h-0" data-testid="http-client-tab">
-      <div className="w-56 shrink-0 border-r border-fleet-border flex flex-col min-h-0">
-        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-fleet-border">
-          <History size={13} className="text-gray-500" />
-          <span className="text-[11px] uppercase tracking-wider text-gray-500 flex-1">History</span>
-          {history.length > 0 && (
-            <ToolbarButton
-              dense
-              title="Clear history"
-              tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-white"
-              onClick={() => window.api.httpHistoryClear().then(setHistory)}
-            >
-              <Trash2 size={13} />
-            </ToolbarButton>
-          )}
-        </div>
-        <div className="flex-1 overflow-y-auto" data-testid="http-history">
-          {history.length === 0 ? (
-            <div className="px-2 py-3 text-[11px] text-gray-500">
-              Requests you send show up here
-            </div>
-          ) : (
-            history.map((entry) => (
-              <button
-                key={entry.id}
-                onClick={() => loadFromHistory(entry)}
-                title={`${entry.spec.method} ${entry.spec.url}`}
-                className="w-full text-left px-2 py-1.5 hover:bg-fleet-active border-b border-fleet-border/50"
+      {/* Collapsed, the list is gone entirely rather than reduced to a rail:
+          a strip holding one icon costs the form a column of width and buys
+          nothing the toolbar's own toggle doesn't already say. */}
+      {!historyCollapsed && (
+        <div className="w-56 shrink-0 border-r border-fleet-border flex flex-col min-h-0">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-fleet-border">
+            <History size={13} className="text-gray-500" />
+            <span className="text-[11px] uppercase tracking-wider text-gray-500 flex-1">
+              History
+            </span>
+            {history.length > 0 && (
+              <ToolbarButton
+                dense
+                title="Clear history"
+                tooltipAlign="right"
+                colorClassName="text-gray-500 hover:text-white"
+                onClick={() => window.api.httpHistoryClear().then(setHistory)}
               >
-                <div className="flex items-center gap-1.5 text-[11px]">
-                  <span className="font-medium text-gray-400 shrink-0">{entry.spec.method}</span>
-                  <span className="truncate flex-1 font-mono text-fleet-text">
-                    {shortUrl(entry.spec.url)}
-                  </span>
-                  <span className={clsx('shrink-0', historyStatusClass(entry))}>
-                    {entry.error ? '!' : (entry.status ?? '')}
-                  </span>
-                </div>
-                <div className="text-[10px] text-gray-500 truncate">
-                  {ago(entry.sentAt)}
-                  {entry.durationMs !== undefined ? ` · ${entry.durationMs} ms` : ''}
-                </div>
-              </button>
-            ))
-          )}
+                <Trash2 size={13} />
+              </ToolbarButton>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto py-1" data-testid="http-history">
+            {history.length === 0 ? (
+              <div className="px-2 py-2 text-[11px] text-gray-500">
+                Requests you send show up here
+              </div>
+            ) : (
+              // No dividers between entries: at two lines each they read as
+              // rows on their own, and a rule under every one turned the list
+              // into a grid of lines with text in it.
+              history.map((entry) => (
+                <button
+                  key={entry.id}
+                  onClick={() => loadFromHistory(entry)}
+                  title={`${entry.spec.method} ${entry.spec.url}`}
+                  className="w-full text-left px-2 py-1 rounded-sm hover:bg-fleet-active"
+                >
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span className="font-medium text-gray-400 shrink-0">{entry.spec.method}</span>
+                    <span className="truncate flex-1 font-mono text-fleet-text">
+                      {shortUrl(entry.spec.url)}
+                    </span>
+                    <span className={clsx('shrink-0', historyStatusClass(entry))}>
+                      {entry.error ? '!' : (entry.status ?? '')}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 truncate">
+                    {ago(entry.sentAt)}
+                    {entry.durationMs !== undefined ? ` · ${entry.durationMs} ms` : ''}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
         <div className="shrink-0 border-b border-fleet-border p-3 flex flex-col gap-2">
@@ -297,6 +330,19 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               onClick={() => navigator.clipboard.writeText(toCurl(buildSpec()))}
             >
               <Terminal size={14} />
+            </ToolbarButton>
+            {/* Separated from the two beside it: those act on the request in
+                the form, this one only decides what is on screen. */}
+            <div className="w-px h-4 bg-fleet-border mx-1" />
+            <ToolbarButton
+              dense
+              active={!historyCollapsed}
+              title={historyCollapsed ? 'Show history' : 'Hide history'}
+              tooltipAlign="right"
+              colorClassName="text-gray-500 hover:text-white"
+              onClick={() => setHistoryCollapsed(!historyCollapsed)}
+            >
+              <History size={14} />
             </ToolbarButton>
           </div>
 

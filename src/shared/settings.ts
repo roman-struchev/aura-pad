@@ -145,6 +145,10 @@ export interface ExtensionSettings {
   httpClient: {
     enabled: boolean
     request: HttpScratchRequest
+    // The history list collapses to a narrow rail so the form gets the whole
+    // tab. Persisted rather than per-mount, the way sidebarVisible is: the
+    // list is opened to pick an old request, not to keep it on screen.
+    historyCollapsed: boolean
   }
 }
 
@@ -207,6 +211,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // listed under Extensions in the sidebar is the only way anyone finds it.
     httpClient: {
       enabled: true,
+      historyCollapsed: true,
       request: {
         method: 'GET',
         url: '',

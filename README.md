@@ -113,8 +113,10 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - The response opens beside the editor (or below the form): status, time and size, the body
   (JSON and XML pretty-printed, images shown as images), every response header, and one
   click to copy any of it — or to copy the request back out as a `curl` command.
-- **History** of the last 50 requests, whichever way they were sent. Click one to load it
-  back into the form and re-run it. It is stored locally in the app's data directory and
+- **History** of the last 50 requests, whichever way they were sent. Click one to load the
+  whole request — method, URL, headers, body, redirect and TLS options — back into the form
+  and re-run it. The list is hidden until you ask for it (the clock icon in the tab's
+  options row); the choice sticks. It is stored locally in the app's data directory and
   keeps the headers you sent (so re-running works) — clear it from the tab when that
   matters.
 - Requests are parsed, never handed to a shell, so opening someone else's `.http`/`.rest`

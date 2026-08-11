@@ -38,6 +38,34 @@ export default {
       return
     }
 
+    // Replaces what a form field holds, with the real input events React
+    // listens for (select-all, then type over the selection).
+    const fill = async (selector, text) => {
+      await cdp.evaluate(`(() => {
+        const el = document.querySelector(${JSON.stringify(selector)})
+        if (!el) return false
+        el.focus()
+        el.select()
+        return true
+      })()`)
+      await cdp.send('Input.insertText', { text })
+      await sleep(120)
+    }
+
+    // A <select> opens a native popup that CDP's synthetic mouse can't reach,
+    // so the method picker is the one control driven through the DOM - via
+    // the native value setter, or React's onChange never sees it.
+    const setSelect = async (selector, value) => {
+      await cdp.evaluate(`(() => {
+        const el = document.querySelector(${JSON.stringify(selector)})
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+        setter.call(el, ${JSON.stringify(value)})
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+        return el.value
+      })()`)
+      await sleep(120)
+    }
+
     // The pane is plain React DOM (not Monaco), so reading it back is safe -
     // see the note about occluded windows in CLAUDE.md.
     const paneText = () =>
@@ -258,6 +286,24 @@ export default {
         JSON.stringify(requests.at(-1)?.headers ?? {})
       )
 
+      // The history starts collapsed to a rail - the form is what the tab is
+      // for - and the History icon opens it.
+      check(
+        'the history list starts collapsed',
+        await cdp.evaluate(`!document.querySelector('[data-testid="http-history"]')`)
+      )
+      await ui.clickButton('Show history')
+      check(
+        'the History icon opens it',
+        await cdp.evaluate(`!!document.querySelector('[data-testid="http-history"]')`)
+      )
+      check(
+        'the choice is remembered, not per-mount',
+        await cdp.evaluate(
+          `window.api.getSettings().then((s) => s.extensions.httpClient.historyCollapsed === false)`
+        )
+      )
+
       // History is recorded in main, so it holds everything sent in this
       // session - the requests run from files as well as the form's.
       const historyText = await waitFor(
@@ -277,17 +323,52 @@ export default {
         JSON.stringify(stored?.[0] ?? {}).slice(0, 160)
       )
 
-      // Clicking an entry loads it back into the form.
+      // Send one request with every field the form has, so what comes back
+      // out of the history can be compared against something specific.
+      await fill('[aria-label="URL"]', `http://127.0.0.1:${fixture.httpPort}/echo`)
+      await setSelect('[aria-label="Method"]', 'POST')
+      await ui.clickButton('Add header')
+      await fill('[aria-label="Header 1 name"]', 'X-Refill')
+      await fill('[aria-label="Header 1 value"]', 'yes')
+      await ui.clickButton('Body')
+      await fill('[aria-label="Request body"]', '{"refill":true}')
+      await ui.clickButton('Send')
+      await waitForStatus('200')
+
+      // Dirty every field first: a form that still holds what was just sent
+      // would pass the checks below without the click doing anything at all.
+      await fill('[aria-label="URL"]', 'http://127.0.0.1:1/stale')
+      await setSelect('[aria-label="Method"]', 'DELETE')
+      await fill('[aria-label="Request body"]', 'stale')
+
+      // Clicking an entry loads all of it back, or Send would re-run
+      // something other than what the entry says. The newest is that request.
       await cdp.evaluate(`(() => {
         document.querySelector('[data-testid="http-history"] button')?.click()
         return true
       })()`)
-      await sleep(200)
+      await sleep(250)
+      const refilled = await cdp.evaluate(`({
+        url: document.querySelector('[aria-label="URL"]')?.value || '',
+        method: document.querySelector('[aria-label="Method"]')?.value || '',
+        body: document.querySelector('[aria-label="Request body"]')?.value ?? null,
+        headers: [...document.querySelectorAll('[aria-label$="name"]')].map((i) => i.value)
+      })`)
       check(
         'clicking an entry refills the form',
-        await cdp.evaluate(`(document.querySelector('[aria-label="URL"]')?.value || '')
-          .includes('127.0.0.1')`)
+        refilled.url.endsWith('/echo') && refilled.method === 'POST',
+        JSON.stringify(refilled)
       )
+      check(
+        'the body comes back with it, on the tab that shows it',
+        refilled.body === '{"refill":true}',
+        JSON.stringify(refilled.body)
+      )
+      await ui.clickButton('Headers')
+      const backHeaders = await cdp.evaluate(
+        `[...document.querySelectorAll('[aria-label$="name"]')].map((i) => i.value)`
+      )
+      check('the headers come back with it', backHeaders.includes('X-Refill'), String(backHeaders))
 
       await ui.clickButton('Clear history')
       const cleared = await waitFor(`window.api.httpHistory().then((h) => h.length === 0)`, {
