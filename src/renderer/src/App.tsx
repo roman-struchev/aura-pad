@@ -14,6 +14,7 @@ import { UpdateToast } from './components/UpdateToast'
 import { NameInputModal } from './components/NameInputModal'
 import { AiModals } from './components/AiModals'
 import { GoogleTasksTab } from './components/GoogleTasksTab'
+import { HttpClientTab } from './components/HttpClientTab'
 import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
 import { WorkTogetherConfigModal } from './components/WorkTogetherConfigModal'
 import { ShareDialog } from './components/ShareDialog'
@@ -29,6 +30,8 @@ import { useWorkspaceTree } from './hooks/useWorkspaceTree'
 import { useGitStatus } from './hooks/useGitStatus'
 import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
+import { usePaneWidth } from './hooks/usePaneWidth'
+import { useHttpClient } from './hooks/useHttpClient'
 import { useRecentExternalFiles } from './hooks/useRecentExternalFiles'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { useReadAloud } from './hooks/useReadAloud'
@@ -42,7 +45,23 @@ import { DialogHost } from './components/DialogHost'
 import { alertDialog, confirmDialog } from './lib/dialogs'
 import { useStableCallback } from './lib/useStableCallback'
 import { findRepoForRoot } from './lib/repoForRoot'
-import { isHtmlPath, isPreviewablePath, isProsePath, isMarkdownPath } from './lib/fileType'
+import {
+  isHtmlPath,
+  isHttpPath,
+  isPreviewablePath,
+  isProsePath,
+  isMarkdownPath
+} from './lib/fileType'
+import { HttpResponsePane } from './components/HttpResponsePane'
+import { curlCommandAt, toCurl } from './lib/http/curl'
+import {
+  blockAtLine,
+  buildRequest,
+  buildRequestFromText,
+  parseHttpFile,
+  type BuildResult
+} from './lib/http/httpFile'
+import { setHttpBlockHandlers } from './lib/http/monacoHttp'
 import { getLanguage } from './lib/language'
 import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
@@ -88,6 +107,7 @@ function App(): React.JSX.Element {
   )
 
   const terminal = useTerminals()
+  const http = useHttpClient()
   const workTogether = useWorkTogether({
     enabled: settings.extensions.workTogether.enabled,
     settingsLoaded,
@@ -318,6 +338,18 @@ function App(): React.JSX.Element {
       keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT],
       run: () => startTranslate()
     })
+    // Right-click -> Run HTTP Request, plus the Cmd+Enter that fires while
+    // the editor has focus (the Edit-menu accelerator covers the rest). Not
+    // limited to .http files on purpose: a curl command in a README or a
+    // shell script is exactly the case this started from.
+    editor.addAction({
+      id: 'aurapad.run-http',
+      label: 'Run HTTP Request',
+      contextMenuGroupId: '9_aurapad',
+      contextMenuOrder: 0,
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => runHttpRequest()
+    })
   }
   const git = useGitStatus(settings.extensions.git.enabled, tabs.saveAllDirtyFileTabs)
   useDiagnostics(tabs.selectedPath, tabs.isSaved, tree.rootNodes)
@@ -354,6 +386,17 @@ function App(): React.JSX.Element {
   const sidebarWidth = useSidebarWidth(settings.sidebarWidth, settings.sidebarPosition, (w) =>
     updateSetting('sidebarWidth', w)
   )
+  const httpPaneWidth = usePaneWidth(settings.httpPaneWidth, (w) =>
+    updateSetting('httpPaneWidth', w)
+  )
+
+  // A response belongs to the tab it was run from; when that tab goes away
+  // (closed, or its file deleted) the response - possibly megabytes of body -
+  // has nowhere left to be shown, so it is dropped and any request still in
+  // flight for it is cancelled.
+  useEffect(() => {
+    http.prune(openTabPathsKey ? openTabPathsKey.split('\n') : [])
+  }, [openTabPathsKey, http])
 
   // Removing an entry from the "Recently Opened" list also closes its tab,
   // if it's still open - otherwise the tab would keep dangling with no way
@@ -570,6 +613,7 @@ function App(): React.JSX.Element {
       if (t.activeTabPath && isPreviewablePath(t.selectedPath)) t.togglePreview(t.activeTabPath)
     },
     'toggle-terminal': toggleTerminal,
+    'run-http-request': () => runHttpRequest(),
     preferences: () => setShowSettings(true)
   })
 
@@ -606,6 +650,70 @@ function App(): React.JSX.Element {
     })
     return unsubscribe
   }, [])
+
+  // "Run" for the HTTP client. Every trigger (the ▶ Run CodeLens, Cmd+Enter,
+  // the toolbar button, the Edit menu) lands here; they differ only in how
+  // the request is located. An explicit selection always wins, then the
+  // .http block - or the curl command - the cursor sits in.
+  const runHttpRequest = useStableCallback((atLine?: number): void => {
+    const path = tabs.selectedPath
+    if (!path) return
+    const editor = editorInstanceRef.current
+    const model = editor?.getModel()
+    const text = model?.getValue() ?? tabs.fileContent
+    // Relative paths inside a request (-d @body.json, `< ./payload.json`)
+    // resolve against the file's own directory, the way its author meant.
+    const cwd = dirname(path)
+    const selection = editor?.getSelection()
+    const selected =
+      selection && !selection.isEmpty() ? (model?.getValueInRange(selection) ?? '') : ''
+    const cursorLine = atLine ?? (selection ? selection.positionLineNumber - 1 : 0)
+
+    let built: BuildResult
+    if (selected.trim()) {
+      built = buildRequestFromText(selected, cwd)
+    } else if (isHttpPath(path)) {
+      const block = blockAtLine(parseHttpFile(text), cursorLine)
+      built = block ? buildRequest(block, cwd) : { ok: false, error: 'No request in this file' }
+    } else {
+      // Any other file: a curl command the cursor is inside of, so a snippet
+      // pasted into a README or a shell script is runnable where it lives.
+      const command = curlCommandAt(text.split('\n'), cursorLine)
+      built = command
+        ? buildRequestFromText(command, cwd)
+        : { ok: false, error: 'Put the cursor on a curl command, or select one, to run it' }
+    }
+
+    if (!built.ok) {
+      http.showError(path, 'Request', built.error)
+      return
+    }
+    http.send(path, built.spec)
+  })
+
+  const copyHttpBlockAsCurl = useStableCallback((line: number): void => {
+    const path = tabs.selectedPath
+    if (!path) return
+    const text = editorInstanceRef.current?.getModel()?.getValue() ?? tabs.fileContent
+    const block = blockAtLine(parseHttpFile(text), line)
+    const built = block ? buildRequest(block, dirname(path)) : null
+    if (!built) return
+    if (!built.ok) {
+      http.showError(path, 'Request', built.error)
+      return
+    }
+    navigator.clipboard.writeText(toCurl(built.spec))
+  })
+
+  // Monaco commands are registered once per process (there is no per-component
+  // command scope), so the CodeLens calls through to whatever these stable
+  // callbacks currently do.
+  useEffect(() => {
+    setHttpBlockHandlers({
+      run: (_uri, line) => runHttpRequest(line),
+      copyAsCurl: (_uri, line) => copyHttpBlockAsCurl(line)
+    })
+  }, [runHttpRequest, copyHttpBlockAsCurl])
 
   const runPythonFile = (path: string): void => {
     const quotedPath = quoteForShell(path, window.api.platform)
@@ -649,19 +757,20 @@ function App(): React.JSX.Element {
   // the no-selection defaults.
   const activeExt = tabs.selectedPath ? parseExtensionPath(tabs.selectedPath) : null
   const hasFileActions = !!tabs.selectedPath && !activeExt
+  // The response pane belongs to the tab the request was run from, so it
+  // follows tab switches instead of showing another file's response.
+  const activeExchange = tabs.selectedPath ? http.exchanges[tabs.selectedPath] : undefined
 
   // Enabled built-in extensions that open as tabs, listed in the sidebar's
-  // Extensions section. Currently only Google Tasks; the section is hidden
-  // when the list is empty.
-  const enabledExtensions = settings.extensions.googleTasks.enabled
-    ? [
-        {
-          id: 'google-tasks',
-          icon: EXTENSIONS['google-tasks'].icon,
-          label: EXTENSIONS['google-tasks'].title(null)
-        }
-      ]
-    : []
+  // Extensions section (hidden when the list is empty).
+  const enabledExtensions = (
+    [
+      ['http-client', settings.extensions.httpClient.enabled],
+      ['google-tasks', settings.extensions.googleTasks.enabled]
+    ] as const
+  )
+    .filter(([, enabled]) => enabled)
+    .map(([id]) => ({ id, icon: EXTENSIONS[id].icon, label: EXTENSIONS[id].title(null) }))
 
   // Entry point from the file tree's per-root branch badge: focus that
   // root's repo in the git panel and reveal the panel. Also un-hides the
@@ -776,6 +885,7 @@ function App(): React.JSX.Element {
                   if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
                 }}
                 onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+                onRunHttp={() => runHttpRequest()}
                 onFormatDocument={formatActiveDocument}
                 onToggleFold={toggleFold}
                 onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
@@ -806,47 +916,67 @@ function App(): React.JSX.Element {
             </div>
           )}
 
-          <div className="flex-1 overflow-hidden">
-            {activeExt ? (
-              activeExt.id === 'google-tasks' ? (
-                <GoogleTasksTab settings={settings} updateSetting={updateSetting} />
+          <div className="flex-1 overflow-hidden flex">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              {activeExt ? (
+                activeExt.id === 'google-tasks' ? (
+                  <GoogleTasksTab settings={settings} updateSetting={updateSetting} />
+                ) : activeExt.id === 'http-client' ? (
+                  <HttpClientTab
+                    settings={settings}
+                    updateSetting={updateSetting}
+                    exchange={activeExchange}
+                    onSend={(spec) => tabs.selectedPath && http.send(tabs.selectedPath, spec)}
+                    onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                    Unknown extension: {activeExt.id}
+                  </div>
+                )
+              ) : tabs.selectedPath ? (
+                tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
+                  <MarkdownPreview content={tabs.fileContent} />
+                ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
+                  <HtmlPreview content={tabs.fileContent} />
+                ) : (
+                  <Editor
+                    height="100%"
+                    path={tabs.selectedPath}
+                    language={getLanguage(tabs.selectedPath)}
+                    theme={monacoTheme}
+                    // Uncontrolled: the model owns the text and only tab-state
+                    // bookkeeping flows through React on each keystroke - a
+                    // `value` prop makes the library diff the entire file
+                    // against the model on every render. Programmatic content
+                    // changes go through useTabs' applyContentToModel.
+                    defaultValue={tabs.fileContent}
+                    // Unmounting (preview toggle, extension tab, last tab
+                    // closed) must not dispose the current model - closing a
+                    // tab does that explicitly in useTabs. Without this, every
+                    // trip to Preview and back silently wiped the undo stack.
+                    keepCurrentModel
+                    onChange={tabs.handleEditorChange}
+                    onMount={handleEditorMount}
+                    options={editorOptions}
+                  />
+                )
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                  Unknown extension: {activeExt.id}
+                <div className="flex-1 h-full flex items-center justify-center text-gray-500 flex-col gap-4">
+                  <span className="text-4xl text-gray-700">AuraPad</span>
+                  <span>Double-Shift to search files</span>
                 </div>
-              )
-            ) : tabs.selectedPath ? (
-              tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
-                <MarkdownPreview content={tabs.fileContent} />
-              ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
-                <HtmlPreview content={tabs.fileContent} />
-              ) : (
-                <Editor
-                  height="100%"
-                  path={tabs.selectedPath}
-                  language={getLanguage(tabs.selectedPath)}
-                  theme={monacoTheme}
-                  // Uncontrolled: the model owns the text and only tab-state
-                  // bookkeeping flows through React on each keystroke - a
-                  // `value` prop makes the library diff the entire file
-                  // against the model on every render. Programmatic content
-                  // changes go through useTabs' applyContentToModel.
-                  defaultValue={tabs.fileContent}
-                  // Unmounting (preview toggle, extension tab, last tab
-                  // closed) must not dispose the current model - closing a
-                  // tab does that explicitly in useTabs. Without this, every
-                  // trip to Preview and back silently wiped the undo stack.
-                  keepCurrentModel
-                  onChange={tabs.handleEditorChange}
-                  onMount={handleEditorMount}
-                  options={editorOptions}
-                />
-              )
-            ) : (
-              <div className="flex-1 h-full flex items-center justify-center text-gray-500 flex-col gap-4">
-                <span className="text-4xl text-gray-700">AuraPad</span>
-                <span>Double-Shift to search files</span>
-              </div>
+              )}
+            </div>
+
+            {activeExchange && tabs.selectedPath && !activeExt && (
+              <HttpResponsePane
+                exchange={activeExchange}
+                width={httpPaneWidth.width}
+                onStartResize={httpPaneWidth.startResizing}
+                onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
+                onClose={() => tabs.selectedPath && http.close(tabs.selectedPath)}
+              />
             )}
           </div>
 

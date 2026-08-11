@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { ToolbarButton } from './ToolbarButton'
 import { VoiceLevelMeter } from './VoiceLevelMeter'
-import { isFormattablePath, isPythonPath } from '../lib/fileType'
+import { isFormattablePath, isHttpPath, isPythonPath } from '../lib/fileType'
 import type { useVoiceInput } from '../hooks/useVoiceInput'
 import type { useReadAloud } from '../hooks/useReadAloud'
 
@@ -35,6 +35,7 @@ interface FileActionsProps {
   readAloud: ReturnType<typeof useReadAloud>
   onRevealActiveFile: () => void
   onRunPython: () => void
+  onRunHttp: () => void
   onFormatDocument: () => void
   onToggleFold: () => void
   onTogglePreview: () => void
@@ -63,6 +64,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
   readAloud,
   onRevealActiveFile,
   onRunPython,
+  onRunHttp,
   onFormatDocument,
   onToggleFold,
   onTogglePreview,
@@ -89,6 +91,11 @@ export const FileActions: React.FC<FileActionsProps> = ({
       )}
       {isPythonPath(selectedPath) && (
         <ToolbarButton onClick={onRunPython} title="Run Python" colorClassName={muted}>
+          <Play size={16} />
+        </ToolbarButton>
+      )}
+      {isHttpPath(selectedPath) && (
+        <ToolbarButton onClick={onRunHttp} title="Run Request (Cmd+Enter)" colorClassName={muted}>
           <Play size={16} />
         </ToolbarButton>
       )}

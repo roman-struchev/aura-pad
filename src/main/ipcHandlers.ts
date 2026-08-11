@@ -49,6 +49,8 @@ import {
   updateTask as gtasksUpdateTask,
   moveTask as gtasksMoveTask
 } from './googleTasks'
+import { cancelHttpRequest, sendHttpRequest } from './http'
+import { clearHttpHistory, loadHttpHistory } from './httpHistory'
 import { lintPython, lintEslint } from './lint'
 import { googleWebTranslate } from './translate'
 import { applyUpdate } from './updater'
@@ -229,6 +231,13 @@ function registerGoogleTasksIpc(): void {
   )
 }
 
+function registerHttpIpc(): void {
+  handleInvoke('http-send', (requestId, spec) => sendHttpRequest(requestId, spec))
+  handleSend('http-cancel', (_event, requestId) => cancelHttpRequest(requestId))
+  handleInvoke('http-history', () => loadHttpHistory())
+  handleInvoke('http-history-clear', () => clearHttpHistory())
+}
+
 function registerDiagnosticsIpc(): void {
   handleInvoke('lint-python', (absPath) => lintPython(absPath))
   handleInvoke('lint-eslint', (absPath, workspaceRoot) => lintEslint(absPath, workspaceRoot))
@@ -270,6 +279,7 @@ export function registerIpcHandlers(): void {
   registerWorkspaceIpc()
   registerGitIpc()
   registerGoogleTasksIpc()
+  registerHttpIpc()
   registerDiagnosticsIpc()
   registerWorkTogetherIpc()
 }

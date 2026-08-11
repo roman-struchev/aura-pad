@@ -62,7 +62,7 @@ prefers these:
 | A1 | Workspace tree | Roots and children render; `node_modules`/dotfiles and `.gitignore` entries stay hidden; folders expand and collapse |
 | A2 | Open, edit, autosave | Clicking a file opens it, the editor mounts, typing reaches disk, the dirty dot clears |
 | A3 | Tabs | Several files open at once, the last opened is active, clicking switches, closing removes, the session is persisted, files from outside a workspace open and are remembered |
-| A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation |
+| A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation, and the right-click menu staying inside the window with the sidebar docked right (§15) |
 | A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |
 | A6 | Search and quick open | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape |
 | A7 | Preview and formatting | Markdown and HTML previews render and toggle back to source; Format rewrites JSON and autosaves |
@@ -70,6 +70,7 @@ prefers these:
 | A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
 | A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
 | A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
+| A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request and the history records, reloads and clears (§16) |
 
 ---
 
@@ -318,8 +319,9 @@ Guards: selection + clipboard in `useWorkspaceTree.ts`, the shortcut scoping in
 `useGlobalHotkeys.ts` (`data-surface="tree"`), `src/main/clipboardFiles.ts`,
 `copyPaths`/`deletePaths` in `workspaces.ts`, `components/ContextMenu.tsx`.
 
-**15.1, 15.3 (Cmd-click half) and 15.6 are automated as A4.** The rest need a
-right-click menu, Finder, or a re-docked sidebar, and stay manual.
+**15.1, 15.3 (Cmd-click half), 15.6 and the horizontal half of 15.8 are
+automated as A4.** The rest need Finder, a menu action or a resized window, and
+stay manual.
 
 | # | Steps | Expected |
 |---|-------|----------|
@@ -330,8 +332,32 @@ right-click menu, Finder, or a re-docked sidebar, and stay manual.
 | 15.5 | Copy a file in Finder → Cmd+V in the tree | The real file is copied in. Reverse: Cmd+C in the tree, then paste in Finder (macOS writes `NSFilenamesPboardType`; Windows falls back to plain text, so only in-app paste works there) |
 | 15.6 | Select 2 files, press Backspace → Confirm | Both go to Trash in one batch; workspace roots are never trashed (they only offer "Remove from Workspace") |
 | 15.7 | Focus the editor or terminal (or the git commit box) and press Cmd+C / Cmd+V / Backspace | Nothing happens to the tree selection - the shortcuts only fire while the last click was inside `data-surface="tree"` and focus isn't in a text field |
-| 15.8 | Sidebar docked **right**: right-click the lowest row | The menu flips to the other side of the cursor and stays fully inside the window (the original bug: it ran off the right/bottom edge). In a window shorter than the menu it clamps and scrolls instead |
+| 15.8 | Sidebar docked **right**: right-click the lowest row, and the *workspace root* row (its menu is the widest - "Remove from Workspace") | The menu flips to the other side of the cursor and stays fully inside the window (the original bugs: it ran off the right/bottom edge; then it was measured at the cursor, where a shrink-to-fit box only gets the leftover space, so a wide menu still hung over the right edge after flipping). In a window shorter than the menu it clamps and scrolls instead |
 | 15.9 | Right-click a row, press Escape | The menu closes (Escape is checked before dictation/read-aloud) |
+
+---
+
+## 16. HTTP client (the parts that need a real network or the native menu)
+
+Guards: `src/main/http.ts`, `src/renderer/src/lib/http/*`,
+`src/renderer/src/components/HttpResponsePane.tsx`.
+
+**Automated as A12** (loopback server): status line, headers, pretty-printing,
+clipboard, Cmd+Enter, both file extensions (`.http` and `.rest`),
+curl-in-a-shell-script, refused flags, the HTTP Client tab, and the history.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 16.1 | Put the cursor in a request block and press **Cmd+Enter** with the editor *unfocused* (click the tab strip first) | The Edit ▸ Run HTTP Request accelerator fires it - CDP-injected keys never reach the native menu, so A12 can only prove the Monaco binding |
+| 16.2 | Click the **▶ Run** CodeLens above a block, and above a bare `curl` in a `.md`/`.sh` | Both run. A12 asserts the lens *exists* in both places (and stays away from `curl … | jq`); clicking it is the manual half |
+| 16.3 | Run a request against an HTTPS host with a self-signed certificate, with and without `# @insecure` (or curl's `-k`) | Without it: a certificate error in the pane. With it: the response - and the app's *other* networking (updater, Google Tasks) still validates certificates, because -k only relaxes its own session partition |
+| 16.4 | Run a request that redirects (3xx) with and without `# @no-redirect` / `-L` | Followed: the final response plus an "n redirects" note. Not followed: the 3xx itself with its `Location` header |
+| 16.5 | Request a response larger than 8 MB | The body is truncated with a visible note, and the app stays responsive |
+| 16.6 | Request an image (`image/png`) | It renders in the Body tab instead of showing bytes |
+| 16.7 | Start a slow request and press **Cancel** | It stops, the pane says Cancelled, and no late response overwrites a newer one |
+| 16.8 | Drag the pane's left edge, quit, relaunch | The width is restored (`httpPaneWidth` in settings.json) |
+| 16.9 | In the HTTP Client tab, copy a `curl` command to the clipboard and press the paste button | Method, URL, headers and body are filled in from it; an unsupported flag reports itself instead of filling half a request |
+| 16.10 | Send from the tab, quit, relaunch, reopen the tab | The form comes back as it was left (`extensions.httpClient.request`), and the history is still there (`httpHistory.json` in the app's data directory) |
 
 ---
 

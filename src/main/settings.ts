@@ -26,6 +26,14 @@ export function loadSettings(): AppSettings {
       workTogether: {
         ...DEFAULT_SETTINGS.extensions.workTogether,
         ...saved.extensions?.workTogether
+      },
+      httpClient: {
+        ...DEFAULT_SETTINGS.extensions.httpClient,
+        ...saved.extensions?.httpClient,
+        request: {
+          ...DEFAULT_SETTINGS.extensions.httpClient.request,
+          ...saved.extensions?.httpClient?.request
+        }
       }
     }
   }

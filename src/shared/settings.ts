@@ -103,6 +103,17 @@ export const VOICE_LANGUAGES: VoiceLanguage[] = [
   'korean'
 ]
 
+// The HTTP Client tab's scratch request: what its form is currently showing.
+// Saved when a request is sent, so the tab comes back the way it was left.
+export interface HttpScratchRequest {
+  method: string
+  url: string
+  headers: { name: string; value: string }[]
+  body: string
+  followRedirects: boolean
+  insecure: boolean
+}
+
 // Per-extension settings, one namespace per built-in extension (see
 // renderer/lib/extensions.ts). Every extension owns an `enabled` flag plus
 // whatever configuration it needs; adding an extension means adding a block
@@ -128,6 +139,13 @@ export interface ExtensionSettings {
     backendUrl: string
     displayName: string
   }
+  // The form-based counterpart to running requests from a file: method, URL,
+  // headers and body in a tab, for a one-off request that isn't worth saving
+  // to a .http file.
+  httpClient: {
+    enabled: boolean
+    request: HttpScratchRequest
+  }
 }
 
 export interface AppSettings {
@@ -137,6 +155,9 @@ export interface AppSettings {
   sidebarPosition: SidebarPosition
   sidebarWidth: number
   sidebarVisible: boolean
+  // Width of the HTTP client's response pane. Persisted like sidebarWidth so
+  // a layout the user dragged into shape survives a restart.
+  httpPaneWidth: number
   lineNumbersEnabled: boolean
   // Each AI feature owns an on/off flag (toggled from its Configure dialog).
   // Off hides the feature's buttons and makes its menu items/shortcuts no-ops,
@@ -161,6 +182,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sidebarPosition: 'left',
   sidebarWidth: 256,
   sidebarVisible: true,
+  httpPaneWidth: 480,
   lineNumbersEnabled: true,
   dictationEnabled: true,
   voiceModel: 'base',
@@ -180,6 +202,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Off by default; the backend URL is pre-filled with the default hosted
     // instance so enabling the toggle alone is enough to get started, but
     // it's just a normal setting - point it at a self-hosted backend instead.
-    workTogether: { enabled: false, backendUrl: 'https://aura.struchev.site', displayName: 'Host' }
+    workTogether: { enabled: false, backendUrl: 'https://aura.struchev.site', displayName: 'Host' },
+    // On by default: unlike the others it needs no setup at all, and being
+    // listed under Extensions in the sidebar is the only way anyone finds it.
+    httpClient: {
+      enabled: true,
+      request: {
+        method: 'GET',
+        url: '',
+        headers: [],
+        body: '',
+        followRedirects: true,
+        insecure: false
+      }
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { SquareCheckBig, Puzzle } from 'lucide-react'
+import { Globe, SquareCheckBig, Puzzle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { parseExtensionPath } from '../../../shared/extensionTab'
 
@@ -20,6 +20,10 @@ export const EXTENSIONS: Record<string, ExtensionDescriptor> = {
   'google-tasks': {
     icon: SquareCheckBig,
     title: () => 'Google Tasks'
+  },
+  'http-client': {
+    icon: Globe,
+    title: () => 'HTTP Client'
   }
 }
 

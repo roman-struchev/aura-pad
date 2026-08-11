@@ -84,6 +84,16 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           label: 'Format Document',
           accelerator: 'Alt+CmdOrCtrl+L',
           click: () => sendAction('format-document')
+        },
+        { type: 'separator' },
+        {
+          // The same Cmd+Enter is also a Monaco action (App's editor mount),
+          // which is what actually fires while the editor has focus - this
+          // entry covers every other focus state and makes the feature
+          // discoverable at all.
+          label: 'Run HTTP Request',
+          accelerator: 'CmdOrCtrl+Return',
+          click: () => sendAction('run-http-request')
         }
       ]
     },

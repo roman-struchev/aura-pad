@@ -11,5 +11,6 @@ export type MenuAction =
   | 'translate-selection'
   | 'format-document'
   | 'toggle-preview'
+  | 'run-http-request'
   | 'toggle-terminal'
   | 'preferences'

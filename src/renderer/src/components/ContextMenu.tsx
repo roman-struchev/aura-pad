@@ -27,21 +27,33 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, surface, childre
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
+    // Measure from the corner, not from where the menu will sit: the box is
+    // shrink-to-fit, so at `left: x` it only gets the space left over to the
+    // right of the cursor and reports that squeezed width (labels wrap, or it
+    // stops at min-width). Flipping off an under-measured width lands the menu
+    // off-screen anyway - which is every right-click with the sidebar docked
+    // right. This runs before paint, so the corner is never visible.
+    el.style.left = '0px'
+    el.style.top = '0px'
     const { width, height } = el.getBoundingClientRect()
     const { innerWidth: vw, innerHeight: vh } = window
 
     const flippedLeft = x + width + EDGE_MARGIN > vw ? x - width : x
     const flippedTop = y + height + EDGE_MARGIN > vh ? y - height : y
-    setPos({
-      left: Math.min(
-        Math.max(EDGE_MARGIN, flippedLeft),
-        Math.max(EDGE_MARGIN, vw - width - EDGE_MARGIN)
-      ),
-      top: Math.min(
-        Math.max(EDGE_MARGIN, flippedTop),
-        Math.max(EDGE_MARGIN, vh - height - EDGE_MARGIN)
-      )
-    })
+    const left = Math.min(
+      Math.max(EDGE_MARGIN, flippedLeft),
+      Math.max(EDGE_MARGIN, vw - width - EDGE_MARGIN)
+    )
+    const top = Math.min(
+      Math.max(EDGE_MARGIN, flippedTop),
+      Math.max(EDGE_MARGIN, vh - height - EDGE_MARGIN)
+    )
+    // Written to the node as well as to state: when a re-measure lands on the
+    // same coordinates React diffs the style away and the corner used for
+    // measuring would be what stays on screen.
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+    setPos({ left, top })
     // Re-measures per open (x/y change) and whenever the item list differs -
     // "Paste" appearing changes the height the flip is computed from.
   }, [x, y, children])
@@ -54,6 +66,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, surface, childre
       style={{
         left: pos?.left ?? x,
         top: pos?.top ?? y,
+        maxWidth: `calc(100vw - ${EDGE_MARGIN * 2}px)`,
         maxHeight: `calc(100vh - ${EDGE_MARGIN * 2}px)`,
         visibility: pos ? 'visible' : 'hidden'
       }}

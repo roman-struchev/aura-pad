@@ -72,6 +72,23 @@ export function makeUi(cdp) {
     await sleep(120)
   }
 
+  // Keyboard shortcuts only reach Monaco while its hidden input has focus, and
+  // clicking `.monaco-editor` aims at the element's centre - which for a short
+  // file is the empty space below the last line, where the click does not
+  // always move focus there. Anything about to send keys to the editor should
+  // focus it explicitly instead of trusting a click.
+  const focusEditor = async () => {
+    const focused = await cdp.evaluate(`(() => {
+      const el = document.querySelector('.monaco-editor .native-edit-context')
+        || document.querySelector('.monaco-editor textarea')
+      if (!el) return false
+      el.focus()
+      return document.activeElement === el
+    })()`)
+    if (!focused) throw new Error('could not focus the editor')
+    await sleep(80)
+  }
+
   // Tree rows carry data-path (see lib/treeRows.ts), which makes them
   // addressable without guessing at row order.
   const treeRow = (path) => `[data-tree-row][data-path="${path}"]`
@@ -174,6 +191,7 @@ export function makeUi(cdp) {
     hover,
     key,
     typeInEditor,
+    focusEditor,
     treeRow,
     clickRow,
     rowExists,

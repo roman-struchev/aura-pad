@@ -32,6 +32,9 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   quality, or fully offline local models.
 - **Git built in** — status badges, diffs, branch switching, stage/commit/push/pull without
   leaving the editor.
+- **Run HTTP requests** — press `Cmd+Enter` on a `curl` command anywhere, keep
+  `.http`/`.rest` files next to your code, or fill in a request in the HTTP Client tab; the
+  response lands beside the editor, and every call is kept in a local history.
 - **Work Together** — share a live link to any open tab; others edit or view it in a
   plain browser, no install needed.
 - **Instant startup, small footprint** — opens folders and megabyte-sized files without
@@ -94,6 +97,32 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - A real terminal inside the app: multiple tabs, resizable panel, opens at any folder from
   the file tree.
 
+**HTTP requests**
+
+- Run a `curl` command straight from any file — a **▶ Run** button appears above it (in a
+  `.md`, a `.sh`, a scratch note, anywhere), or press `Cmd+Enter` with the cursor inside it.
+  Multi-line commands pasted from a terminal or browser devtools work as they are. The
+  button only shows up where the command can actually run: a `curl … | bash` from a README
+  needs a shell, and this client never uses one.
+- `.http` / `.rest` request files (the JetBrains HTTP Client / VS Code REST Client format):
+  requests separated by `###`, `@variables` with `{{placeholders}}`, and a **▶ Run** button
+  above every request. They're plain text, so they live in git next to the code.
+- An **HTTP Client tab** for one-off requests (sidebar → Extensions): pick the method,
+  type the URL, add headers and a body, hit Send. It can also fill itself in from a `curl`
+  command on the clipboard, and hand one back.
+- The response opens beside the editor (or below the form): status, time and size, the body
+  (JSON and XML pretty-printed, images shown as images), every response header, and one
+  click to copy any of it — or to copy the request back out as a `curl` command.
+- **History** of the last 50 requests, whichever way they were sent. Click one to load it
+  back into the form and re-run it. It is stored locally in the app's data directory and
+  keeps the headers you sent (so re-running works) — clear it from the tab when that
+  matters.
+- Requests are parsed, never handed to a shell, so opening someone else's `.http`/`.rest`
+  file and pressing Run can't execute anything but an HTTP request.
+- No ambient state: the client sends exactly what the request says. It keeps no cookie jar
+  and reuses no browser session, so a session-cookie API needs its `Cookie` header written
+  out (`-b`, or a `Cookie:` line).
+
 **Work Together**
 
 - Share any open tab as a live link — others edit or read it in a regular browser, no
@@ -134,9 +163,9 @@ npm run lint
 npm run format
 ```
 
-`npm run smoke` is the test suite — 82 checks over the baseline behavior
+`npm run smoke` is the test suite — 111 checks over the baseline behavior
 (opening and editing files, tabs, tree operations, encodings, search, previews,
-terminal, settings, git) in about 25 seconds. What it can't reach (native menu
+terminal, settings, git, HTTP requests) in about 35 seconds. What it can't reach (native menu
 accelerators, native dialogs, OAuth, the updater) is a manual checklist in
 [docs/TEST_CASES.md](docs/TEST_CASES.md).
 

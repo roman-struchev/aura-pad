@@ -49,7 +49,10 @@ const EXTENSION_LANGUAGE: Record<string, string> = {
   lua: 'lua',
   r: 'r',
   graphql: 'graphql',
-  gql: 'graphql'
+  gql: 'graphql',
+  // Not a Monaco built-in: registered by the HTTP client (lib/http/monacoHttp).
+  http: 'http',
+  rest: 'http'
 }
 
 export function getLanguage(path: string): string {

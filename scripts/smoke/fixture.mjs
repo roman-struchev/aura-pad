@@ -38,6 +38,47 @@ export function createFixture() {
   fs.mkdirSync(path.join(ws, 'node_modules'))
   fs.writeFileSync(path.join(ws, 'node_modules', 'dep.js'), 'needle-in-node-modules\n')
 
+  // Request files for the HTTP client. Their port is fixed rather than
+  // ephemeral because the files have to exist before the app launches (so the
+  // tree lists them without waiting on a watcher round-trip) - the case binds
+  // the same port and skips itself if something else already has it.
+  const httpPort = Number(process.env.SMOKE_CDP_PORT || 9333) + 20
+  fs.writeFileSync(
+    path.join(ws, 'requests.http'),
+    `@host = http://127.0.0.1:${httpPort}\n` +
+      `\n### ping\n` +
+      `GET {{host}}/ping\n` +
+      `Accept: application/json\n` +
+      `\n### echo\n` +
+      `POST {{host}}/echo\n` +
+      `Content-Type: application/json\n` +
+      `\n{"hello":"world"}\n`
+  )
+  fs.writeFileSync(
+    path.join(ws, 'snippet.sh'),
+    `#!/bin/sh\n# runnable in place, with the cursor anywhere inside it\n` +
+      `curl -X POST http://127.0.0.1:${httpPort}/echo \\\n` +
+      `  -H 'Content-Type: application/json' \\\n` +
+      `  --data-raw '{"from":"curl"}'\n`
+  )
+  // The same format under its other conventional extension - VS Code's REST
+  // Client uses .rest as readily as .http, and both must be treated alike.
+  fs.writeFileSync(
+    path.join(ws, 'requests.rest'),
+    `### ping again\nGET http://127.0.0.1:${httpPort}/ping\n`
+  )
+  // One runnable command and one that needs a shell: the Run lens must offer
+  // itself for the first and stay away from the second.
+  fs.writeFileSync(
+    path.join(ws, 'mixed-curl.sh'),
+    `curl http://127.0.0.1:${httpPort}/ping\n` + `curl http://127.0.0.1:${httpPort}/ping | jq .\n`
+  )
+  // A command the client must refuse rather than half-honor (-o writes a file).
+  fs.writeFileSync(
+    path.join(ws, 'bad-curl.sh'),
+    `curl -o out.txt http://127.0.0.1:${httpPort}/ping\n`
+  )
+
   // Searchable needle in a real file.
   fs.writeFileSync(path.join(ws, 'haystack.txt'), 'nothing\nfindmeplease here\nnothing\n')
 
@@ -87,6 +128,7 @@ export function createFixture() {
     ws,
     outside,
     gitReady,
+    httpPort,
     file: (...parts) => path.join(ws, ...parts),
     cleanup: () => fs.rmSync(root, { recursive: true, force: true })
   }

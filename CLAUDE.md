@@ -13,7 +13,7 @@ change.**
 ## After you change anything
 
 ```bash
-npm run smoke      # ~25s, 82 checks, throwaway profile — the actual gate
+npm run smoke      # ~35s, 111 checks, throwaway profile — the actual gate
 npm run typecheck
 npm run lint       # pre-existing errors are noisy; compare, don't chase zero
 ```

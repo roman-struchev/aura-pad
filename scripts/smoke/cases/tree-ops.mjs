@@ -116,5 +116,54 @@ export default {
         )
       }
     }
+
+    // The context menu stays inside the window with the sidebar docked right,
+    // where every right-click lands a few pixels from the viewport edge. The
+    // root row is the widest menu ("Remove from Workspace"), and the width the
+    // menu is *measured* at is exactly what used to be wrong here.
+    const setSidebar = async (side) => {
+      await ui.clickButton('settings')
+      await sleep(400)
+      const ok = await cdp.evaluate(`(() => {
+        const sel = [...document.querySelectorAll('select')].find((s) =>
+          [...s.options].some((o) => o.value === 'right') &&
+          [...s.options].some((o) => o.value === 'left'))
+        if (!sel) return false
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+        setter.call(sel, ${JSON.stringify(side)})
+        sel.dispatchEvent(new Event('change', { bubbles: true }))
+        return true
+      })()`)
+      await ui.key('Escape', 'Escape', 27)
+      await sleep(400)
+      return ok
+    }
+
+    if (await setSidebar('right')) {
+      const row = await ui.rectOf(ui.treeRow(ws))
+      // A few px inside the row's right edge: the worst case for the flip.
+      await ui.clickAt(row.x + row.w - 6, row.y + row.h / 2, { button: 'right' })
+      await sleep(300)
+      const menu = await cdp.evaluate(`(() => {
+        const el = document.querySelector('div.fixed[data-surface="tree"]')
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+                 vw: innerWidth, vh: innerHeight }
+      })()`)
+      check('right-clicking a tree row opens the context menu', !!menu)
+      if (menu) {
+        check(
+          'it stays inside the window with the sidebar docked right',
+          menu.left >= 0 && menu.right <= menu.vw && menu.top >= 0 && menu.bottom <= menu.vh,
+          JSON.stringify(menu)
+        )
+      }
+      await cdp.evaluate(`window.dispatchEvent(new MouseEvent('click', { bubbles: true }))`)
+      await sleep(200)
+      await setSidebar('left')
+    } else {
+      check('the sidebar side can be changed from settings', false)
+    }
   }
 }

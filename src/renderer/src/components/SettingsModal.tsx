@@ -40,6 +40,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⌥⌘T', description: 'Translate the selected text' },
   { keys: '⌥⌘L', description: 'Format document (JSON/HTML/XML)' },
   { keys: '⇧⌘P', description: 'Toggle Markdown/HTML preview' },
+  { keys: '⌘↵', description: 'Run the HTTP request (or curl command) at the cursor' },
   { keys: '⌃`', description: 'Toggle the terminal' },
   { keys: '⌘B', description: 'Show/hide the sidebar' },
   { keys: '⌘,', description: 'Open Settings' },
@@ -240,6 +241,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               description="Status badges in the file tree and the per-project Git tab"
               checked={settings.extensions.git.enabled}
               onChange={(v) => updateExtension('git', { enabled: v })}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingToggle
+              label="HTTP Client"
+              description="A tab for one-off requests: method, URL, headers, body - and the response"
+              checked={settings.extensions.httpClient.enabled}
+              onChange={(v) => updateExtension('httpClient', { enabled: v })}
               labelClassName={density.settingsLabelClass}
               descriptionClassName={density.settingsDescriptionClass}
             />

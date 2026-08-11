@@ -21,6 +21,11 @@ export const isProsePath = (path: string | null): boolean =>
 
 export const isPythonPath = (path: string | null): boolean => !!path && path.endsWith('.py')
 
+// Request collections for the HTTP client: the `.http`/`.rest` convention
+// JetBrains' HTTP Client and VS Code's REST Client share.
+export const isHttpPath = (path: string | null): boolean =>
+  !!path && (path.endsWith('.http') || path.endsWith('.rest'))
+
 // Documents the "Format Document" action can pretty-print: JSON (via
 // JSON.parse/stringify) and markup (HTML/XML via prettyPrintMarkup).
 export const isFormattablePath = (path: string | null): boolean =>

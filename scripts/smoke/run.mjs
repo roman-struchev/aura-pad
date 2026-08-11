@@ -41,6 +41,7 @@ const CASE_FILES = [
   'terminal.mjs',
   'settings.mjs',
   'git.mjs',
+  'http.mjs',
   'security.mjs'
 ]
 

@@ -1,5 +1,6 @@
 import * as monaco from 'monaco-editor'
 import { loader } from '@monaco-editor/react'
+import { registerHttpLanguage } from './lib/http/monacoHttp'
 
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
@@ -18,6 +19,10 @@ self.MonacoEnvironment = {
 }
 
 loader.config({ monaco })
+
+// `.http`/`.rest` request files: Monaco ships no grammar for them, and the
+// Run CodeLens has to exist before the first such file opens.
+registerHttpLanguage()
 
 // Force LF globally for any model created in Monaco (prevents CRLF offset drift)
 monaco.editor.onDidCreateModel((model) => {

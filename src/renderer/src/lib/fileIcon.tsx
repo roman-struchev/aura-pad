@@ -5,7 +5,8 @@ import {
   FileType2,
   FileCode2,
   FileText,
-  File
+  File,
+  Globe
 } from 'lucide-react'
 
 export function getFileIcon(name: string, type: 'file' | 'directory', expanded: boolean) {
@@ -20,6 +21,9 @@ export function getFileIcon(name: string, type: 'file' | 'directory', expanded: 
     return <FileType2 size={14} className="text-blue-400" />
   if (name.endsWith('.js') || name.endsWith('.jsx'))
     return <FileType2 size={14} className="text-yellow-400" />
+  // Same icon the HTTP Client extension uses, so the two read as one feature.
+  if (name.endsWith('.http') || name.endsWith('.rest'))
+    return <Globe size={14} className="text-emerald-400" />
 
   return <File size={14} className="text-gray-400" />
 }

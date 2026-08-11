@@ -4,6 +4,7 @@ import type { FileNode } from './fileNode'
 import type { SearchResult } from './searchResult'
 import type { GitCommit, GitRepoStatus } from './gitStatus'
 import type { GTask, GTaskInput, GTaskList } from './googleTasks'
+import type { HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
 import type { LintMarker } from './lint'
 import type { RecentExternalFile } from './recentExternalFile'
 import type { PathListingResult } from './pathMatch'
@@ -157,6 +158,13 @@ export interface InvokeContracts {
     ]
     result: GTasksResult<GTask>
   }
+  // The HTTP client. requestId is the renderer's handle for cancelling a
+  // request that is still in flight (see the http-cancel send channel).
+  'http-send': { args: [requestId: string, spec: HttpRequestSpec]; result: HttpSendResult }
+  // Newest first, capped at HTTP_HISTORY_LIMIT; clearing returns the (empty)
+  // list so the caller doesn't need a second round-trip.
+  'http-history': { args: []; result: HttpHistoryEntry[] }
+  'http-history-clear': { args: []; result: HttpHistoryEntry[] }
   'lint-python': { args: [absPath: string]; result: LintMarker | null }
   'lint-eslint': { args: [absPath: string, workspaceRoot: string]; result: LintMarker[] }
   'translate-google-web': {
@@ -263,6 +271,9 @@ export const INVOKE_CHANNELS = {
   gtasksCreateTask: 'gtasks-create-task',
   gtasksUpdateTask: 'gtasks-update-task',
   gtasksMoveTask: 'gtasks-move-task',
+  httpSend: 'http-send',
+  httpHistory: 'http-history',
+  httpHistoryClear: 'http-history-clear',
   lintPython: 'lint-python',
   lintEslint: 'lint-eslint',
   translateGoogleWeb: 'translate-google-web',
@@ -290,6 +301,7 @@ export interface SendContracts {
   'destroy-pty': [termId: string]
   'pty-write': [termId: string, data: string]
   'pty-resize': [termId: string, cols: number, rows: number]
+  'http-cancel': [requestId: string]
 }
 
 export const SEND_CHANNELS = {
@@ -300,7 +312,8 @@ export const SEND_CHANNELS = {
   applyUpdate: 'apply-update',
   destroyPty: 'destroy-pty',
   ptyWrite: 'pty-write',
-  ptyResize: 'pty-resize'
+  ptyResize: 'pty-resize',
+  httpCancel: 'http-cancel'
 } as const satisfies Record<string, keyof SendContracts>
 
 // ---------------------------------------------------------------------------
