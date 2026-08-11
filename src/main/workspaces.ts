@@ -58,6 +58,18 @@ export function loadGitignore(rootPath: string): Ignore {
 // froze every other IPC call (saves, terminal I/O, git status) for the
 // duration of a large workspace's walk, and it runs on every structural
 // fs event.
+// The `ignore` package speaks POSIX-relative paths only, and a directory-only
+// pattern ("build/", "coverage/" - the most common kind of .gitignore entry)
+// matches only when the path it is tested against ends in a slash. Testing a
+// directory by its bare name therefore silently ignored the rule and left the
+// folder in the tree (empty, since its *contents* did match). The separator
+// swap matters on Windows, where path.relative yields "a\b" and nothing below
+// the top level would match at all.
+function ignoresEntry(ig: Ignore, relPath: string, isDirectoryLike: boolean): boolean {
+  const posix = relPath.split(path.sep).join('/')
+  return ig.ignores(posix) || (isDirectoryLike && ig.ignores(`${posix}/`))
+}
+
 async function buildFileTree(
   dirPath: string,
   rootPath: string,
@@ -81,7 +93,10 @@ async function buildFileTree(
 
       const fullPath = path.join(dirPath, file)
       const relPath = path.relative(rootPath, fullPath)
-      if (relPath && ig.ignores(relPath)) continue
+      // A symlink counts as directory-like here: resolving what it points at
+      // costs a stat, and offering both forms to the matcher is cheaper.
+      if (relPath && ignoresEntry(ig, relPath, entry.isDirectory() || entry.isSymbolicLink()))
+        continue
 
       try {
         // Symlinks still need a real stat to know what they point at.

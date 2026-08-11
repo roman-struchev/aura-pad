@@ -31,13 +31,25 @@ const activeWatchers = new Map<string, fs.FSWatcher>()
 // callback would defeat the point of filtering noise out early.
 const rootIgnores = new Map<string, Ignore>()
 const recentSelfWrites = new Map<string, { time: number }>()
-// Hash of the last content we ourselves wrote to each path. Unlike
-// recentSelfWrites this never times out (a hash is cheap to keep, unlike the
-// full content the old implementation stored) - it's the ground truth for
-// "is this event a real external change or just our own write echoing back",
-// no matter how late the event arrives. Insertion-ordered with a size cap so
-// a very long session can't grow it unboundedly.
-const lastSelfWriteHashes = new Map<string, string>()
+
+interface SelfWrite {
+  // Hash of the exact bytes we last wrote to this path.
+  hash: string
+  // What the file measured immediately after that write. An event whose stat
+  // still matches these can't be carrying different content, which is what
+  // lets the check below answer without reading the file at all - see
+  // matchesLastSelfWrite.
+  size: number
+  mtimeMs: number
+}
+
+// What we ourselves last wrote to each path. Unlike recentSelfWrites this
+// never times out (a hash plus two numbers is cheap to keep, unlike the full
+// content the old implementation stored) - it's the ground truth for "is this
+// event a real external change or just our own write echoing back", no matter
+// how late the event arrives. Insertion-ordered with a size cap so a very
+// long session can't grow it unboundedly.
+const lastSelfWrites = new Map<string, SelfWrite>()
 const LAST_HASH_LIMIT = 1000
 const selfWriteCleanupTimers = new Map<string, NodeJS.Timeout>()
 const structureDebounceTimers = new Map<string, NodeJS.Timeout>()
@@ -97,12 +109,26 @@ export function broadcast<C extends keyof EventContracts>(
 export function recordSelfWrite(filePath: string, content: string | Buffer): void {
   const key = selfWriteKey(filePath)
   recentSelfWrites.set(key, { time: Date.now() })
+  // Stat'd here rather than derived from `content`: the size on disk can
+  // differ from the buffer's length in principle, and the mtime is only
+  // knowable from the file itself. A write whose file vanished before this
+  // runs simply gets no stat shortcut (-1 never matches a real stat), and
+  // falls back to hashing.
+  let size = -1
+  let mtimeMs = -1
+  try {
+    const stat = fs.statSync(key)
+    size = stat.size
+    mtimeMs = stat.mtimeMs
+  } catch {
+    // Deleted/unreadable already - hash-only entry.
+  }
   // Delete-then-set keeps the map insertion-ordered by most recent save, so
   // the size cap below evicts the longest-untouched path first.
-  lastSelfWriteHashes.delete(key)
-  lastSelfWriteHashes.set(key, contentHash(content))
-  if (lastSelfWriteHashes.size > LAST_HASH_LIMIT) {
-    lastSelfWriteHashes.delete(lastSelfWriteHashes.keys().next().value!)
+  lastSelfWrites.delete(key)
+  lastSelfWrites.set(key, { hash: contentHash(content), size, mtimeMs })
+  if (lastSelfWrites.size > LAST_HASH_LIMIT) {
+    lastSelfWrites.delete(lastSelfWrites.keys().next().value!)
   }
   clearTimeout(selfWriteCleanupTimers.get(key))
   selfWriteCleanupTimers.set(
@@ -151,13 +177,31 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   // True when the file's current content is still exactly what we last wrote
   // to it - i.e. the event is our own write echoing back, or a metadata-only
   // touch (iCloud xattrs, mtime bumps), not a real external edit.
+  //
+  // Ordered cheapest-first, because this runs on the main process's event
+  // loop for every event that gets past the ignore filter:
+  //
+  //   1. no record for this path            -> nothing to compare against
+  //   2. size and mtime still as we left it -> content can't have changed
+  //   3. only then read and hash the file
+  //
+  // Step 2 is what keeps the common cases free: the events our own (auto)save
+  // generates, and the metadata-only touches a sync daemon emits afterwards,
+  // both leave size+mtime exactly as the write did. Without it, every such
+  // event re-read the whole file - up to the 10 MB open limit - synchronously,
+  // stalling IPC and the UI along with it. The stat pair is the same "has this
+  // file changed" proxy make/rsync/git's stat cache use; a writer that changes
+  // content while restoring both the original size *and* mtime would slip
+  // through, which is not something normal tooling does.
   const matchesLastSelfWrite = (): boolean => {
-    const lastHash = lastSelfWriteHashes.get(key)
-    if (lastHash === undefined) return false
+    const last = lastSelfWrites.get(key)
+    if (last === undefined) return false
     try {
+      const stat = fs.statSync(fullPath)
+      if (stat.size === last.size && stat.mtimeMs === last.mtimeMs) return true
       // Raw bytes, not a utf-8 decode: the recorded hash is of the encoded
       // bytes we wrote, whatever the file's encoding.
-      return contentHash(fs.readFileSync(fullPath)) === lastHash
+      return contentHash(fs.readFileSync(fullPath)) === last.hash
     } catch {
       // Unreadable (deleted/moved/permissions) - treat as a real change and
       // let the handlers below sort it out.
@@ -173,9 +217,9 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
       return
     }
     forgetSelfWrite(key)
-    // A real external change makes our last-write hash stale - drop it, so a
+    // A real external change makes our last-write record stale - drop it, so a
     // later revert back to that exact content isn't mistaken for our own.
-    lastSelfWriteHashes.delete(key)
+    lastSelfWrites.delete(key)
     broadcast('file-changed-externally', fullPath)
     return
   }

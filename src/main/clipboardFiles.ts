@@ -1,5 +1,6 @@
 import { clipboard } from 'electron'
 import fs from 'fs'
+import path from 'path'
 import type { OpResult } from '../shared/ipc'
 
 // File copy/paste between the tree and the OS file manager. Electron's
@@ -54,14 +55,17 @@ function fromFileUrl(value: string): string | null {
   }
 }
 
-// Only paths that still exist are handed back - the clipboard easily outlives
-// the files it points at, and the plain-text fallback below would otherwise
-// treat any copied prose as a file list.
+// Only absolute paths that still exist are handed back - the clipboard easily
+// outlives the files it points at, and the plain-text fallback below would
+// otherwise treat any copied prose as a file list. Absolute matters on its
+// own: a relative string ("src/main/index.ts", copied out of a README) would
+// be resolved by existsSync against the *main process's* working directory,
+// so pasting it would drop some unrelated file into the user's workspace.
 function existingPaths(paths: (string | null)[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (const p of paths) {
-    if (!p || seen.has(p)) continue
+    if (!p || seen.has(p) || !path.isAbsolute(p)) continue
     seen.add(p)
     try {
       if (fs.existsSync(p)) out.push(p)

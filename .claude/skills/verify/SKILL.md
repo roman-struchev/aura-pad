@@ -1,9 +1,27 @@
 ---
 name: verify
-description: Build, launch, and drive AuraPad (Electron) for runtime verification via CDP
+description: Run AuraPad's smoke suite (npm run smoke) and drive the app over CDP for runtime verification. Use after changing anything in src/, when adding a check for a new feature, or when asked to test, verify, or reproduce behavior in the real app.
 ---
 
 # Verifying AuraPad changes
+
+## Try the smoke suite first
+
+```bash
+npm run smoke              # 82 checks, ~20s, throwaway profile + fixture workspace
+npm run smoke -- A4 A7     # only these cases (prefix match on the id)
+npm run smoke -- --keep    # leave the app running on port 9333 to poke at it
+```
+
+`scripts/smoke/` already solves launching an isolated instance, waiting for
+readiness, raising the window, clicking rows/tabs/buttons, and reading ground
+truth. **Don't hand-roll another CDP harness** — if the change needs a check the
+suite doesn't have, add a module to `scripts/smoke/cases/` (list it in
+`run.mjs`) and you get the runner, the fixture and the reporting for free.
+`docs/TEST_CASES.md` Part A maps each id to what it covers.
+
+Everything below is for the cases the suite deliberately can't do: native-menu
+accelerators, native dialogs, OAuth, the updater, and free-form poking.
 
 ## Launch
 
@@ -45,11 +63,13 @@ Node 22 has a built-in WebSocket — no deps needed. Page target: `GET /json`, f
 
 ## Regression checklist
 
-Before signing off, if the change touches an area with a known past bug, run the
-matching section of `docs/TEST_CASES.md` — each section lists the files it guards
-under `Guards:`, so match them against your diff and run only that section. Don't
-run unrelated sections; a small change needs only its own.
+Before signing off: run `npm run smoke` (it is cheap enough that there is no
+reason not to), then, if the change touches an area with a known past bug, run
+the matching Part B section of `docs/TEST_CASES.md` by hand — each section lists
+the files it guards under `Guards:`, so match them against your diff and run only
+that section. Don't run unrelated sections; a small change needs only its own.
 
 When you fix a new bug that could plausibly come back (or add a load-bearing
-behavior worth locking in), add a case to `docs/TEST_CASES.md` in the same
+behavior worth locking in), lock it in: a check in `scripts/smoke/cases/` if it
+can be automated, a Part B case in `docs/TEST_CASES.md` if it can't — in the same
 change, so the checklist stays current instead of drifting behind the code.

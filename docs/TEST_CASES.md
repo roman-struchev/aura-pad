@@ -1,19 +1,79 @@
-# Regression test cases
+# Test cases
 
-A checklist tied to bugs already fixed in AuraPad. Run the relevant section
-before a release (or after touching the named files) so a fixed bug doesn't
-come back. Each case names the file(s) it guards, concrete steps, and the
-expected result — the wording of "expected" is the assertion.
+Two parts:
 
-Most UI cases are driven the way `.claude/skills/verify` describes: launch an
-isolated instance
-(`AURAPAD_USER_DATA_DIR=/tmp/claude/aura-test npm run dev -- -- --remote-debugging-port=9222`)
-and drive it over CDP. Two ground-truth tricks used below, because an occluded
-window throttles Monaco/DOM repaints and makes `.view-lines`/DOM reads stale:
+- **Part A — baseline.** Does the app still do the things it exists for? These
+  are automated: `npm run smoke` runs all of them against a throwaway profile in
+  about 20 seconds. Run it before every release and after any change you can't
+  fully reason about.
+- **Part B — regressions.** One section per bug already fixed, naming the files
+  it guards. Run the sections whose `Guards:` match your diff. Most are manual;
+  the ones Part A already covers say so.
 
-- **Active tab / open tabs**: read `<userDataDir>/openTabs.json` — the renderer
-  persists `{ paths, activeTabPath, pinnedPaths }` there ~0.5 s after any change.
-- **File on disk**: read the file directly; autosave persists ~1.2 s after typing.
+```bash
+npm run smoke              # everything, ~20s
+npm run smoke -- A5 A10    # only these ids (prefix match)
+npm run smoke -- --keep    # leave the app up afterwards to poke at it
+```
+
+The suite lives in `scripts/smoke/`: `run.mjs` launches the app with
+`AURAPAD_USER_DATA_DIR` pointed at a temp profile and a planted workspace
+(`fixture.mjs`), then drives it over CDP with real mouse and key events
+(`ui.mjs`). One launch covers every case; add a case by dropping a module into
+`scripts/smoke/cases/` and listing it in `run.mjs`.
+
+## What automation can't reach
+
+Keep these manual — they are the reason Part B still has prose in it:
+
+- **Native-menu accelerators** (Cmd+B, Cmd+S, Cmd+W, Cmd+Q, Option+Cmd+L,
+  Cmd+Shift+F, Cmd+D…). The menu is owned by the main process and only ever
+  sees real keystrokes; CDP-injected keys go straight to the page. Where a
+  toolbar button triggers the same action, the suite uses that instead.
+  Renderer-level shortcuts (double-Shift quick open, the tree's Cmd+C/V/⌫,
+  Escape) *are* injectable and are covered.
+- **Native dialogs** — the folder picker behind "Open Folder", Finder
+  interaction, the OS clipboard shared with other apps.
+- **OAuth round-trips, the updater, and signed-build behavior** (§8, §9).
+- **Anything judged by eye**: theme colors, layout, fonts.
+
+## Ground truth, when writing a case
+
+An app window that isn't frontmost is *occluded*, and Chromium then throttles
+rendering: Monaco's `.view-lines` reads back empty and its edit events lag, so a
+case that asserts on editor DOM measures window stacking, not the app. The suite
+raises the window at startup through the main-process inspector, and still
+prefers these:
+
+- **Open tabs / active tab**: `window.api.getOpenTabs()`.
+- **File contents**: read the file from disk (autosave lands ~1.2 s after typing).
+- **Settings**: `window.api.getSettings()` or `<userDataDir>/settings.json`.
+- **Terminal output**: collect `window.api.onPtyData`, not the xterm DOM.
+
+---
+
+# Part A — baseline (automated)
+
+`npm run smoke`. Each id below is a module in `scripts/smoke/cases/`; the
+"covers" column is what breaks in the app if the case goes red.
+
+| id | Case | Covers |
+|---|---|---|
+| A1 | Workspace tree | Roots and children render; `node_modules`/dotfiles and `.gitignore` entries stay hidden; folders expand and collapse |
+| A2 | Open, edit, autosave | Clicking a file opens it, the editor mounts, typing reaches disk, the dirty dot clears |
+| A3 | Tabs | Several files open at once, the last opened is active, clicking switches, closing removes, the session is persisted, files from outside a workspace open and are remembered |
+| A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation |
+| A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |
+| A6 | Search and quick open | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape |
+| A7 | Preview and formatting | Markdown and HTML previews render and toggle back to source; Format rewrites JSON and autosaves |
+| A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced |
+| A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
+| A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
+| A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
+
+---
+
+# Part B — regressions
 
 ---
 
@@ -21,6 +81,9 @@ window throttles Monaco/DOM repaints and makes `.view-lines`/DOM reads stale:
 
 Guards: `src/main/encoding.ts`, `readFileContent`/`writeFileContent` in
 `src/main/workspaces.ts`, `getDiff` in `src/main/git.ts`.
+
+**Mostly automated as A5** (1.1–1.4). Run the rest by hand when touching
+`encoding.ts`.
 
 Setup — create test files (Node, with the app's own iconv-lite):
 
@@ -197,13 +260,20 @@ Guards: `readConfigFile`/`writeConfigFile` cache in `src/main/configFile.ts`.
 Guards: `src/renderer/src/components/HtmlPreview.tsx`.
 
 The security hardening was intentionally reverted because isolation attempts
-broke real reports. Until a proper `WebContentsView` isolation lands, the test
-is simply: **the reports render.**
+broke real reports. Until a proper isolated preview lands, the test is simply:
+**the reports render.** A7 covers the plain case; the wrapper case below needs a
+real report and stays manual.
 
 | # | Steps | Expected |
 |---|-------|----------|
-| 12.1 | Open each report in `~/git/java-guild/public/pages/*.html`, toggle preview | The report renders (tables/charts), including the "wrapper" ones (`report-port-component`, `report-aggregated`, `report-employees-stats`, `report-port-mentor-domain`) that `document.write` into a nested iframe |
-| 12.2 | If you change the iframe sandbox, re-run 12.1 | Dropping `allow-same-origin` (opaque origin) makes the wrapper reports render **blank** — that's the regression to avoid |
+| 12.1 | Preview a simple `.html` file | It renders (automated as A7) |
+| 12.2 | Preview a report that `document.write`s into a nested iframe — the kind that broke before (any dashboard-style page whose scripts build a second iframe; keep one such file around locally, e.g. under a reports repo) | It renders fully, tables and charts included |
+| 12.3 | If you change the iframe sandbox, re-run 12.2 | Dropping `allow-same-origin` (opaque origin) makes those wrapper reports render **blank** — that's the regression to avoid |
+
+**Read `docs/BUGS.md` §1 before touching this.** The same
+`allow-scripts allow-same-origin` that keeps 12.2 working also gives a previewed
+file the full privileged bridge (verified: arbitrary file read/write and command
+execution), so "make 12.2 pass" and "close that hole" are the same piece of work.
 
 ---
 
@@ -211,6 +281,9 @@ is simply: **the reports render.**
 
 Guards: `settingsLoaded` in `useSettings.ts`, the restore effect in `useTabs.ts`,
 the resume/teardown effects in `useWorkTogether.ts`.
+
+**13.2 is automated as A9** (relaunch restores the persisted tabs and settings);
+the `tabsEnabled: false` and Work Together variants below stay manual.
 
 Both of these run **once** at startup off a single setting, and `settings` starts
 out as `DEFAULT_SETTINGS` until main answers — so acting before that silently
@@ -230,6 +303,8 @@ picks the default instead of the user's choice.
 
 Guards: `src/preload/index.ts`, `src/preload/index.d.ts`.
 
+**Automated as A11.**
+
 | # | Steps | Expected |
 |---|-------|----------|
 | 14.1 | In the renderer console: `typeof window.electron` | `"undefined"` — the generic `electronAPI` bridge (unrestricted `ipcRenderer` for any channel) must stay unexposed, especially while the HTML preview can run scripts in this renderer (§12) |
@@ -243,6 +318,9 @@ Guards: selection + clipboard in `useWorkspaceTree.ts`, the shortcut scoping in
 `useGlobalHotkeys.ts` (`data-surface="tree"`), `src/main/clipboardFiles.ts`,
 `copyPaths`/`deletePaths` in `workspaces.ts`, `components/ContextMenu.tsx`.
 
+**15.1, 15.3 (Cmd-click half) and 15.6 are automated as A4.** The rest need a
+right-click menu, Finder, or a re-docked sidebar, and stay manual.
+
 | # | Steps | Expected |
 |---|-------|----------|
 | 15.1 | Click a file, Cmd+C, click a folder, Cmd+V | The file is copied into that folder. Pasting onto a *file* targets its parent folder; pasting a folder onto itself duplicates it alongside ("name copy") |
@@ -255,17 +333,22 @@ Guards: selection + clipboard in `useWorkspaceTree.ts`, the shortcut scoping in
 | 15.8 | Sidebar docked **right**: right-click the lowest row | The menu flips to the other side of the cursor and stays fully inside the window (the original bug: it ran off the right/bottom edge). In a window shorter than the menu it clamps and scrolls instead |
 | 15.9 | Right-click a row, press Escape | The menu closes (Escape is checked before dictation/read-aloud) |
 
-**Note:** Cmd+B and the other menu accelerators can't be exercised through
-CDP-injected key events - they're owned by the native menu (`menu.ts`), which
-only sees real keystrokes. Drive those through the toolbar button instead.
-
 ---
 
-## Fast pre-release smoke (5 min)
+## Pre-release smoke
 
-1. Open a folder → tree loads; open a file → edits autosave to disk.
-2. cp1251 file opens readable and round-trips on save (case 1.2).
-3. `.md` preview toggle → back to source → undo still works (case 4.2).
-4. Sidebar Cmd+B hides/shows and survives relaunch (7.1–7.3).
-5. Open two files fast → the second is active (case 6.1 via `openTabs.json`).
-6. Quit with no unsaved tabs → app exits cleanly (case 2.1).
+```bash
+npm run smoke
+```
+
+~20 s, and it covers everything the old six-step manual list did except the
+parts automation can't reach. Then, by hand, in your own build:
+
+1. **Cmd+B, Cmd+S, Cmd+W, Option+Cmd+L** — the native-menu accelerators (a
+   toolbar-button pass in A7/A9 does not prove the menu is still wired).
+2. **Quit with an unsaved tab** — the prompt appears, declining keeps the app
+   open, and a later plain window close doesn't quit it (2.1–2.2).
+3. **"Open Folder"** — the native picker adds a workspace.
+4. **A real HTML report** with a nested `document.write` iframe (12.2).
+5. **Undo across a preview toggle** (4.2) — Monaco's undo stack isn't
+   observable from outside the editor.

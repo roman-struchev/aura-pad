@@ -125,14 +125,20 @@ npm install
 npm run dev
 ```
 
-Checks (there is no unit-test suite — behavior is covered by the manual checklist in
-[docs/TEST_CASES.md](docs/TEST_CASES.md)):
+Checks:
 
 ```bash
+npm run smoke      # launches the app against a throwaway profile and drives it
 npm run typecheck
 npm run lint
 npm run format
 ```
+
+`npm run smoke` is the test suite — 82 checks over the baseline behavior
+(opening and editing files, tabs, tree operations, encodings, search, previews,
+terminal, settings, git) in about 25 seconds. What it can't reach (native menu
+accelerators, native dialogs, OAuth, the updater) is a manual checklist in
+[docs/TEST_CASES.md](docs/TEST_CASES.md).
 
 Build for your platform:
 

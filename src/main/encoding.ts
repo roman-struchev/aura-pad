@@ -22,7 +22,7 @@ interface FileEncoding {
 const UTF8: FileEncoding = { name: 'utf-8', hasBOM: false }
 
 // Insertion-ordered with a size cap, same shape as the watcher's
-// lastSelfWriteHashes - an entry per opened file is tiny, but a long session
+// lastSelfWrites - an entry per opened file is tiny, but a long session
 // shouldn't grow it unboundedly.
 const fileEncodings = new Map<string, FileEncoding>()
 const ENCODING_MAP_LIMIT = 1000
