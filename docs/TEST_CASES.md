@@ -72,6 +72,7 @@ prefers these:
 | A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
 | A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request; the history starts collapsed, opens from the clock icon, records, refills the whole form (headers and body included) and clears (§16) |
 | A13 | Window lifecycle | A close is not vetoed by a renderer that never announced itself, and the window comes back with its workspace on activate (§2; macOS-only, runs last) |
+| A14 | Update toast | The available/download-percentage/installing/failed states of the toast, driven by the events main sends during a real update — never clicking Install, which would run the actual installer (§9) |
 
 ---
 
@@ -223,14 +224,20 @@ Note: a full OAuth round-trip needs a real client; stub the token endpoints
 
 ## 9. macOS update install auto-relaunches
 
-Guards: macOS block in `scripts/install.sh`.
+Guards: macOS block in `scripts/install.sh`, `reportProgress` in
+`src/main/updater.ts`, `UpdateToast.tsx`.
 
-Hard to fully e2e without a signed release; verify the script logic:
+**A14 covers the toast's states** by pushing main's own events at the renderer;
+the install itself only happens in a packaged build against a real release, so
+9.1-9.5 stay manual:
 
 | # | Steps | Expected |
 |---|-------|----------|
 | 9.1 | Run the install script while AuraPad is running | The old process is quit (osascript) or force-killed (`pkill -9`) **before** `open`; after install a fresh instance launches — the "spinner hangs, no restart" symptom does not occur |
 | 9.2 | Run with unsaved changes in the app | The polite quit is held by the unsaved-changes prompt, then SIGKILL forces it within a few seconds; relaunch still happens |
+| 9.3 | Click Install on the update toast (packaged macOS build, real newer release) | The toast counts the download up — "Downloading AuraPad x.y.z… NN%" with a hairline bar along its bottom edge — then switches to "Installing AuraPad x.y.z… the app will restart itself." (no percentage) while the image is mounted and copied |
+| 9.4 | Same, watching the Settings modal's update row | It mirrors the toast: "Downloading… NN%" during the download, "Installing…" afterwards |
+| 9.5 | Pull the network mid-install, then retry from the failed toast | The failure toast replaces the progress (no stale percentage), and the retry starts counting from 0% again |
 
 **Root bug:** `open` on a still-running app only re-activates it (single-instance
 lock); the old app survived `osascript`/SIGTERM because the app's own close

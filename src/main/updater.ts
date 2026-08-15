@@ -2,7 +2,7 @@ import { app, shell } from 'electron'
 import { spawn } from 'child_process'
 import { autoUpdater } from 'electron-updater'
 import { broadcast } from './watcher'
-import type { UpdateNotification } from '../shared/updateNotification'
+import type { UpdateNotification, UpdateProgress } from '../shared/updateNotification'
 
 const RELEASES_URL = 'https://github.com/roman-struchev/aura-pad/releases/latest'
 const INSTALL_SCRIPT_URL =
@@ -81,6 +81,7 @@ export function applyUpdate(): void {
     return
   }
   if (process.platform === 'darwin') {
+    lastProgress = null
     // Hand the download + bundle swap to the install script, but keep the
     // restart in our own hands: AURAPAD_MANAGED_RELAUNCH tells the script to
     // leave the running app alone (no quit, no `open`) and just replace
@@ -98,9 +99,15 @@ export function applyUpdate(): void {
     // race in the middle.
     const child = spawn('/bin/bash', ['-c', `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`], {
       detached: true,
-      stdio: 'ignore',
+      // Piped, not ignored: the script's own progress (see reportProgress) is
+      // what turns the toast's spinner into a percentage.
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, AURAPAD_MANAGED_RELAUNCH: '1' }
     })
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    child.stdout?.on('data', reportProgress)
+    child.stderr?.on('data', reportProgress)
     child.once('error', notifyApplyFailed)
     child.once('exit', (code) => {
       if (code !== 0) {
@@ -118,6 +125,36 @@ export function applyUpdate(): void {
     return
   }
   shell.openExternal(RELEASES_URL)
+}
+
+// The install script's step lines on stdout ("Downloading ...", "Mounting
+// disk image...", "Installing to ...") and curl's --progress-bar meter on
+// stderr - redrawn with \r as `#####      42.7%` - are the only progress
+// signal the script gives us. Chunks arrive per stream, so the phase is
+// sticky: percentages only count while the download is the current step.
+let lastProgress: UpdateProgress | null = null
+
+function reportProgress(chunk: string): void {
+  let phase = lastProgress?.phase
+  let percent = lastProgress?.percent
+  if (/^Downloading /m.test(chunk)) {
+    phase = 'download'
+    percent = 0
+  } else if (/^(Mounting|Installing to) /m.test(chunk)) {
+    phase = 'install'
+    percent = undefined
+  } else if (phase === 'download') {
+    // curl redraws several times a second and a chunk can hold several
+    // redraws; only the last one is current.
+    const meter = chunk.match(/\d{1,3}(?:\.\d+)?(?=%)/g)
+    if (meter) percent = Math.min(100, Math.round(Number(meter[meter.length - 1])))
+  }
+  // Nothing recognizable yet (the release lookup), or the same whole-number
+  // percentage as last time - don't spend an IPC message on it.
+  if (!phase) return
+  if (phase === lastProgress?.phase && percent === lastProgress?.percent) return
+  lastProgress = percent === undefined ? { phase } : { phase, percent }
+  broadcast('update-progress', lastProgress)
 }
 
 // Bypasses notify()'s once-per-version dedupe on purpose: a retry that fails

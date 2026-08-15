@@ -43,6 +43,7 @@ const CASE_FILES = [
   'git.mjs',
   'http.mjs',
   'security.mjs',
+  'update-toast.mjs',
   // Last: it closes and reopens the window, so anything after it would be
   // talking to a renderer target that no longer exists.
   'lifecycle.mjs'

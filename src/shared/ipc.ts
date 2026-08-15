@@ -9,7 +9,7 @@ import type { LintMarker } from './lint'
 import type { RecentExternalFile } from './recentExternalFile'
 import type { PathListingResult } from './pathMatch'
 import type { MenuAction } from './menuAction'
-import type { UpdateNotification } from './updateNotification'
+import type { UpdateNotification, UpdateProgress } from './updateNotification'
 import type {
   WorkTogetherLink,
   WorkTogetherLinkRole,
@@ -328,6 +328,7 @@ export interface EventContracts {
   'request-close': []
   'menu-action': [action: MenuAction]
   'update-notification': [update: UpdateNotification]
+  'update-progress': [progress: UpdateProgress]
   'git-status-changed': [statuses: GitRepoStatus[]]
 }
 
@@ -339,6 +340,7 @@ export const EVENT_CHANNELS = {
   onRequestClose: 'request-close',
   onMenuAction: 'menu-action',
   onUpdateNotification: 'update-notification',
+  onUpdateProgress: 'update-progress',
   onGitStatusChanged: 'git-status-changed'
 } as const satisfies Record<string, keyof EventContracts>
 

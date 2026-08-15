@@ -39,7 +39,7 @@ import { useTranslate } from './hooks/useTranslate'
 import { useWorkTogether } from './hooks/useWorkTogether'
 import { useMenuActions } from './hooks/useMenuActions'
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
-import type { UpdateNotification } from '../../shared/updateNotification'
+import type { UpdateNotification, UpdateProgress } from '../../shared/updateNotification'
 import { TranslatePopup } from './components/TranslatePopup'
 import { DialogHost } from './components/DialogHost'
 import { alertDialog, confirmDialog } from './lib/dialogs'
@@ -452,6 +452,10 @@ function App(): React.JSX.Element {
   // until main reports a failed attempt (a fresh notification with `failed`
   // set), which must drop the spinner and show the retry state instead.
   const [updateInstalling, setUpdateInstalling] = useState(false)
+  // How far the macOS install script has got, so the spinner can carry a
+  // percentage instead of nothing. Null until the script reports its first
+  // step (and on the other platforms, which install without a script).
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
   const [appVersion, setAppVersion] = useState<string>('')
 
   useEffect(() => {
@@ -463,6 +467,19 @@ function App(): React.JSX.Element {
       window.api.onUpdateNotification((update) => {
         setUpdateNotification(update)
         setUpdateInstalling(false)
+        setUpdateProgress(null)
+      }),
+    []
+  )
+
+  // Progress is only ever emitted while an install is actually running, so it
+  // also (re)asserts the installing state - the toast can't be showing its
+  // buttons while the script is already replacing the app underneath it.
+  useEffect(
+    () =>
+      window.api.onUpdateProgress((progress) => {
+        setUpdateProgress(progress)
+        setUpdateInstalling(true)
       }),
     []
   )
@@ -472,6 +489,7 @@ function App(): React.JSX.Element {
   // app restarts itself. Shared by the update toast and the Settings modal.
   const handleApplyUpdate = (): void => {
     window.api.applyUpdate()
+    setUpdateProgress(null)
     if (updateNotification?.mode === 'manual') setUpdateNotification(null)
     else setUpdateInstalling(true)
   }
@@ -1062,6 +1080,7 @@ function App(): React.JSX.Element {
         <UpdateToast
           notification={updateNotification}
           installing={updateInstalling}
+          progress={updateProgress}
           onApply={handleApplyUpdate}
           onDismiss={() => setUpdateNotification(null)}
         />
@@ -1130,6 +1149,7 @@ function App(): React.JSX.Element {
           appVersion={appVersion}
           updateNotification={updateNotification}
           updateInstalling={updateInstalling}
+          updateProgress={updateProgress}
           onUpdateAction={handleApplyUpdate}
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}

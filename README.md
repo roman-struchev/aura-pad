@@ -143,7 +143,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 - The app checks for new releases in the background. On Windows (and Linux AppImage) it
   downloads and installs them itself; on macOS it re-runs the install script above, since
-  these builds aren't signed.
+  these builds aren't signed — the toast follows the download percentage while it does.
 
 The full list of keyboard shortcuts is available in the app under Settings → Shortcuts.
 

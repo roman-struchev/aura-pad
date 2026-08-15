@@ -9,3 +9,13 @@ export interface UpdateNotification {
   // app (e.g. offline) - the toast shows an error and offers a retry.
   failed?: boolean
 }
+
+// Progress of a 'script' (macOS) install, streamed from the install script
+// while it runs so the toast can show more than a spinner.
+export interface UpdateProgress {
+  // 'download': fetching the .dmg, `percent` follows curl's progress meter.
+  // 'install': mounting the image and copying the bundle - a few seconds with
+  // no percentage to report.
+  phase: 'download' | 'install'
+  percent?: number
+}

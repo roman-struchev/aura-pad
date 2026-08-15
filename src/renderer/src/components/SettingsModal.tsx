@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { Loader2 } from 'lucide-react'
 import type { AppSettings, ExtensionSettings } from '../../../shared/settings'
-import type { UpdateNotification } from '../../../shared/updateNotification'
+import type { UpdateNotification, UpdateProgress } from '../../../shared/updateNotification'
 import {
   SIDEBAR_POSITIONS,
   THEME_MODES,
@@ -22,6 +22,7 @@ interface SettingsModalProps {
   appVersion?: string
   updateNotification?: UpdateNotification | null
   updateInstalling?: boolean
+  updateProgress?: UpdateProgress | null
   onUpdateAction?: () => void
   onConfigureDictation: () => void
   onConfigureReadAloud: () => void
@@ -75,6 +76,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   appVersion,
   updateNotification,
   updateInstalling,
+  updateProgress,
   onUpdateAction,
   onConfigureDictation,
   onConfigureReadAloud,
@@ -162,7 +164,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             (updateInstalling ? (
               <span className="flex items-center gap-1.5 text-[11px] text-blue-400">
                 <Loader2 size={12} className="animate-spin" />
-                Installing…
+                {updateProgress?.phase === 'download' && updateProgress.percent !== undefined
+                  ? `Downloading… ${updateProgress.percent}%`
+                  : 'Installing…'}
               </span>
             ) : (
               <button
