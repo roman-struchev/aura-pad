@@ -9,9 +9,18 @@ interface TerminalProps {
   onExit?: () => void
   isActive: boolean
   fontSize?: number
+  // Hands the panel a way to clear this terminal's scrollback (Cmd+K), and
+  // takes it back with null when the terminal goes away.
+  onRegisterClear?: (termId: string, clear: (() => void) | null) => void
 }
 
-export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fontSize = 13 }) => {
+export const Terminal: React.FC<TerminalProps> = ({
+  termId,
+  onExit,
+  isActive,
+  fontSize = 13,
+  onRegisterClear
+}) => {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -21,6 +30,12 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
   const isActiveRef = useRef(isActive)
   useEffect(() => {
     isActiveRef.current = isActive
+  })
+  // Same reason: the registration callback is a fresh function on every App
+  // render, but it may only be read at mount and unmount.
+  const onRegisterClearRef = useRef(onRegisterClear)
+  useEffect(() => {
+    onRegisterClearRef.current = onRegisterClear
   })
 
   useEffect(() => {
@@ -46,6 +61,11 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
 
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+
+    // xterm's own clear(): drops the scrollback and everything above the
+    // cursor's line, leaving the prompt the user is standing on. The shell
+    // never sees it, so a half-typed command survives.
+    onRegisterClearRef.current?.(termId, () => term.clear())
 
     // Shift+Enter sends ESC+CR - what iTerm2/VSCode send after Claude CLI's
     // /terminal-setup - so TUIs (Claude Code, aider) insert a newline instead
@@ -98,6 +118,7 @@ export const Terminal: React.FC<TerminalProps> = ({ termId, onExit, isActive, fo
       resizeObserver.disconnect()
       cleanupData()
       cleanupExit()
+      onRegisterClearRef.current?.(termId, null)
       term.dispose()
     }
   }, [termId])

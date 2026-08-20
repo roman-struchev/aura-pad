@@ -12,6 +12,11 @@ interface FileSearchProps {
   onClose: () => void
   onSelect: (path: string, type: 'file' | 'directory') => void
   rootNodes: FileNode[]
+  // Normally empty: only set when the user switched here from
+  // search-in-files, which hands over whatever was typed there.
+  initialQuery?: string
+  // Reported on every change so the switch works in the other direction too.
+  onQueryChange?: (query: string) => void
 }
 
 // Strips the matching workspace root's absolute path off, prefixing the
@@ -30,13 +35,32 @@ function isPathQuery(query: string): boolean {
   return query.startsWith('~') || query.startsWith('/')
 }
 
-export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect, rootNodes }) => {
-  const [query, setQuery] = useState('')
+export const FileSearch: React.FC<FileSearchProps> = ({
+  onClose,
+  onSelect,
+  rootNodes,
+  initialQuery,
+  onQueryChange
+}) => {
+  const [query, setQuery] = useState(initialQuery ?? '')
   const [results, setResults] = useState<FileResult[]>([])
   const [allEntries, setAllEntries] = useState<FileResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const pathMode = isPathQuery(query)
+  // Read through a ref: App passes a fresh arrow on every render, and this
+  // must not turn into "report the query again on each parent render".
+  const onQueryChangeRef = useRef(onQueryChange)
+  useEffect(() => {
+    onQueryChangeRef.current = onQueryChange
+  })
+
+  // An effect rather than a call next to each setQuery: the query also
+  // changes on Tab completion and on drilling into a directory, and all of
+  // those should be what a switch to search-in-files carries over.
+  useEffect(() => {
+    onQueryChangeRef.current?.(query)
+  }, [query])
 
   // Selecting a directory while browsing a real path drills into it instead
   // of "opening" it - there's no workspace to reveal it in. Everywhere else
@@ -56,6 +80,9 @@ export const FileSearch: React.FC<FileSearchProps> = ({ onClose, onSelect, rootN
   // below), so Arrow keys and mouse hover never visibly moved the selection.
   useEffect(() => {
     inputRef.current?.focus()
+    // Pre-select a handed-over query so typing replaces it, the way the
+    // search-in-files overlay treats its restored one.
+    inputRef.current?.select()
 
     // The trees from getWorkspaces() are already filtered server-side
     // (.gitignore + the built-in ignore list), so no need to filter again.

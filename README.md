@@ -77,7 +77,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   `Cmd`-click to add a row, `Shift`-click for a range. The clipboard is the system one on
   macOS, so a file copied in Finder pastes into the tree and vice versa.
 - Quick open with a double-tap of `Shift`; full-text search across all folders
-  (`Shift+Cmd+F`).
+  (`Shift+Cmd+F`). Only one search dialog is ever open: switching between quick open and
+  search-in-files carries the typed query across.
 - Stays in sync with changes made outside the app — and warns instead of losing your
   unsaved edits.
 - Files opened from outside the workspaces (Finder, "Open With…") stay in a "Recently
@@ -96,6 +97,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 - A real terminal inside the app: multiple tabs, resizable panel, opens at any folder from
   the file tree.
+- `Cmd+K` with the cursor in the terminal clears its scrollback (the same key toggles the
+  Git panel everywhere else); the shell keeps running and a half-typed command survives.
 
 **HTTP requests**
 

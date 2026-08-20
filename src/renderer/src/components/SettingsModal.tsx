@@ -36,7 +36,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: '⌘S', description: 'Save file' },
   { keys: '⌘W', description: 'Close tab' },
   { keys: '⇧⌘T', description: 'Reopen closed tab' },
-  { keys: '⌘K', description: 'Open the Git tab for the current project' },
+  { keys: '⌘K', description: 'Open the Git tab (clears the terminal when focus is in it)' },
   { keys: '⌘D', description: 'Start/stop voice dictation' },
   { keys: '⌥⌘T', description: 'Translate the selected text' },
   { keys: '⌥⌘L', description: 'Format document (JSON/HTML/XML)' },

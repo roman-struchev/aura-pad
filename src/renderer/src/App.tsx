@@ -415,16 +415,47 @@ function App(): React.JSX.Element {
   // render).
   const lastSearchQueryRef = useRef('')
   const [searchInitialQuery, setSearchInitialQuery] = useState('')
+  const [showFileSearch, setShowFileSearch] = useState(false)
+  // Quick open's live query, so switching to search-in-files carries it over.
+  // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
+  const fileSearchQueryRef = useRef('')
+  const [fileSearchInitialQuery, setFileSearchInitialQuery] = useState('')
   // IDEA-style: opening search with text selected in the editor prefills the
   // query with that selection; otherwise the previous query is shown again.
   // Either way the overlay pre-selects it, so typing starts a fresh query.
+  //
+  // The two overlays are mutually exclusive - realising halfway through a
+  // quick open that the file is better found by its contents switches this
+  // one dialog over, query and all, instead of stacking a second one behind
+  // it (and vice versa, below).
   const openGlobalSearch = (): void => {
-    const selected = tabsRef.current.getSelectedText()
-    if (selected && !selected.includes('\n')) lastSearchQueryRef.current = selected
+    if (showFileSearch) {
+      lastSearchQueryRef.current = fileSearchQueryRef.current
+      setShowFileSearch(false)
+    } else {
+      const selected = tabsRef.current.getSelectedText()
+      if (selected && !selected.includes('\n')) lastSearchQueryRef.current = selected
+    }
     setSearchInitialQuery(lastSearchQueryRef.current)
     setShowSearch(true)
   }
-  const [showFileSearch, setShowFileSearch] = useState(false)
+  // Double-Shift / "Go to File…": a toggle, except while search-in-files is
+  // up - then it's the same switch in the other direction.
+  const toggleFileSearch = (): void => {
+    if (showSearch) {
+      setShowSearch(false)
+      setFileSearchInitialQuery(lastSearchQueryRef.current)
+      fileSearchQueryRef.current = lastSearchQueryRef.current
+      setShowFileSearch(true)
+      return
+    }
+    if (!showFileSearch) {
+      // Quick open always starts empty - only a switch seeds it.
+      setFileSearchInitialQuery('')
+      fileSearchQueryRef.current = ''
+    }
+    setShowFileSearch(!showFileSearch)
+  }
   const [showSettings, setShowSettings] = useState(false)
   // The dictation/read-aloud dialogs double as their Settings pages -
   // "Configure…" opens them on top of the Settings modal.
@@ -582,7 +613,7 @@ function App(): React.JSX.Element {
       }
       return false
     },
-    onToggleQuickOpen: () => setShowFileSearch((prev) => !prev),
+    onToggleQuickOpen: toggleFileSearch,
     hasTreeSelection: tree.selectedPaths.length > 0,
     onCopySelection: tree.copySelection,
     onPasteIntoSelection: tree.pasteIntoSelection,
@@ -619,9 +650,18 @@ function App(): React.JSX.Element {
       }
     },
     'reopen-tab': () => tabsRef.current.reopenClosedTab(),
-    'go-to-file': () => setShowFileSearch((prev) => !prev),
+    'go-to-file': toggleFileSearch,
     'find-in-files': openGlobalSearch,
-    'toggle-git-panel': () => setSidebarView((prev) => (prev === 'git' ? 'files' : 'git')),
+    // Context-sensitive like close-tab above: with focus inside the terminal
+    // panel Cmd+K clears that terminal (iTerm2/VS Code muscle memory) rather
+    // than toggling the git panel behind it.
+    'toggle-git-panel': () => {
+      if (document.activeElement?.closest('.xterm')) {
+        terminalRef.current.clearActiveTerminal()
+      } else {
+        setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
+      }
+    },
     'toggle-sidebar': toggleSidebar,
     'toggle-dictation': toggleDictation,
     'translate-selection': startTranslate,
@@ -1089,6 +1129,10 @@ function App(): React.JSX.Element {
       {showFileSearch && (
         <FileSearch
           onClose={() => setShowFileSearch(false)}
+          initialQuery={fileSearchInitialQuery}
+          onQueryChange={(q) => {
+            fileSearchQueryRef.current = q
+          }}
           onSelect={(path, type) => {
             if (type === 'directory') tree.setRevealPath(path)
             else tabs.openTab(path)

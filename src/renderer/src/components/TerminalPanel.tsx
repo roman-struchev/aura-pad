@@ -67,6 +67,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize
             isActive={terminal.activeTermId === term.id}
             fontSize={fontSize}
             onExit={() => terminal.handleTerminalExit(term.id)}
+            onRegisterClear={terminal.registerTerminalClear}
           />
         </div>
       ))}

@@ -112,6 +112,9 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           click: () => sendAction('toggle-sidebar')
         },
         {
+          // Also the terminal's "clear" key: with focus inside the terminal
+          // panel the renderer routes this to clearing that terminal instead
+          // (App.tsx), which is where Cmd+K goes in iTerm2 and VS Code.
           label: 'Toggle Git Panel',
           accelerator: 'CmdOrCtrl+K',
           click: () => sendAction('toggle-git-panel')

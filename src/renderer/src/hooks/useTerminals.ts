@@ -12,6 +12,11 @@ export function useTerminals() {
   // rename the next new tab "Terminal 2" after closing the *first* of three
   // open terminals, colliding with the "Terminal 2" that's still open.
   const terminalCounterRef = useRef(0)
+  // The live xterm clear() of every mounted terminal, keyed by id. Not
+  // state: these are handles into a mutable widget, nothing renders from
+  // them, and they're registered/dropped by the Terminal components as they
+  // mount and unmount.
+  const clearFnsRef = useRef(new Map<string, () => void>())
 
   // Derived rather than synced back into state via an effect: if the
   // terminal that was active got closed (by the user, or because its shell
@@ -61,6 +66,20 @@ export function useTerminals() {
     }
   }
 
+  const registerTerminalClear = (termId: string, clear: (() => void) | null): void => {
+    if (clear) clearFnsRef.current.set(termId, clear)
+    else clearFnsRef.current.delete(termId)
+  }
+
+  // Cmd+K while focus is inside the terminal panel: wipe the active
+  // terminal's scrollback the way iTerm2 and VS Code do (App.tsx routes the
+  // menu action here when the terminal has focus). The shell process isn't
+  // touched - the prompt, and anything half-typed at it, stays put.
+  const clearActiveTerminal = (): void => {
+    if (!activeTermId) return
+    clearFnsRef.current.get(activeTermId)?.()
+  }
+
   const removeTerminal = (termId: string): void => {
     setTerminals((prev) => prev.filter((t) => t.id !== termId))
   }
@@ -98,6 +117,8 @@ export function useTerminals() {
     openNewTerminal,
     closeTerminal,
     closeActiveTerminal,
+    clearActiveTerminal,
+    registerTerminalClear,
     handleTerminalExit
   }
 }

@@ -64,9 +64,9 @@ prefers these:
 | A3 | Tabs | Several files open at once, the last opened is active, clicking switches, closing removes, the session is persisted, files from outside a workspace open and are remembered |
 | A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation, and the right-click menu staying inside the window with the sidebar docked right (§15) |
 | A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |
-| A6 | Search and quick open | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape |
+| A6 | Search and quick open | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape; switching between quick open and search-in-files swaps the one dialog and carries the query both ways |
 | A7 | Preview and formatting | Markdown and HTML previews render and toggle back to source; Format rewrites JSON and autosaves |
-| A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced |
+| A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced; the toolbar opens a terminal in the panel, and Cmd+K is routed to it (git panel stays shut) while it still toggles the git panel elsewhere |
 | A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
 | A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
 | A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
@@ -377,6 +377,28 @@ curl-in-a-shell-script, refused flags, the HTTP Client tab, and the history.
 
 ---
 
+## 17. Cmd+K clears the terminal
+
+Guards: `src/renderer/src/components/Terminal.tsx`,
+`src/renderer/src/hooks/useTerminals.ts`, the `toggle-git-panel` routing in
+`src/renderer/src/App.tsx`.
+
+**Automated as A8** only as far as the routing goes: the action reaching the
+terminal rather than the git panel. What it *looks like* can't be automated -
+xterm's rows keep their old text when the window isn't frontmost even though
+the buffer really was cleared, so any DOM assertion here measures window
+stacking (see "Ground truth" above). The accelerator itself is a native-menu
+one and is unreachable from CDP either way.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 17.1 | Open the terminal, run something with plenty of output (`ls -la /usr/bin`), click into it and press **Cmd+K** | The scrollback goes; the prompt stays where it is and the shell keeps running (`echo $$` still answers with the same pid) |
+| 17.2 | Type half a command (don't press Enter), press **Cmd+K** | The half-typed command is still on the prompt line - the shell never saw the key |
+| 17.3 | With two terminal tabs, clear one and switch to the other | Only the active one was cleared |
+| 17.4 | Click into the editor or the file tree and press **Cmd+K** | The git panel toggles, as before |
+
+---
+
 ## Pre-release smoke
 
 ```bash
@@ -386,8 +408,9 @@ npm run smoke
 ~20 s, and it covers everything the old six-step manual list did except the
 parts automation can't reach. Then, by hand, in your own build:
 
-1. **Cmd+B, Cmd+S, Cmd+W, Option+Cmd+L** — the native-menu accelerators (a
-   toolbar-button pass in A7/A9 does not prove the menu is still wired).
+1. **Cmd+B, Cmd+S, Cmd+W, Option+Cmd+L, Cmd+K** — the native-menu accelerators (a
+   toolbar-button pass in A7/A9 does not prove the menu is still wired; Cmd+K
+   has to be tried both in the terminal and outside it, 17.1/17.4).
 2. **Quit with an unsaved tab** — the prompt appears, declining keeps the app
    open, and a later plain window close doesn't quit it (2.1–2.2).
 3. **"Open Folder"** — the native picker adds a workspace.
