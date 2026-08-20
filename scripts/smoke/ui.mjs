@@ -92,7 +92,44 @@ export function makeUi(cdp) {
   // Tree rows carry data-path (see lib/treeRows.ts), which makes them
   // addressable without guessing at row order.
   const treeRow = (path) => `[data-tree-row][data-path="${path}"]`
-  const clickRow = (path, options) => click(treeRow(path), options)
+  const pathAtPoint = (x, y) =>
+    cdp.evaluate(`(() => {
+      const el = document.elementFromPoint(${x}, ${y})
+      return el?.closest('[data-tree-row]')?.dataset.path ?? null
+    })()`)
+
+  const rowPaths = () =>
+    cdp.evaluate(`[...document.querySelectorAll('[data-tree-row]')].map((r) => r.dataset.path)`)
+
+  // Clicking a tree row is a *coordinate* click (that's the point - it has to
+  // go through real mouse events), and the tree re-renders whenever the
+  // workspace changes on disk. The watcher is debounced, so a file a case
+  // wrote a moment ago can land between measuring the row's rect and the
+  // click reaching it, shifting every row below it and selecting the
+  // neighbour instead - which then quietly fails a later assertion about the
+  // file that *was* meant to be clicked. So: wait for the row list to hold
+  // still, then check the point really still belongs to this row, and re-aim
+  // if the tree moved anyway.
+  const clickRow = async (path, options) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let previous = null
+      for (let settle = 0; settle < 12; settle++) {
+        const current = JSON.stringify(await rowPaths())
+        if (current === previous) break
+        previous = current
+        await sleep(120)
+      }
+      const r = await rectOf(treeRow(path))
+      if (!r) throw new Error(`nothing to click: ${treeRow(path)}`)
+      if ((await pathAtPoint(r.cx, r.cy)) !== path) continue
+      await clickAt(r.cx, r.cy, options)
+      // null means something now covers the point - a right-click's context
+      // menu, typically - which says nothing about the row having moved.
+      const landed = await pathAtPoint(r.cx, r.cy)
+      if (landed === null || landed === path) return r
+    }
+    throw new Error(`the tree kept shifting under the click for ${path}`)
+  }
 
   const rowExists = (path) =>
     cdp.evaluate(`!!document.querySelector(${JSON.stringify(treeRow(path))})`)

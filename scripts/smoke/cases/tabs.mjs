@@ -22,8 +22,18 @@ export default {
       JSON.stringify(await ui.openTabLabels())
     )
 
-    const active = (await ui.openTabs()).activeTabPath
-    check('the last opened file is the active one', active === `${ws}/data.json`, String(active))
+    // Each click's file read is async, so the active tab only catches up a
+    // beat later - reading it straight after the third click just measures
+    // how fast the disk was.
+    const activeIsLast = await waitFor(
+      `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(`${ws}/data.json`)})`,
+      { timeoutMs: 8000 }
+    )
+    check(
+      'the last opened file is the active one',
+      activeIsLast,
+      String((await ui.openTabs()).activeTabPath)
+    )
 
     await ui.clickTab('readme.md')
     check(
