@@ -7,10 +7,10 @@ import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
-import { handleSend } from './ipc'
+import { handleInvokeWithEvent, handleSend } from './ipc'
 import { registerIpcHandlers } from './ipcHandlers'
 import { setupWatchers, closeAllWatchers, broadcast } from './watcher'
-import { registerCreatePtyHandler, killAllPtys } from './terminals'
+import { registerCreatePtyHandler, killAllPtys, killPtysOf } from './terminals'
 import { grantPath } from './pathAccess'
 import { registerWorkTogetherWindowProvider, disconnectAllSessions } from './workTogether'
 import { buildAppMenu } from './menu'
@@ -22,7 +22,19 @@ import { initAutoUpdater } from './updater'
 // a file from the tree. Queued if the window doesn't exist yet (macOS can
 // fire 'open-file' before the app is ready; Windows/Linux pass the path as
 // a plain CLI arg on the very first launch, before any window exists).
-let mainWindowRef: BrowserWindow | null = null
+// The first window opened, and the only one that persists (and restores) the
+// tab session: with several windows open, two of them writing openTabs.json
+// would each overwrite the other's list. If it closes, nothing persists until
+// a fresh primary window is opened - a detached window is a view onto files,
+// not the session of record.
+let primaryWindowRef: BrowserWindow | null = null
+// Per window, keyed by its webContents id: whether it owns the session, and
+// the files it was created with. Those are delivered as 'open-file-request'
+// events once its renderer announces itself, exactly like a file handed over
+// by the OS - opening a file twice is harmless (the tab is just activated),
+// whereas an init the renderer reads once is lost if React's double-invoked
+// mount effect reads it twice.
+const windowInits = new Map<number, { paths: string[]; primary: boolean }>()
 const pendingFileOpens: string[] = []
 // Windows that the renderer has confirmed are safe to close (no unsaved
 // tabs, or the user chose to discard them) - see the 'close' handler below.
@@ -38,7 +50,11 @@ const unresponsiveWindows = new WeakSet<BrowserWindow>()
 // fire before anything is listening, silently dropping the very file the
 // user tried to open. Queuing until the renderer actively asks for pending
 // opens removes that race entirely.
-let rendererReady = false
+// Per window: 'ready-to-show' fires as soon as the page has painted a first
+// frame, which isn't guaranteed to be after React has mounted and run its
+// effects - sending straight to 'ready-to-show' could fire before anything is
+// listening, silently dropping the very file the user tried to open.
+const readyWindows = new WeakSet<BrowserWindow>()
 // Set while a quit (Cmd+Q / menu Quit / updater) is in progress. The window
 // 'close' event a quit triggers gets prevented like any other while the
 // renderer checks for unsaved tabs - and preventing it makes Electron abort
@@ -79,10 +95,22 @@ function openExternalSafe(url: string): void {
   }
 }
 
+// Where a file the OS handed us should land: the window the user is looking
+// at, falling back to the primary one.
+function targetWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow()
+  if (focused && !focused.isDestroyed() && readyWindows.has(focused)) return focused
+  if (primaryWindowRef && !primaryWindowRef.isDestroyed() && readyWindows.has(primaryWindowRef)) {
+    return primaryWindowRef
+  }
+  return null
+}
+
 function flushPendingFileOpens(): void {
-  if (!mainWindowRef || mainWindowRef.isDestroyed()) return
+  const win = targetWindow()
+  if (!win) return
   while (pendingFileOpens.length > 0) {
-    mainWindowRef.webContents.send('open-file-request', pendingFileOpens.shift())
+    win.webContents.send('open-file-request', pendingFileOpens.shift())
   }
 }
 
@@ -91,10 +119,11 @@ function openFileInApp(filePath: string): void {
   // file, so the renderer is allowed to read and save it even though it sits
   // outside every workspace - see pathAccess.
   grantPath(filePath)
-  if (mainWindowRef && !mainWindowRef.isDestroyed() && rendererReady) {
-    if (mainWindowRef.isMinimized()) mainWindowRef.restore()
-    mainWindowRef.focus()
-    mainWindowRef.webContents.send('open-file-request', filePath)
+  const win = targetWindow()
+  if (win) {
+    if (win.isMinimized()) win.restore()
+    win.focus()
+    win.webContents.send('open-file-request', filePath)
   } else {
     pendingFileOpens.push(filePath)
   }
@@ -136,7 +165,11 @@ if (!gotSingleInstanceLock) {
   })
 }
 
-function createWindow(): void {
+// `init.paths` are the files a new window opens with (a tab torn off another
+// window, or a file the OS handed a fresh launch); `init.primary` marks the
+// one window that owns the persisted session - see primaryWindowRef.
+function createWindow(init: { paths: string[]; primary?: boolean } = { paths: [] }): void {
+  const isPrimary = init.primary ?? (!primaryWindowRef || primaryWindowRef.isDestroyed())
   const mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
@@ -149,13 +182,15 @@ function createWindow(): void {
       sandbox: false
     }
   })
-  mainWindowRef = mainWindow
-  rendererReady = false
+  // Read now, not in the 'closed' handler: by then the window is destroyed and
+  // touching webContents throws - an uncaught exception in main, which on a
+  // quit leaves the process alive with its single-instance lock held.
+  const windowId = mainWindow.webContents.id
+  windowInits.set(windowId, { paths: init.paths, primary: isPrimary })
+  if (isPrimary) primaryWindowRef = mainWindow
   mainWindow.on('closed', () => {
-    if (mainWindowRef === mainWindow) {
-      mainWindowRef = null
-      rendererReady = false
-    }
+    windowInits.delete(windowId)
+    if (primaryWindowRef === mainWindow) primaryWindowRef = null
   })
 
   // Ask the renderer whether it's safe to close (unsaved tabs) instead of
@@ -173,7 +208,7 @@ function createWindow(): void {
     // real: the page is still loading right after launch, and again after
     // every reload (see 'did-start-navigation' below). It also has nothing
     // to protect, since a page that never mounted holds no unsaved buffers.
-    if (!rendererReady) return
+    if (!readyWindows.has(mainWindow)) return
     event.preventDefault()
     mainWindow.webContents.send('request-close')
   })
@@ -192,8 +227,9 @@ function createWindow(): void {
   // map is still empty.
   //
   mainWindow.webContents.on('did-navigate', () => {
-    killAllPtys()
-    disconnectAllSessions()
+    // Only this window's shells: another window's terminals are still very
+    // much alive and attached to a renderer that never navigated.
+    killPtysOf(mainWindow.webContents)
   })
 
   // A navigation also wipes the page's subscriptions - and it does so the
@@ -203,7 +239,7 @@ function createWindow(): void {
   // sent into the void instead of queued, and a close would be vetoed while
   // waiting for a 'confirm-close' no one is left to send.
   mainWindow.webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) rendererReady = false
+    if (details.isMainFrame && !details.isSameDocument) readyWindows.delete(mainWindow)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -259,8 +295,45 @@ handleSend('decline-close', () => {
 // App.tsx sends this right after mounting and subscribing to
 // 'open-file-request' - only from this point on is it safe to deliver a file
 // open directly instead of queuing it.
-handleSend('renderer-ready', () => {
-  rendererReady = true
+handleInvokeWithEvent('get-window-init', (event) => ({
+  primary: windowInits.get(event.sender.id)?.primary ?? false
+}))
+
+// Tearing a tab off.
+handleSend('open-in-new-window', (_event, paths) => {
+  createWindow({ paths: paths.filter((p) => typeof p === 'string') })
+})
+
+// And pushing one back: the main window opens the file the way it opens any
+// other, and the window it came from goes away once it has nothing left.
+handleSend('move-tab-to-primary', (event, filePath, closeSender) => {
+  const target = primaryWindowRef
+  if (target && !target.isDestroyed()) {
+    if (target.isMinimized()) target.restore()
+    target.focus()
+    target.webContents.send('open-file-request', filePath)
+  }
+  if (!closeSender) return
+  const sender = BrowserWindow.fromWebContents(event.sender)
+  if (sender && sender !== primaryWindowRef) sender.close()
+})
+
+handleSend('close-window', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win && win !== primaryWindowRef) win.close()
+})
+
+handleSend('renderer-ready', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) readyWindows.add(win)
+  // The files this window was torn off with, now that something is listening.
+  // Cleared as they go out: a later reload of this window restores whatever
+  // the user has since opened in it, not the original file again.
+  const init = windowInits.get(event.sender.id)
+  if (init && init.paths.length > 0) {
+    for (const filePath of init.paths) event.sender.send('open-file-request', filePath)
+    windowInits.set(event.sender.id, { paths: [], primary: init.primary })
+  }
   flushPendingFileOpens()
 })
 
@@ -274,7 +347,7 @@ app.whenReady().then(() => {
 
   Menu.setApplicationMenu(
     buildAppMenu((action) => {
-      const win = BrowserWindow.getFocusedWindow() ?? mainWindowRef
+      const win = BrowserWindow.getFocusedWindow() ?? primaryWindowRef
       win?.webContents.send('menu-action', action)
     })
   )
@@ -282,10 +355,10 @@ app.whenReady().then(() => {
   // Registered once for the app's lifetime - always resolves to whatever
   // window is current, so it keeps working across a macOS close-then-reopen
   // (dock activate) cycle instead of staying bound to a destroyed window.
-  registerCreatePtyHandler(() => mainWindowRef)
-  registerWorkTogetherWindowProvider(() => mainWindowRef)
+  registerCreatePtyHandler()
+  registerWorkTogetherWindowProvider(() => primaryWindowRef)
 
-  createWindow()
+  createWindow({ paths: [], primary: true })
   setupWatchers()
   initAutoUpdater()
 

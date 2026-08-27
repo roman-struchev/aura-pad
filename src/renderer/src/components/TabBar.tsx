@@ -14,6 +14,12 @@ interface TabBarProps {
   closeOtherTabs: (keepPath: string) => void
   closeAllTabs: () => void
   togglePin: (path: string) => void
+  // Move a tab to another window - from the context menu, or by dragging it
+  // out of this window entirely. In the main window that means a new window of
+  // its own; in a torn-off one it means back to the main window.
+  detachTab: (path: string) => void
+  // False in a torn-off window, which sends tabs back instead of out.
+  isPrimaryWindow?: boolean
   reorderTab: (sourcePath: string, targetPath: string) => void
   isPathShared?: (path: string) => boolean
 }
@@ -43,6 +49,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   closeOtherTabs,
   closeAllTabs,
   togglePin,
+  detachTab,
+  isPrimaryWindow = true,
   reorderTab,
   isPathShared
 }) => {
@@ -167,9 +175,23 @@ export const TabBar: React.FC<TabBarProps> = ({
                   setContextMenu({ x: e.clientX, y: e.clientY, path: tab.path })
                 }}
                 onDragStart={() => setDraggedTab(tab.path)}
-                onDragEnd={() => {
+                onDragEnd={(e) => {
+                  const wasDragged = draggedTab
                   setDraggedTab(null)
                   setDragOverTab(null)
+                  // Dropped outside the window: the strip's own drop handler
+                  // never ran, and the pointer ended up past the edge of the
+                  // page. That is the gesture for "give this tab a window of
+                  // its own" - the same thing the context menu offers.
+                  if (!wasDragged) return
+                  const outside =
+                    e.clientX < 0 ||
+                    e.clientY < 0 ||
+                    e.clientX > window.innerWidth ||
+                    e.clientY > window.innerHeight
+                  // In a torn-off window the last tab may leave too - it goes
+                  // home rather than into yet another window.
+                  if (outside && (tabs.length > 1 || !isPrimaryWindow)) detachTab(wasDragged)
                 }}
                 onDragOver={(e) => {
                   e.preventDefault()
@@ -308,6 +330,8 @@ export const TabBar: React.FC<TabBarProps> = ({
           pinned={!!tabs.find((t) => t.path === contextMenu.path)?.pinned}
           onDismiss={() => setContextMenu(null)}
           onTogglePin={() => togglePin(contextMenu.path)}
+          onDetach={() => detachTab(contextMenu.path)}
+          detachLabel={isPrimaryWindow ? 'Move to New Window' : 'Move Back to Main Window'}
           onCloseTab={() => closeTab(contextMenu.path)}
           onCloseOthers={() => closeOtherTabs(contextMenu.path)}
           onCloseAll={closeAllTabs}

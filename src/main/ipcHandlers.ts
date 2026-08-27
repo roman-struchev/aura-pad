@@ -1,5 +1,5 @@
 import { app, dialog, ipcMain, nativeTheme, shell } from 'electron'
-import { handleInvoke, handleSend } from './ipc'
+import { handleInvoke, handleInvokeWithEvent, handleSend } from './ipc'
 import {
   loadWorkspaces,
   saveWorkspaces,
@@ -340,8 +340,10 @@ function registerWorkTogetherIpc(): void {
   handleInvoke('work-together-get-status', (backendUrl, sessionId, hostToken) =>
     workTogetherGetSessionStatus(backendUrl, sessionId, hostToken)
   )
-  handleInvoke('work-together-connect', (sessionId, backendUrl, token) =>
-    workTogetherConnectSession(sessionId, backendUrl, token)
+  // Bound to the window that opened the session, so a shared tab in a second
+  // window receives its own messages.
+  handleInvokeWithEvent('work-together-connect', (event, sessionId, backendUrl, token) =>
+    workTogetherConnectSession(sessionId, backendUrl, token, event.sender.id)
   )
   handleInvoke('work-together-send', (sessionId, data) => {
     workTogetherSendSessionMessage(sessionId, data)

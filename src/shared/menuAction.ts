@@ -5,6 +5,7 @@ export type MenuAction =
   | 'reopen-tab'
   | 'go-to-file'
   | 'find-in-files'
+  | 'detach-tab'
   | 'replace-in-files'
   | 'toggle-git-panel'
   | 'toggle-sidebar'

@@ -9,6 +9,18 @@ import type { HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
 import type { LintMarker } from './lint'
 import type { RecentExternalFile } from './recentExternalFile'
 import type { PathListingResult } from './pathMatch'
+
+// Handed to a window as it mounts. The files a torn-off window opens with
+// arrive separately, as ordinary 'open-file-request' events once the renderer
+// announces itself - the same path an OS file open takes, and idempotent, so
+// React's double-invoked mount effects can't drop or duplicate them.
+//
+// `primary` is the main window: the one with the sidebar, the terminal and the
+// persisted session. Every other window is a tab someone pulled out - just the
+// tab strip and the editor, and its tabs can be pushed back here.
+export interface WindowInit {
+  primary: boolean
+}
 import type { MenuAction } from './menuAction'
 import type { UpdateNotification, UpdateProgress } from './updateNotification'
 import type {
@@ -110,6 +122,9 @@ export interface InvokeContracts {
   // tree share one clipboard in both directions.
   'clipboard-write-files': { args: [paths: string[]]; result: OpResult }
   'clipboard-read-files': { args: []; result: string[] }
+  // Whether this window owns the persisted session - see createWindow in
+  // src/main/index.ts.
+  'get-window-init': { args: []; result: WindowInit }
   'get-theme': { args: []; result: boolean }
   'get-settings': { args: []; result: AppSettings }
   'save-settings': { args: [settings: AppSettings]; result: AppSettings }
@@ -252,6 +267,7 @@ export const INVOKE_CHANNELS = {
   movePath: 'move-path',
   writeClipboardFiles: 'clipboard-write-files',
   readClipboardFiles: 'clipboard-read-files',
+  getWindowInit: 'get-window-init',
   getTheme: 'get-theme',
   getSettings: 'get-settings',
   saveSettings: 'save-settings',
@@ -300,6 +316,12 @@ export const INVOKE_CHANNELS = {
 // send (renderer -> main, fire-and-forget)
 
 export interface SendContracts {
+  // Tear a tab off into its own window.
+  'open-in-new-window': [paths: string[]]
+  // The way back: hand a tab to the main window and (usually) close the
+  // detached one it came from.
+  'move-tab-to-primary': [path: string, closeSender: boolean]
+  'close-window': []
   'reveal-in-finder': [targetPath: string]
   'confirm-close': []
   'decline-close': []
@@ -312,6 +334,9 @@ export interface SendContracts {
 }
 
 export const SEND_CHANNELS = {
+  openInNewWindow: 'open-in-new-window',
+  moveTabToPrimary: 'move-tab-to-primary',
+  closeWindow: 'close-window',
   revealInFinder: 'reveal-in-finder',
   confirmClose: 'confirm-close',
   declineClose: 'decline-close',

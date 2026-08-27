@@ -72,6 +72,7 @@ prefers these:
 | A11 | Preload surface and path allowlist | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14); paths outside the open workspaces are refused for read/write/create/delete/move and for spawning a shell, a symlink out of a workspace doesn't smuggle one back in, while a Quick Open listing opens an outside file up and workspace files are unaffected (§2) |
 | A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request; the history starts collapsed, opens from the clock icon, records, refills the whole form (headers and body included) and clears (§16) |
 | A13 | Window lifecycle | A close is not vetoed by a renderer that never announced itself, and the window comes back with its workspace on activate (§2; macOS-only, runs last) |
+| A15 | Detached windows | Tearing a tab off through its context menu opens a second window holding that file, the tab leaves the window it came from, the new window is lean (no tree, no sidebar toggle, but an editor), it does not own the persisted session and says so twice in a row, it can start its own pty, and sending the tab back closes it and reopens the file in the main window |
 | A14 | Update toast | The available/download-percentage/installing/failed states of the toast, driven by the events main sends during a real update — never clicking Install, which would run the actual installer (§9) |
 
 ---
@@ -419,6 +420,27 @@ opened themselves.
 | 18.5 | Copy a file in Finder, then paste into the tree | Pastes in — the OS clipboard's paths are granted when read |
 | 18.6 | Open a terminal on a folder from the tree, and via the toolbar with no folder selected | Both start (workspace folder / `$HOME`); the shell's own `cd /anywhere` is unaffected — the allowlist covers the spawn's cwd, not what the user types into the shell |
 | 18.7 | Remove a workspace whose file is open in a tab, then edit that tab | Saving fails with the allowlist message rather than writing into a folder the user just detached (expected; reopen the workspace to continue) |
+
+---
+
+## 19. Tearing a tab out with the mouse
+
+Guards: the `onDragEnd` branch in `components/TabBar.tsx`, `moveTabToWindow` in
+`hooks/useTabs.ts`, `open-in-new-window` / `move-tab-to-primary` in
+`src/main/index.ts`.
+
+**The menu route is automated as A15.** The drag itself is a real HTML5 drag
+that has to end outside the window, which CDP's synthetic mouse events can't
+produce - hence by hand.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 19.1 | With two or more tabs open, drag one off the strip and drop it outside the window | A second window opens with that file; the tab is gone from the first window |
+| 19.2 | In that window, drag its only tab outside | The tab reappears in the main window and the second window closes |
+| 19.3 | Type in a torn-off window's editor, then drag the tab back before autosave runs (~1.2 s) | The edits are in the main window's tab - the buffer is flushed before the move |
+| 19.4 | Open a terminal in the main window, then reload the torn-off window (Cmd+R) | The main window's terminal keeps running (ptys are owned per window) |
+| 19.5 | Close the last tab in a torn-off window with its × | The window closes with it |
+| 19.6 | Tear a tab off, then quit and relaunch | Only the main window comes back, with the session it had - a torn-off window is not part of the persisted session |
 
 ---
 

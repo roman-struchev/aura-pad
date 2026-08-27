@@ -19,6 +19,7 @@ import { GoogleTasksConfigModal } from './components/GoogleTasksConfigModal'
 import { WorkTogetherConfigModal } from './components/WorkTogetherConfigModal'
 import { ShareDialog } from './components/ShareDialog'
 import { isExtensionPath, makeExtensionPath, parseExtensionPath } from '../../shared/extensionTab'
+import type { WindowInit } from '../../shared/ipc'
 import { EXTENSIONS } from './lib/extensions'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { DENSITY } from './density'
@@ -118,11 +119,30 @@ function App(): React.JSX.Element {
   // still being shared (see the isPathShared guard in removeTabFromState).
   // `settingsLoaded` holds the session restore back until `tabsEnabled` is
   // the user's real choice rather than the default.
+  // Whether this window owns the persisted session: a window torn off a tab
+  // leaves openTabs.json alone (see createWindow in src/main/index.ts), and
+  // the file it was torn off with arrives as an open-file-request below. The
+  // restore inside useTabs is held back until this answer lands, so a
+  // detached window never restores the primary window's list on its way to
+  // being told not to.
+  const [windowInit, setWindowInit] = useState<WindowInit | null>(null)
+  useEffect(() => {
+    window.api.getWindowInit().then(setWindowInit)
+  }, [])
+  // A torn-off window shows the tab and its editor, nothing else - no file
+  // tree, no git panel, no terminal. Those all belong to the main window,
+  // which is also where the tab goes when it is pushed back.
+  const isLeanWindow = windowInit !== null && !windowInit.primary
+  // The menu-action handler subscribes once, so it reads this through a ref
+  // like it does the tabs themselves.
+  const isLeanWindowRef = useRef(isLeanWindow)
+  isLeanWindowRef.current = isLeanWindow
   const tabs = useTabs(
     settings.tabsEnabled,
-    settingsLoaded,
+    settingsLoaded && windowInit !== null,
     workTogether.isSharing,
-    workTogether.stop
+    workTogether.stop,
+    windowInit?.primary ?? true
   )
   // Lets a resumed session whose model didn't exist yet at reconnect time
   // (the tab wasn't open, or wasn't the active one) bind to it once it
@@ -656,6 +676,14 @@ function App(): React.JSX.Element {
     'go-to-file': toggleFileSearch,
     'find-in-files': () => openGlobalSearch(),
     'replace-in-files': () => openGlobalSearch(true),
+    'detach-tab': () => {
+      const path = tabsRef.current.activeTabPath
+      if (!path) return
+      // Same command, mirrored: out of the main window, back into it from a
+      // torn-off one.
+      if (isLeanWindowRef.current) tabsRef.current.returnTab(path)
+      else tabsRef.current.detachTab(path)
+    },
     // Context-sensitive like close-tab above: with focus inside the terminal
     // panel Cmd+K clears that terminal (iTerm2/VS Code muscle memory) rather
     // than toggling the git panel behind it.
@@ -861,6 +889,8 @@ function App(): React.JSX.Element {
   const handleTabCloseOthers = useStableCallback(tabs.closeOtherTabs)
   const handleTabCloseAll = useStableCallback(tabs.closeAllTabs)
   const handleTabTogglePin = useStableCallback(tabs.togglePin)
+  const handleTabDetach = useStableCallback(tabs.detachTab)
+  const handleTabReturn = useStableCallback(tabs.returnTab)
   const handleTabReorder = useStableCallback(tabs.reorderTab)
   // Replace-in-files must not touch a file whose tab still holds unsaved
   // edits: that tab's next autosave would write the pre-replacement buffer
@@ -882,6 +912,7 @@ function App(): React.JSX.Element {
       onDrop={handleWindowDrop}
     >
       <AppHeader
+        lean={isLeanWindow}
         sidebarVisible={settings.sidebarVisible}
         sidebarPosition={settings.sidebarPosition}
         terminalShown={terminal.showTerminal}
@@ -898,6 +929,8 @@ function App(): React.JSX.Element {
             closeOtherTabs={handleTabCloseOthers}
             closeAllTabs={handleTabCloseAll}
             togglePin={handleTabTogglePin}
+            detachTab={isLeanWindow ? handleTabReturn : handleTabDetach}
+            isPrimaryWindow={!isLeanWindow}
             reorderTab={handleTabReorder}
             isPathShared={workTogether.isSharing}
           />
@@ -1049,7 +1082,7 @@ function App(): React.JSX.Element {
             )}
           </div>
 
-          {terminal.showTerminal && terminal.terminals.length > 0 && (
+          {terminal.showTerminal && terminal.terminals.length > 0 && !isLeanWindow && (
             <TerminalPanel
               terminal={terminal}
               fontSize={density.terminalFontSize}
@@ -1058,7 +1091,7 @@ function App(): React.JSX.Element {
           )}
         </div>
 
-        {settings.sidebarVisible && (
+        {settings.sidebarVisible && !isLeanWindow && (
           <div
             className={clsx(
               'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',

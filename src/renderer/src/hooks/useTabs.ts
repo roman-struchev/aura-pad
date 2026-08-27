@@ -40,11 +40,16 @@ export type JumpTarget = { line: number; col?: number; matchLen?: number }
 // starts out as its DEFAULT_SETTINGS value and only becomes the user's own
 // choice once main answers with the persisted settings, so restoring before
 // that would restore the whole tab list for someone who turned tabs off.
+// `ownsSession` is false in a window torn off a tab: it opens with the files
+// it was given, and must neither restore the saved list nor write its own over
+// it - only the primary window is the session of record (see createWindow in
+// src/main/index.ts).
 export function useTabs(
   tabsEnabled: boolean,
   settingsLoaded: boolean,
   isPathShared?: (path: string) => boolean,
-  stopSharing?: (path: string) => void
+  stopSharing?: (path: string) => void,
+  ownsSession = true
 ) {
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
@@ -331,11 +336,10 @@ export function useTabs(
     if (!isPathShared?.(path)) monaco.editor.getModel(monaco.Uri.parse(path))?.dispose()
   }
 
-  const closeTab = async (path: string): Promise<void> => {
-    const tab = tabsRef.current.find((t) => t.path === path)
-    if (!tab) return
-    if (!(await confirmCanClose(tab))) return
-
+  // The part of closing that isn't the question: drop the tab and move the
+  // selection to a sensible neighbour. Shared with detachTab, which has
+  // nothing to confirm - the file is written and reopened, not discarded.
+  const dropTab = (path: string): void => {
     const currentTabs = tabsRef.current
     const idx = currentTabs.findIndex((t) => t.path === path)
     removeTabFromState(path)
@@ -347,6 +351,40 @@ export function useTabs(
     }
     pendingJump.current = null
   }
+
+  const closeTab = async (path: string): Promise<void> => {
+    const tab = tabsRef.current.find((t) => t.path === path)
+    if (!tab) return
+    if (!(await confirmCanClose(tab))) return
+    dropTab(path)
+  }
+
+  // Move a tab between windows: out into one of its own, or back to the main
+  // window. Either way the receiving window reads the file from disk, so an
+  // unsaved buffer is flushed first - otherwise the edits would still be here,
+  // in a tab that is about to disappear. A failed write leaves everything
+  // where it is rather than losing them.
+  const moveTabToWindow = async (path: string, back: boolean): Promise<boolean> => {
+    const tab = tabsRef.current.find((t) => t.path === path)
+    if (!tab) return false
+    if (!tab.isSaved && !isExtensionPath(path)) {
+      const result = await window.api.saveFile(path, tab.content)
+      if (!result.success) return false
+      updateTab(path, { isSaved: true })
+    }
+    if (back) {
+      // The last tab going home takes the window with it: a torn-off window
+      // with nothing in it is just an empty frame.
+      window.api.moveTabToPrimary(path, tabsRef.current.length <= 1)
+    } else {
+      window.api.openInNewWindow([path])
+    }
+    dropTab(path)
+    return true
+  }
+
+  const detachTab = (path: string): Promise<boolean> => moveTabToWindow(path, false)
+  const returnTab = (path: string): Promise<boolean> => moveTabToWindow(path, true)
 
   const handleCloseFile = (): void => {
     if (!activeTabPath) return
@@ -580,6 +618,12 @@ export function useTabs(
     if (!settingsLoaded) return
     if (restoreStartedRef.current) return
     restoreStartedRef.current = true
+    if (!ownsSession) {
+      // Nothing to restore, and nothing to guard the persistence effect from:
+      // it is disabled outright below.
+      hasRestoredRef.current = true
+      return
+    }
     ;(async () => {
       const state = await window.api.getOpenTabs()
       const pathsToRestore = tabsEnabled
@@ -629,13 +673,13 @@ export function useTabs(
       }
       hasRestoredRef.current = true
     })()
-  }, [tabsEnabled, settingsLoaded])
+  }, [tabsEnabled, settingsLoaded, ownsSession])
 
   // Persist the open tab list (paths, active tab, pinned state - not
   // content, which is re-read from disk on restore) so it survives an app
   // restart. Debounced since tab/content changes can fire in quick bursts.
   useEffect(() => {
-    if (!hasRestoredRef.current) return
+    if (!hasRestoredRef.current || !ownsSession) return
     const timer = setTimeout(() => {
       window.api.saveOpenTabs({
         paths: tabsRef.current.map((t) => t.path),
@@ -644,7 +688,7 @@ export function useTabs(
       })
     }, 500)
     return () => clearTimeout(timer)
-  }, [tabs, activeTabPath])
+  }, [tabs, activeTabPath, ownsSession])
 
   return {
     tabs,
@@ -668,6 +712,8 @@ export function useTabs(
     togglePin,
     togglePreview,
     reorderTab,
+    detachTab,
+    returnTab,
     handleSave,
     saveAllDirtyFileTabs,
     handleEditorChange,

@@ -133,29 +133,43 @@ export function getSessionStatus(
 
 const connections = new Map<string, WebSocket>()
 
-// Same "resolve lazily, not at registration time" reasoning as terminals.ts's
-// getMainWindow: the connection can outlive a window close/reopen (macOS
-// dock-activate cycle) and must keep delivering to whatever window is
-// current, not one that's since been destroyed.
-let getMainWindow: () => BrowserWindow | null = () => null
+// Same "resolve lazily, not at registration time" reasoning as terminals.ts:
+// a connection can outlive a window close/reopen (macOS dock-activate cycle)
+// and must keep delivering to a window that still exists. The fallback is the
+// app's primary window, which is where a session survives its own window
+// closing; while that window is alive, a session belongs to whichever window
+// opened it, so a shared tab in a second window gets its own messages.
+let getPrimaryWindow: () => BrowserWindow | null = () => null
+const sessionOwners = new Map<string, number>()
 
 export function registerWorkTogetherWindowProvider(
   windowProvider: () => BrowserWindow | null
 ): void {
-  getMainWindow = windowProvider
+  getPrimaryWindow = windowProvider
 }
 
-function sendToRenderer(channel: string, ...args: unknown[]): void {
-  const win = getMainWindow()
+function ownerWindow(sessionId: string): BrowserWindow | null {
+  const ownerId = sessionOwners.get(sessionId)
+  const owned =
+    ownerId === undefined
+      ? undefined
+      : BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.id === ownerId)
+  return owned ?? getPrimaryWindow()
+}
+
+function sendToRenderer(sessionId: string, channel: string, ...args: unknown[]): void {
+  const win = ownerWindow(sessionId)
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
 
 export function connectSession(
   sessionId: string,
   backendUrl: string,
-  token: string
+  token: string,
+  ownerId?: number
 ): Promise<{ success: boolean; error?: string }> {
   disconnectSession(sessionId)
+  if (ownerId !== undefined) sessionOwners.set(sessionId, ownerId)
 
   return new Promise((resolve) => {
     let settled = false
@@ -192,12 +206,12 @@ export function connectSession(
 
     ws.on('message', (data: WebSocket.RawData) => {
       const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
-      sendToRenderer(`work-together-message-${sessionId}`, new Uint8Array(buf))
+      sendToRenderer(sessionId, `work-together-message-${sessionId}`, new Uint8Array(buf))
     })
 
     ws.on('close', (code: number, reasonBuf: Buffer) => {
       connections.delete(sessionId)
-      sendToRenderer(`work-together-closed-${sessionId}`, code, reasonBuf.toString())
+      sendToRenderer(sessionId, `work-together-closed-${sessionId}`, code, reasonBuf.toString())
       settle({ success: false, error: `connection closed (${code})` })
     })
 
@@ -214,6 +228,7 @@ export function sendSessionMessage(sessionId: string, data: Uint8Array): void {
 }
 
 export function disconnectSession(sessionId: string): void {
+  sessionOwners.delete(sessionId)
   const ws = connections.get(sessionId)
   if (!ws) return
   connections.delete(sessionId)

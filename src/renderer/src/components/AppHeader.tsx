@@ -11,6 +11,10 @@ import { ToolbarButton } from './ToolbarButton'
 import type { SidebarPosition } from '../../../shared/settings'
 
 interface AppHeaderProps {
+  // A torn-off window is just tabs and an editor: no sidebar, no terminal, so
+  // none of the toolbar's toggles have anything to act on. Only the
+  // traffic-light gap survives.
+  lean?: boolean
   terminalShown: boolean
   sidebarVisible: boolean
   sidebarPosition: SidebarPosition
@@ -30,6 +34,7 @@ interface AppHeaderProps {
 // sidebar (and thus the toolbar) moves to the other side. The macOS
 // traffic-light gap (ml-24) stays on whichever group is leftmost.
 export const AppHeader: React.FC<AppHeaderProps> = ({
+  lean,
   terminalShown,
   sidebarVisible,
   sidebarPosition,
@@ -104,6 +109,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       {tabBar}
     </div>
   )
+
+  if (lean) {
+    return (
+      <div className="h-9 flex items-center gap-1 pl-3 pr-3 bg-fleet-header select-none drag-region shrink-0">
+        <div className="flex-1 min-w-0 self-stretch flex items-stretch ml-24">{tabBar}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-9 flex items-center gap-1 pl-3 pr-3 bg-fleet-header select-none drag-region shrink-0">

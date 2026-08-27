@@ -5,6 +5,8 @@ interface TabContextMenuProps {
   x: number
   y: number
   pinned: boolean
+  onDetach: () => void
+  detachLabel: string
   onDismiss: () => void
   onTogglePin: () => void
   onCloseTab: () => void
@@ -17,6 +19,8 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
   x,
   y,
   pinned,
+  onDetach,
+  detachLabel,
   onDismiss,
   onTogglePin,
   onCloseTab,
@@ -32,6 +36,7 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
   return (
     <ContextMenu x={x} y={y}>
       <ContextMenuItem onClick={() => run(onTogglePin)}>{pinned ? 'Unpin' : 'Pin'}</ContextMenuItem>
+      <ContextMenuItem onClick={() => run(onDetach)}>{detachLabel}</ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={() => run(onCloseTab)}>Close</ContextMenuItem>
       <ContextMenuItem disabled={!hasOtherTabs} onClick={() => run(onCloseOthers)}>

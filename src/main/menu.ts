@@ -43,6 +43,13 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           click: () => sendAction('open-folder')
         },
         { type: 'separator' },
+        {
+          // The keyboard half of dragging a tab out of the strip. In a
+          // torn-off window the same command sends the tab back.
+          label: 'Move Tab to New Window',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => sendAction('detach-tab')
+        },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendAction('save') },
         { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: () => sendAction('close-tab') },
         {
