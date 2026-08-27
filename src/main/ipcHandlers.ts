@@ -25,6 +25,7 @@ import {
 import { listPathMatches } from './pathBrowse'
 import { replaceInFiles, undoReplaceInFiles } from './replaceInFiles'
 import { readImageDataUrl, savePastedImage } from './pastedImages'
+import { listSnapshots, readSnapshot, recordSnapshot, shouldSnapshot } from './localHistory'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
 import { setupWatchers, recordSelfWrite } from './watcher'
@@ -74,6 +75,16 @@ import {
 
 function registerAppIpc(): void {
   handleInvoke('get-app-version', () => app.getVersion())
+  handleInvoke('local-history-list', (filePath) =>
+    pathDenial(filePath) ? [] : listSnapshots(filePath)
+  )
+
+  handleInvoke('local-history-read', (filePath, id) => {
+    const denial = pathDenial(filePath)
+    if (denial) return { success: false, error: denial }
+    return readSnapshot(filePath, id)
+  })
+
   handleInvoke('get-theme', () => nativeTheme.shouldUseDarkColors)
   handleSend('apply-update', () => applyUpdate())
 
@@ -152,6 +163,16 @@ function registerWorkspaceIpc(): void {
   handleInvoke('save-file', (filePath, content) => {
     const denial = pathDenial(filePath)
     if (denial) return { success: false, error: denial }
+    // The state this write is about to replace, kept where the user can get
+    // back to it (src/main/localHistory.ts). Guarded by shouldSnapshot so the
+    // usual autosave - seconds after the last one - doesn't pay for a read of
+    // the whole file it is going to overwrite anyway.
+    if (shouldSnapshot(filePath)) {
+      const previous = readFileContent(filePath)
+      if (previous.success && previous.content !== undefined) {
+        recordSnapshot(filePath, previous.content, 'Save')
+      }
+    }
     // Encoded once here so the bytes on disk and the self-write hash the
     // watcher compares against are guaranteed to be the same bytes.
     const encoded = encodeFileContent(filePath, content)

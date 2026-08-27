@@ -258,6 +258,12 @@ watcher then suppresses that write as a self-write, so it happens without a
 trace. This is the exact scenario the branch-switch guard in `useTabs.ts` was
 written to prevent, reached by a different route.
 
+**Since local history landed** (`src/main/localHistory.ts`), the overwrite is at
+least recoverable: the stale autosave stores the state it replaced — the
+outside edit — so the user can get it back from the tab's Local History. That
+softens the impact; it does not fix the detection, and the tab still shows no
+banner.
+
 **Fix direction:** stop keying the decision on the event type alone. In the
 `'rename'` branch, when the path still exists and has a self-write record whose
 content no longer matches, broadcast `file-changed-externally` in addition to

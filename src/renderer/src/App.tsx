@@ -22,6 +22,7 @@ import { isExtensionPath, makeExtensionPath, parseExtensionPath } from '../../sh
 import type { WindowInit } from '../../shared/ipc'
 import { EXTENSIONS } from './lib/extensions'
 import { TreeContextMenu } from './components/TreeContextMenu'
+import { LocalHistoryModal } from './components/LocalHistoryModal'
 import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
 import { useSettings } from './hooks/useSettings'
@@ -438,6 +439,8 @@ function App(): React.JSX.Element {
   // "Replace in Files" is the same overlay, opened with its replace row out.
   const [searchStartsInReplace, setSearchStartsInReplace] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
+  // The tab whose local history is open (null = closed).
+  const [historyPath, setHistoryPath] = useState<string | null>(null)
   // Quick open's live query, so switching to search-in-files carries it over.
   // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
   const fileSearchQueryRef = useRef('')
@@ -931,6 +934,7 @@ function App(): React.JSX.Element {
             togglePin={handleTabTogglePin}
             detachTab={isLeanWindow ? handleTabReturn : handleTabDetach}
             isPrimaryWindow={!isLeanWindow}
+            showHistory={setHistoryPath}
             reorderTab={handleTabReorder}
             isPathShared={workTogether.isSharing}
           />
@@ -1185,6 +1189,18 @@ function App(): React.JSX.Element {
             setShowFileSearch(false)
           }}
           rootNodes={tree.rootNodes}
+        />
+      )}
+
+      {historyPath && (
+        <LocalHistoryModal
+          filePath={historyPath}
+          currentContent={tabs.tabs.find((t) => t.path === historyPath)?.content ?? ''}
+          monacoTheme={monacoTheme}
+          // Restored into the tab, not onto disk: one undoable edit, and the
+          // ordinary save path takes it from there.
+          onRestore={(content) => tabs.setFileContent(historyPath, content)}
+          onClose={() => setHistoryPath(null)}
         />
       )}
 

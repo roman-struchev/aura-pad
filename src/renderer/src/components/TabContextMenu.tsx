@@ -7,6 +7,10 @@ interface TabContextMenuProps {
   pinned: boolean
   onDetach: () => void
   detachLabel: string
+  onShowHistory: () => void
+  // False for extension tabs (Google Tasks, HTTP form): nothing on disk, so
+  // nothing was ever written over.
+  canShowHistory: boolean
   onDismiss: () => void
   onTogglePin: () => void
   onCloseTab: () => void
@@ -21,6 +25,8 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
   pinned,
   onDetach,
   detachLabel,
+  onShowHistory,
+  canShowHistory,
   onDismiss,
   onTogglePin,
   onCloseTab,
@@ -37,6 +43,9 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
     <ContextMenu x={x} y={y}>
       <ContextMenuItem onClick={() => run(onTogglePin)}>{pinned ? 'Unpin' : 'Pin'}</ContextMenuItem>
       <ContextMenuItem onClick={() => run(onDetach)}>{detachLabel}</ContextMenuItem>
+      <ContextMenuItem disabled={!canShowHistory} onClick={() => run(onShowHistory)}>
+        Local History
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onClick={() => run(onCloseTab)}>Close</ContextMenuItem>
       <ContextMenuItem disabled={!hasOtherTabs} onClick={() => run(onCloseOthers)}>

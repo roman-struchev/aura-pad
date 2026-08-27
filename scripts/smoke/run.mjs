@@ -39,6 +39,7 @@ const CASE_FILES = [
   'search.mjs',
   'preview.mjs',
   'markdown-images.mjs',
+  'local-history.mjs',
   'terminal.mjs',
   'settings.mjs',
   'git.mjs',

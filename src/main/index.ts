@@ -15,6 +15,7 @@ import { grantPath } from './pathAccess'
 import { registerWorkTogetherWindowProvider, disconnectAllSessions } from './workTogether'
 import { buildAppMenu } from './menu'
 import { initAutoUpdater } from './updater'
+import { pruneLocalHistory } from './localHistory'
 
 // Opening a file via "Open With" (or dropping one on the dock icon on macOS)
 // only reaches this process, not the renderer directly - forward it over
@@ -361,6 +362,9 @@ app.whenReady().then(() => {
   createWindow({ paths: [], primary: true })
   setupWatchers()
   initAutoUpdater()
+  // Snapshots of files nobody edits any more (renamed, deleted, left alone)
+  // are only ever aged out from here - saving prunes just the file it touches.
+  pruneLocalHistory()
 
   const initialFilePath = getFilePathFromArgv(process.argv)
   if (initialFilePath) openFileInApp(initialFilePath)

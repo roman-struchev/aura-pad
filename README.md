@@ -55,6 +55,11 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   active tab in view, and the chevron at its end lists every open tab.
   Tabs can be switched off entirely for a one-file-at-a-time view.
 - Autosave a moment after you stop typing.
+- **Local history** — because the editor saves for you, it also keeps the way back: right-click
+  a tab → *Local History* to see the states the file was in before AuraPad wrote over it,
+  diffed against what you have now, and restore any of them (as an undoable edit, so `Cmd+Z`
+  takes it back). Versions are stored in the app's own folder, never next to your files, and
+  are kept for two weeks.
 - Error checking for TypeScript, JavaScript, and Python; uses your project's own ESLint
   setup if it has one.
 - One-click Markdown and HTML preview; format JSON/HTML/XML with `Option+Cmd+L`.
@@ -91,7 +96,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   search-in-files carries the typed query across.
 - Replace across files (`Shift+Cmd+R`, or the arrow next to the search field): every match
   previews the line as it will be written, files are unchecked one by one, and one Undo
-  puts the whole batch back. Files with unsaved edits in a tab are skipped and say so —
+  puts the whole batch back (every rewritten file also gets a local-history version, which
+  outlives the session). Files with unsaved edits in a tab are skipped and say so —
   their next autosave would write the old text straight back.
 - Stays in sync with changes made outside the app — and warns instead of losing your
   unsaved edits.

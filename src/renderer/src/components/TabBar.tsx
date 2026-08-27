@@ -20,6 +20,9 @@ interface TabBarProps {
   detachTab: (path: string) => void
   // False in a torn-off window, which sends tabs back instead of out.
   isPrimaryWindow?: boolean
+  // Open the file's local history (the states AuraPad stored before writing
+  // over it).
+  showHistory: (path: string) => void
   reorderTab: (sourcePath: string, targetPath: string) => void
   isPathShared?: (path: string) => boolean
 }
@@ -51,6 +54,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   togglePin,
   detachTab,
   isPrimaryWindow = true,
+  showHistory,
   reorderTab,
   isPathShared
 }) => {
@@ -331,6 +335,8 @@ export const TabBar: React.FC<TabBarProps> = ({
           onDismiss={() => setContextMenu(null)}
           onTogglePin={() => togglePin(contextMenu.path)}
           onDetach={() => detachTab(contextMenu.path)}
+          onShowHistory={() => showHistory(contextMenu.path)}
+          canShowHistory={!extensionTabInfo(contextMenu.path)}
           detachLabel={isPrimaryWindow ? 'Move to New Window' : 'Move Back to Main Window'}
           onCloseTab={() => closeTab(contextMenu.path)}
           onCloseOthers={() => closeOtherTabs(contextMenu.path)}

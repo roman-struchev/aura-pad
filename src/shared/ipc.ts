@@ -7,6 +7,7 @@ import type { GitCommit, GitRepoStatus } from './gitStatus'
 import type { GTask, GTaskInput, GTaskList } from './googleTasks'
 import type { HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
 import type { LintMarker } from './lint'
+import type { LocalHistoryEntry } from './localHistory'
 import type { RecentExternalFile } from './recentExternalFile'
 import type { PathListingResult } from './pathMatch'
 
@@ -142,6 +143,10 @@ export interface InvokeContracts {
     args: [imagePath: string]
     result: { success: boolean; dataUrl?: string }
   }
+  // Local history: the states a file was in before AuraPad wrote over it,
+  // newest first, and the text of one of them (see src/main/localHistory.ts).
+  'local-history-list': { args: [filePath: string]; result: LocalHistoryEntry[] }
+  'local-history-read': { args: [filePath: string, id: string]; result: FileReadResult }
   'get-theme': { args: []; result: boolean }
   'get-settings': { args: []; result: AppSettings }
   'save-settings': { args: [settings: AppSettings]; result: AppSettings }
@@ -287,6 +292,8 @@ export const INVOKE_CHANNELS = {
   getWindowInit: 'get-window-init',
   savePastedImage: 'save-pasted-image',
   readImageDataUrl: 'read-image-data-url',
+  localHistoryList: 'local-history-list',
+  localHistoryRead: 'local-history-read',
   getTheme: 'get-theme',
   getSettings: 'get-settings',
   saveSettings: 'save-settings',
