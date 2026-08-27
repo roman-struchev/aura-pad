@@ -49,6 +49,14 @@ export interface FileReadResult extends OpResult {
   content?: string
 }
 
+// An image pasted into a Markdown file, written next to it: the relative path
+// is what goes into the document, the absolute one is what the tree and the
+// watcher deal in.
+export interface PastedImageResult extends OpResult {
+  relativePath?: string
+  absolutePath?: string
+}
+
 // rename/create/copy/move/delete of a tree entry. On success carries the
 // rebuilt workspace trees so the renderer doesn't need a second round-trip.
 export interface PathOpResult extends OpResult {
@@ -125,6 +133,15 @@ export interface InvokeContracts {
   // Whether this window owns the persisted session - see createWindow in
   // src/main/index.ts.
   'get-window-init': { args: []; result: WindowInit }
+  // Write the clipboard's image next to a Markdown file - see
+  // src/main/pastedImages.ts.
+  'save-pasted-image': { args: [documentPath: string]; result: PastedImageResult }
+  // A local image the Markdown preview references, as a data: URL (the page's
+  // CSP has no file: source, on purpose).
+  'read-image-data-url': {
+    args: [imagePath: string]
+    result: { success: boolean; dataUrl?: string }
+  }
   'get-theme': { args: []; result: boolean }
   'get-settings': { args: []; result: AppSettings }
   'save-settings': { args: [settings: AppSettings]; result: AppSettings }
@@ -268,6 +285,8 @@ export const INVOKE_CHANNELS = {
   writeClipboardFiles: 'clipboard-write-files',
   readClipboardFiles: 'clipboard-read-files',
   getWindowInit: 'get-window-init',
+  savePastedImage: 'save-pasted-image',
+  readImageDataUrl: 'read-image-data-url',
   getTheme: 'get-theme',
   getSettings: 'get-settings',
   saveSettings: 'save-settings',

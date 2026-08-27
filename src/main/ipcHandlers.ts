@@ -24,6 +24,7 @@ import {
 } from './recentExternalFiles'
 import { listPathMatches } from './pathBrowse'
 import { replaceInFiles, undoReplaceInFiles } from './replaceInFiles'
+import { readImageDataUrl, savePastedImage } from './pastedImages'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
 import { setupWatchers, recordSelfWrite } from './watcher'
@@ -186,6 +187,9 @@ function registerWorkspaceIpc(): void {
     setupWatchers()
     return result
   })
+
+  handleInvoke('save-pasted-image', (documentPath) => savePastedImage(documentPath))
+  handleInvoke('read-image-data-url', (imagePath) => readImageDataUrl(imagePath))
 
   handleInvoke('clipboard-write-files', (paths) => {
     const denial = pathDenial(...paths)

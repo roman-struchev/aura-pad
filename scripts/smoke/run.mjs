@@ -38,6 +38,7 @@ const CASE_FILES = [
   'encoding.mjs',
   'search.mjs',
   'preview.mjs',
+  'markdown-images.mjs',
   'terminal.mjs',
   'settings.mjs',
   'git.mjs',

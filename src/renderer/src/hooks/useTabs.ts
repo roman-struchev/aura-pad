@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as monaco from 'monaco-editor'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 import { isExtensionPath } from '../../../shared/extensionTab'
+import { isMarkdownPath } from '../lib/fileType'
 
 export type OpenTab = {
   path: string
@@ -74,6 +75,9 @@ export function useTabs(
   // is async, a second run can start before the first has committed its
   // tabs, both passing the "not already open" check and adding a duplicate.
   const restoreStartedRef = useRef(false)
+  // Read by the paste handler below, which subscribes once and would otherwise
+  // close over whichever tab was active when it did.
+  const activeTabPathRef = useRef<string | null>(null)
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null
   const selectedPath = activeTab?.path ?? null
@@ -255,6 +259,52 @@ export function useTabs(
     ])
     editor.focus()
   }
+
+  // Pasting an image into a Markdown file writes it next to the document and
+  // leaves a relative link behind, instead of Monaco pasting the clipboard's
+  // text fallback (a file name, or nothing at all).
+  //
+  // On the document in the capture phase, not on the editor's own node: the
+  // paste that reaches Monaco's hidden input is Monaco's to handle, and the
+  // editor is remounted often enough (preview toggle, last tab closed) that
+  // hanging a listener off each mount would stack them up.
+  //
+  // What is on the clipboard is read in main - the event only says whether
+  // this paste carries an image at all (a screenshot as image data, or a file
+  // copied in Finder/Explorer).
+  useEffect(() => {
+    activeTabPathRef.current = activeTabPath
+  }, [activeTabPath])
+
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent): void => {
+      const target = event.target
+      if (!(target instanceof Element) || !target.closest('.monaco-editor')) return
+      const data = event.clipboardData
+      const documentPath = activeTabPathRef.current
+      if (!data || !documentPath || !isMarkdownPath(documentPath)) return
+      const carriesImage =
+        [...data.items].some((item) => item.type.startsWith('image/')) ||
+        [...data.files].some((file) => file.type.startsWith('image/'))
+      if (!carriesImage) return
+      event.preventDefault()
+      event.stopPropagation()
+      void (async () => {
+        const result = await window.api.savePastedImage(documentPath)
+        if (!result.success || !result.relativePath) {
+          if (result.error) alertDialog(result.error)
+          return
+        }
+        const alt = decodeURIComponent(result.relativePath.split('/').pop() ?? 'image').replace(
+          /\.[^.]+$/,
+          ''
+        )
+        insertTextAtCursor(`![${alt}](${result.relativePath})`)
+      })()
+    }
+    document.addEventListener('paste', onPaste, true)
+    return () => document.removeEventListener('paste', onPaste, true)
+  }, [])
 
   const handleEditorChange = (value: string | undefined): void => {
     if (value !== undefined && activeTabPath) {

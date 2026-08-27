@@ -1038,7 +1038,7 @@ function App(): React.JSX.Element {
                 )
               ) : tabs.selectedPath ? (
                 tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
-                  <MarkdownPreview content={tabs.fileContent} />
+                  <MarkdownPreview content={tabs.fileContent} documentPath={tabs.selectedPath} />
                 ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
                   <HtmlPreview content={tabs.fileContent} />
                 ) : (

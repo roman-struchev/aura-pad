@@ -60,6 +60,9 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - One-click Markdown and HTML preview; format JSON/HTML/XML with `Option+Cmd+L`.
 - Opens files that aren't UTF-8 (cp1251, UTF-16, …) and writes them back in their original
   encoding instead of corrupting them.
+- Paste an image into a Markdown file (a screenshot, or a file copied in Finder/Explorer)
+  and it is written to an `assets/` folder next to the document, with a relative link left
+  at the cursor — the note and its images move together. The preview renders them.
 - Themes: dark, light, system, Monokai, and Solarized; adjustable UI density, line numbers,
   and sidebar side.
 
