@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import os from 'os'
 import * as pty from 'node-pty'
 import { handleInvoke, handleSend } from './ipc'
+import { pathDenial } from './pathAccess'
 
 const shellExec =
   process.env[process.platform === 'win32' ? 'COMSPEC' : 'SHELL'] ||
@@ -25,6 +26,14 @@ export function registerCreatePtyHandler(windowProvider: () => BrowserWindow | n
   getMainWindow = windowProvider
 
   handleInvoke('create-pty', (cwd) => {
+    // A login shell in an arbitrary directory is the most valuable thing the
+    // filesystem IPC could hand out (docs/BUGS.md §2), so an unknown cwd is
+    // refused outright rather than quietly falling back to $HOME - a silent
+    // fallback would look like the terminal opened "somewhere else" instead
+    // of saying what happened.
+    const denial = pathDenial(cwd)
+    if (denial) throw new Error(denial)
+
     const termId = `term-${ptyIdCounter++}`
 
     const shellArgs = process.platform === 'win32' ? [] : ['-l']

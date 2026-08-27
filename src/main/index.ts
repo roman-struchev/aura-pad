@@ -11,6 +11,7 @@ import { handleSend } from './ipc'
 import { registerIpcHandlers } from './ipcHandlers'
 import { setupWatchers, closeAllWatchers, broadcast } from './watcher'
 import { registerCreatePtyHandler, killAllPtys } from './terminals'
+import { grantPath } from './pathAccess'
 import { registerWorkTogetherWindowProvider, disconnectAllSessions } from './workTogether'
 import { buildAppMenu } from './menu'
 import { initAutoUpdater } from './updater'
@@ -86,6 +87,10 @@ function flushPendingFileOpens(): void {
 }
 
 function openFileInApp(filePath: string): void {
+  // The OS (double-click, `open -a`, drag onto the dock icon) asked for this
+  // file, so the renderer is allowed to read and save it even though it sits
+  // outside every workspace - see pathAccess.
+  grantPath(filePath)
   if (mainWindowRef && !mainWindowRef.isDestroyed() && rendererReady) {
     if (mainWindowRef.isMinimized()) mainWindowRef.restore()
     mainWindowRef.focus()

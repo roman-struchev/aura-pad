@@ -59,10 +59,16 @@ export default {
     )
 
     // A file from outside every workspace opens like any other and is
-    // remembered, so it can be reopened from the sidebar later.
+    // remembered, so it can be reopened from the sidebar later. It goes
+    // through Quick Open's path listing first, which is both how a user
+    // reaches such a file and how main comes to allow it (src/main/pathAccess
+    // - naming the path out of nowhere is refused).
     const external = path.join(fixture.outside, 'external.txt')
+    await cdp.evaluate(
+      `window.api.listPathMatches(${JSON.stringify(path.join(fixture.outside, 'ext'))})`
+    )
     const externalRead = await cdp.evaluate(`window.api.readFile(${JSON.stringify(external)})`)
-    check('a file outside the workspace can be opened', externalRead.success)
+    check('a file outside the workspace can be opened', externalRead.success, externalRead.error)
     await cdp.evaluate(`window.api.touchRecentExternalFile(${JSON.stringify(external)})`)
     const recent = await cdp.evaluate(
       `window.api.getRecentExternalFiles().then((e) => e.map((x) => x.path))`

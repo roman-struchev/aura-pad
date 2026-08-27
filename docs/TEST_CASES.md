@@ -69,7 +69,7 @@ prefers these:
 | A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced; the toolbar opens a terminal in the panel, and Cmd+K is routed to it (git panel stays shut) while it still toggles the git panel elsewhere |
 | A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
 | A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
-| A11 | Preload surface | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14) |
+| A11 | Preload surface and path allowlist | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14); paths outside the open workspaces are refused for read/write/create/delete/move and for spawning a shell, a symlink out of a workspace doesn't smuggle one back in, while a Quick Open listing opens an outside file up and workspace files are unaffected (§2) |
 | A12 | HTTP client | `.http` and `.rest` files run against a loopback server: status/headers/pretty-printed body in the response pane, copy to clipboard, Cmd+Enter runs the block at the cursor, a curl command in a `.sh` runs from the cursor, file-writing curl flags are refused; the HTTP Client tab sends a form request; the history starts collapsed, opens from the clock icon, records, refills the whole form (headers and body included) and clears (§16) |
 | A13 | Window lifecycle | A close is not vetoed by a renderer that never announced itself, and the window comes back with its workspace on activate (§2; macOS-only, runs last) |
 | A14 | Update toast | The available/download-percentage/installing/failed states of the toast, driven by the events main sends during a real update — never clicking Install, which would run the actual installer (§9) |
@@ -396,6 +396,29 @@ one and is unreachable from CDP either way.
 | 17.2 | Type half a command (don't press Enter), press **Cmd+K** | The half-typed command is still on the prompt line - the shell never saw the key |
 | 17.3 | With two terminal tabs, clear one and switch to the other | Only the active one was cleared |
 | 17.4 | Click into the editor or the file tree and press **Cmd+K** | The git panel toggles, as before |
+
+---
+
+## 18. Path allowlist — the ways a file legitimately comes from outside
+
+Guards: `src/main/pathAccess.ts`, the `getPathForFile` grant in
+`src/preload/index.ts`, `openFileInApp` in `src/main/index.ts`.
+
+**The refusals are automated as A11.** These are the grants, and every one of
+them needs a real OS gesture the suite can't perform (drag from Finder, Open
+With, a native dialog), so they stay here. Each must still work — a regression
+shows up as "that path is outside the open workspaces" on a file the user
+opened themselves.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 18.1 | Drag a file from Finder that is outside every workspace onto the window | It opens, edits autosave to it, and the tab survives a restart (the grant is re-issued from the recent-external list) |
+| 18.2 | Finder → Open With → AuraPad, on a file outside every workspace | Same: opens, edits save. Also with the app not running (launch-with-file path) |
+| 18.3 | Quick Open → type `~/` and walk to a file outside every workspace | Listing shows entries; opening one works, and saving into it works |
+| 18.4 | Sidebar → "recently opened outside" → reopen one of the files from 18.1–18.3 after a restart | Opens and saves |
+| 18.5 | Copy a file in Finder, then paste into the tree | Pastes in — the OS clipboard's paths are granted when read |
+| 18.6 | Open a terminal on a folder from the tree, and via the toolbar with no folder selected | Both start (workspace folder / `$HOME`); the shell's own `cd /anywhere` is unaffected — the allowlist covers the spawn's cwd, not what the user types into the shell |
+| 18.7 | Remove a workspace whose file is open in a tab, then edit that tab | Saving fails with the allowlist message rather than writing into a folder the user just detached (expected; reopen the workspace to continue) |
 
 ---
 

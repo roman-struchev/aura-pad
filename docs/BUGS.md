@@ -67,16 +67,16 @@ so simply opening an `.html` file is safe today — only previewing it is not.
 
 ---
 
-## 2. CRITICAL — no path validation anywhere in the filesystem / pty IPC layer
+## 2. CRITICAL — no path validation anywhere in the filesystem / pty IPC layer — **FIXED**
 
-`src/main/ipc.ts` passes arguments straight through, and every filesystem
-handler acts on whatever absolute path it is handed:
+`src/main/ipc.ts` passed arguments straight through, and every filesystem
+handler acted on whatever absolute path it was handed:
 
-- `read-file` (`ipcHandlers.ts:127`), `save-file` (`:129`) — any file on disk,
-- `copy-paths` (`:146`), `delete-paths` (`:148`), `move-path` (`:160`),
-  `rename-path` (`:138`), `create-path` (`:144`) — write/trash anywhere,
-- `reveal-in-finder` (`:123`), and `create-pty` (`src/main/terminals.ts:27`),
-  which spawns a login shell with an arbitrary `cwd`.
+- `read-file`, `save-file` — any file on disk,
+- `copy-paths`, `delete-paths`, `move-path`, `rename-path`, `create-path` —
+  write/trash anywhere,
+- `reveal-in-finder`, and `create-pty` (`src/main/terminals.ts`), which spawns a
+  login shell with an arbitrary `cwd`.
 
 On its own this is the normal "the renderer is trusted" posture of a desktop
 editor. It stops being defensible in combination with finding 1, and it is what
@@ -84,10 +84,39 @@ turns any future renderer-side injection (a Monaco/marked/DOMPurify bypass, a
 malicious model file, a compromised npm dependency in the renderer bundle) from
 a UI nuisance into total machine compromise.
 
-**Fix:** validate in main, not in the renderer — resolve the path (`realpath`),
-then require it to sit inside a configured workspace root, the recent-external
-list, or an explicitly user-picked path (`dialog.showOpenDialog` results).
-Reject everything else with a plain error. Same for `create-pty`'s `cwd`.
+**Fixed** in `src/main/pathAccess.ts`, applied by every filesystem, git, lint
+and pty handler (`ipcHandlers.ts`, `terminals.ts`). A path is acted on only if,
+after `realpath`, it sits inside an open workspace, the app's own `userData`,
+or something main itself handed out:
+
+| Grant | Where it comes from |
+|---|---|
+| Workspace roots | `workspaces.json` — added through the native folder dialog |
+| `userData` | the app's own state (settings, history, tokens) |
+| A file the OS asked us to open | `openFileInApp` (`index.ts`) — double-click, `open -a`, dock drop |
+| A file dropped on the window | `webUtils.getPathForFile` in **preload**, which tells main over a channel the page cannot reach (a `File` the page fabricates has no path) |
+| Entries of a Quick Open path listing | `list-path-matches` grants the directory and the entries it returns |
+| Paths pasted from the OS file clipboard | `clipboard-read-files` |
+| The recent-external list | already-granted files, kept across restarts by its own retention policy |
+
+Everything else comes back as `{ success: false, error }` (`create-pty`
+rejects, since its contract has no error channel). `realpath` first means a
+symlink planted inside a workspace can't smuggle a target from outside it back
+in, and git's repo-relative arguments are additionally required to resolve
+inside the repo they name, so `../../..` can't walk back out.
+
+`touch-recent-external-file` now ignores paths that aren't already allowed —
+otherwise the renderer could write itself a permanent grant.
+
+**The deliberate limit:** Quick Open's path mode is how a file outside every
+workspace gets opened at all, and its listings grant what they return. Injected
+script can still walk directories the same way instead of naming a path
+outright — a round trip per directory rather than free access. Closing that
+would mean removing the feature; what it can no longer do is touch a path
+nobody ever listed, or spawn a shell outside the opened folders.
+
+Covered by A11 in the smoke suite (read/write/create/delete/move/pty refusals,
+the symlink bypass, and both halves of what must keep working).
 
 ---
 

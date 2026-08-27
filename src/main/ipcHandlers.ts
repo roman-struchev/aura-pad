@@ -1,4 +1,4 @@
-import { app, dialog, nativeTheme, shell } from 'electron'
+import { app, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { handleInvoke, handleSend } from './ipc'
 import {
   loadWorkspaces,
@@ -23,6 +23,7 @@ import {
   removeRecentExternalFile
 } from './recentExternalFiles'
 import { listPathMatches } from './pathBrowse'
+import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
 import { setupWatchers, recordSelfWrite } from './watcher'
 import {
@@ -116,19 +117,37 @@ function registerWorkspaceIpc(): void {
   handleInvoke('search-projects', (query) => searchInWorkspaces(query))
 
   handleInvoke('get-recent-external-files', () => loadRecentExternalFiles())
-  handleInvoke('touch-recent-external-file', (filePath) => touchRecentExternalFile(filePath))
+  // Only records a file the renderer was allowed to open in the first place:
+  // the list is itself a source of access (see pathAccess), so letting the
+  // renderer write into it freely would hand out permanent grants.
+  handleInvoke('touch-recent-external-file', (filePath) =>
+    isAllowedPath(filePath) ? touchRecentExternalFile(filePath) : loadRecentExternalFiles()
+  )
   handleInvoke('remove-recent-external-file', (filePath) => removeRecentExternalFile(filePath))
-  handleInvoke('list-path-matches', (rawInput) => listPathMatches(rawInput))
+  // Quick Open's path mode: what main lists here is what the renderer may then
+  // open, which is how a file outside every workspace still gets opened.
+  handleInvoke('list-path-matches', (rawInput) => {
+    const listing = listPathMatches(rawInput)
+    grantPath(listing.dir)
+    grantPaths(listing.entries.map((entry) => entry.path))
+    return listing
+  })
 
   // Tree context menu's "Open in Finder": reveals the file/folder selected in
   // its parent window (Finder / Explorer / the Linux file manager).
   handleSend('reveal-in-finder', (_event, targetPath) => {
+    if (pathDenial(targetPath)) return
     shell.showItemInFolder(targetPath)
   })
 
-  handleInvoke('read-file', (filePath) => readFileContent(filePath))
+  handleInvoke('read-file', (filePath) => {
+    const denial = pathDenial(filePath)
+    return denial ? { success: false, error: denial } : readFileContent(filePath)
+  })
 
   handleInvoke('save-file', (filePath, content) => {
+    const denial = pathDenial(filePath)
+    if (denial) return { success: false, error: denial }
     // Encoded once here so the bytes on disk and the self-write hash the
     // watcher compares against are guaranteed to be the same bytes.
     const encoded = encodeFileContent(filePath, content)
@@ -138,16 +157,26 @@ function registerWorkspaceIpc(): void {
   })
 
   handleInvoke('rename-path', async (oldPath, newName) => {
+    const denial = pathDenial(oldPath)
+    if (denial) return { success: false, error: denial }
     const result = await renamePath(oldPath, newName)
     if (result.success) setupWatchers()
     return result
   })
 
-  handleInvoke('create-path', (parentPath, name, type) => createPath(parentPath, name, type))
+  handleInvoke('create-path', (parentPath, name, type) => {
+    const denial = pathDenial(parentPath)
+    return denial ? { success: false, error: denial } : createPath(parentPath, name, type)
+  })
 
-  handleInvoke('copy-paths', (sourcePaths, targetDirPath) => copyPaths(sourcePaths, targetDirPath))
+  handleInvoke('copy-paths', (sourcePaths, targetDirPath) => {
+    const denial = pathDenial(...sourcePaths, targetDirPath)
+    return denial ? { success: false, error: denial } : copyPaths(sourcePaths, targetDirPath)
+  })
 
   handleInvoke('delete-paths', async (targetPaths) => {
+    const denial = pathDenial(...targetPaths)
+    if (denial) return { success: false, error: denial }
     const result = await deletePaths(targetPaths)
     // Watchers are re-armed whenever anything was trashed - a partial batch
     // still changed the tree, so this can't hang off `success` alone.
@@ -155,14 +184,34 @@ function registerWorkspaceIpc(): void {
     return result
   })
 
-  handleInvoke('clipboard-write-files', (paths) => writeFilesToClipboard(paths))
+  handleInvoke('clipboard-write-files', (paths) => {
+    const denial = pathDenial(...paths)
+    return denial ? { success: false, error: denial } : writeFilesToClipboard(paths)
+  })
 
-  handleInvoke('clipboard-read-files', () => readFilesFromClipboard())
+  // Read side of the OS clipboard: the paths come from Finder/Explorer, not
+  // from the renderer, and pasting them is what grants them.
+  handleInvoke('clipboard-read-files', () => {
+    const paths = readFilesFromClipboard()
+    grantPaths(paths)
+    return paths
+  })
 
   handleInvoke('move-path', async (sourcePath, targetDirPath) => {
+    const denial = pathDenial(sourcePath, targetDirPath)
+    if (denial) return { success: false, error: denial }
     const result = await movePath(sourcePath, targetDirPath)
     if (result.success) setupWatchers()
     return result
+  })
+}
+
+// Not part of the typed contracts on purpose: this channel is preload-only
+// (see getPathForFile there), and putting it in shared/ipc.ts would generate a
+// window.api method that let the page grant itself any path it liked.
+function registerDropGrantIpc(): void {
+  ipcMain.on('grant-dropped-path', (_event, droppedPath: unknown) => {
+    if (typeof droppedPath === 'string') grantPath(droppedPath)
   })
 }
 
@@ -175,41 +224,66 @@ function registerGitIpc(): void {
     return refreshedStatuses()
   })
 
-  handleInvoke('git-diff', (root, relPath) => getDiff(root, relPath))
+  // Every git call runs `git` with the given root as its cwd, so an
+  // unchecked root is a shell-out anywhere on disk; the relative paths are
+  // checked too, since `../..` walks straight back out of the repo.
+  const gitFailure = (denial: string): { success: false; output: string } => ({
+    success: false,
+    output: denial
+  })
+
+  handleInvoke('git-diff', (root, relPath) =>
+    relativeDenial(root, [relPath]) ? { original: '', modified: '' } : getDiff(root, relPath)
+  )
 
   handleInvoke('git-stage', async (root, relPaths) => {
-    const result = await stagePaths(root, relPaths)
+    const denial = relativeDenial(root, relPaths)
+    const result = denial ? { success: false, error: denial } : await stagePaths(root, relPaths)
     return { ...result, statuses: await refreshedStatuses() }
   })
 
   handleInvoke('git-unstage', async (root, relPaths) => {
-    const result = await unstagePaths(root, relPaths)
+    const denial = relativeDenial(root, relPaths)
+    const result = denial ? { success: false, error: denial } : await unstagePaths(root, relPaths)
     return { ...result, statuses: await refreshedStatuses() }
   })
 
   handleInvoke('git-discard', async (root, relPath) => {
-    const result = await discardPath(root, relPath)
+    const denial = relativeDenial(root, [relPath])
+    const result = denial ? { success: false, error: denial } : await discardPath(root, relPath)
     return { ...result, statuses: await refreshedStatuses() }
   })
 
   handleInvoke('git-commit', async (root, message, relPaths, amend) => {
-    const result = await gitCommit(root, message, relPaths, amend)
+    const denial = relativeDenial(root, relPaths)
+    const result = denial
+      ? { success: false, error: denial }
+      : await gitCommit(root, message, relPaths, amend)
     return { ...result, statuses: await refreshedStatuses() }
   })
 
-  handleInvoke('git-last-commit-message', (root) => lastCommitMessage(root))
-  handleInvoke('git-push', (root) => gitPush(root))
+  handleInvoke('git-last-commit-message', (root) =>
+    pathDenial(root) ? '' : lastCommitMessage(root)
+  )
+  handleInvoke('git-push', (root) => {
+    const denial = pathDenial(root)
+    return denial ? gitFailure(denial) : gitPush(root)
+  })
 
   handleInvoke('git-pull', async (root) => {
-    const result = await gitPull(root)
+    const denial = pathDenial(root)
+    const result = denial ? gitFailure(denial) : await gitPull(root)
     return { ...result, statuses: await refreshedStatuses() }
   })
 
-  handleInvoke('git-log', (root, limit, skip) => getLog(root, limit, skip))
-  handleInvoke('git-branches', (root) => getBranches(root))
+  handleInvoke('git-log', (root, limit, skip) =>
+    pathDenial(root) ? [] : getLog(root, limit, skip)
+  )
+  handleInvoke('git-branches', (root) => (pathDenial(root) ? [] : getBranches(root)))
 
   handleInvoke('git-checkout', async (root, branch) => {
-    const result = await checkoutBranch(root, branch)
+    const denial = pathDenial(root)
+    const result = denial ? gitFailure(denial) : await checkoutBranch(root, branch)
     return { ...result, statuses: await refreshedStatuses() }
   })
 }
@@ -239,8 +313,12 @@ function registerHttpIpc(): void {
 }
 
 function registerDiagnosticsIpc(): void {
-  handleInvoke('lint-python', (absPath) => lintPython(absPath))
-  handleInvoke('lint-eslint', (absPath, workspaceRoot) => lintEslint(absPath, workspaceRoot))
+  // Both shell out with the given path as an argument (and eslint with the
+  // root as its cwd), so they are as much a spawn surface as the pty is.
+  handleInvoke('lint-python', (absPath) => (pathDenial(absPath) ? null : lintPython(absPath)))
+  handleInvoke('lint-eslint', (absPath, workspaceRoot) =>
+    pathDenial(absPath, workspaceRoot) ? [] : lintEslint(absPath, workspaceRoot)
+  )
 }
 
 function registerWorkTogetherIpc(): void {
@@ -277,6 +355,7 @@ function registerWorkTogetherIpc(): void {
 export function registerIpcHandlers(): void {
   registerAppIpc()
   registerWorkspaceIpc()
+  registerDropGrantIpc()
   registerGitIpc()
   registerGoogleTasksIpc()
   registerHttpIpc()

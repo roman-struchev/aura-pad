@@ -71,7 +71,15 @@ const api: AuraPadApi & {
   onWorkTogetherClosed: (sessionId: string, callback: (code: number, reason: string) => void) =>
     subscribe(`work-together-closed-${sessionId}`, callback as (...args: unknown[]) => void),
 
-  getPathForFile: (file: File) => webUtils.getPathForFile(file)
+  // A file dropped on the window. The path comes from Chromium's own record
+  // of the drop (a File the page fabricated has none), so telling main about
+  // it here - from preload, which the page cannot reach - is what opens that
+  // path up for reading and saving. See src/main/pathAccess.ts.
+  getPathForFile: (file: File) => {
+    const filePath = webUtils.getPathForFile(file)
+    if (filePath) ipcRenderer.send('grant-dropped-path', filePath)
+    return filePath
+  }
 }
 
 if (process.contextIsolated) {
