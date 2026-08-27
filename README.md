@@ -130,9 +130,18 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - `.http` / `.rest` request files (the JetBrains HTTP Client / VS Code REST Client format):
   requests separated by `###`, `@variables` with `{{placeholders}}`, and a **▶ Run** button
   above every request. They're plain text, so they live in git next to the code.
+- **Environments** — the same request file against dev, stage or prod. Put a
+  `http-client.env.json` next to the requests (or at the project root) with a block of
+  variables per environment, and pick one from the selector next to ▶ Run; a
+  `http-client.private.env.json` beside it holds the tokens and stays out of git (add it to
+  your `.gitignore`). Same format as JetBrains' HTTP Client. The selected environment's
+  values win over the file's own `@variables`, which is what lets one file point at three
+  hosts; the private file's values win over the committed ones.
 - An **HTTP Client tab** for one-off requests (sidebar → Extensions): pick the method,
   type the URL, add headers and a body, hit Send. It can also fill itself in from a `curl`
-  command on the clipboard, and hand one back.
+  command on the clipboard, and hand one back — or **save the request into a `.http` file**
+  (the page-plus icon), which appends it as a `###` block and opens the file, so an
+  experiment turns into something that lives in the repository.
 - The response opens beside the editor (or below the form): status, time and size, the body
   (JSON and XML pretty-printed, images shown as images), every response header, and one
   click to copy any of it — or to copy the request back out as a `curl` command.

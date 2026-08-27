@@ -149,6 +149,11 @@ export interface ExtensionSettings {
     // tab. Persisted rather than per-mount, the way sidebarVisible is: the
     // list is opened to pick an old request, not to keep it on screen.
     historyCollapsed: boolean
+    // Selected environment for .http files (http-client.env.json). One name
+    // for the whole app, not per file: "I am working against staging" is a
+    // property of the session, and a file that doesn't define it just runs
+    // with its own variables.
+    environment: string
   }
 }
 
@@ -212,6 +217,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     httpClient: {
       enabled: true,
       historyCollapsed: true,
+      environment: '',
       request: {
         method: 'GET',
         url: '',

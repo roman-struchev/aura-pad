@@ -1,5 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { ClipboardPaste, History, Loader2, Plus, Send, Terminal, Trash2, X } from 'lucide-react'
+import {
+  ClipboardPaste,
+  FilePlus2,
+  History,
+  Loader2,
+  Plus,
+  Send,
+  Terminal,
+  Trash2,
+  X
+} from 'lucide-react'
 import clsx from 'clsx'
 import {
   DEFAULT_TIMEOUT_MS,
@@ -19,6 +29,9 @@ interface HttpClientTabProps {
   exchange?: HttpExchange
   onSend: (spec: HttpRequestSpec) => void
   onCancel: () => void
+  // Hand the request to App, which asks where to put it and appends it to
+  // that .http file - the point where a one-off becomes part of the repo.
+  onSaveToFile: (spec: HttpRequestSpec) => void
 }
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
@@ -62,7 +75,8 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   updateSetting,
   exchange,
   onSend,
-  onCancel
+  onCancel,
+  onSaveToFile
 }) => {
   const saved = settings.extensions.httpClient.request
   const [method, setMethod] = useState(saved.method)
@@ -321,6 +335,15 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               onClick={importCurl}
             >
               <ClipboardPaste size={14} />
+            </ToolbarButton>
+            <ToolbarButton
+              dense
+              title="Save as a request in a .http file"
+              tooltipAlign="right"
+              colorClassName="text-gray-500 hover:text-white"
+              onClick={() => onSaveToFile(buildSpec())}
+            >
+              <FilePlus2 size={14} />
             </ToolbarButton>
             <ToolbarButton
               dense

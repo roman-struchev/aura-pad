@@ -5,7 +5,7 @@ import type { SearchResult } from './searchResult'
 import type { ReplaceRequest, ReplaceResult, SearchOptions } from './searchQuery'
 import type { GitCommit, GitRepoStatus } from './gitStatus'
 import type { GTask, GTaskInput, GTaskList } from './googleTasks'
-import type { HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
+import type { HttpEnvironments, HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
 import type { LintMarker } from './lint'
 import type { LocalHistoryEntry } from './localHistory'
 import type { RecentExternalFile } from './recentExternalFile'
@@ -205,6 +205,10 @@ export interface InvokeContracts {
   'http-send': { args: [requestId: string, spec: HttpRequestSpec]; result: HttpSendResult }
   // Newest first, capped at HTTP_HISTORY_LIMIT; clearing returns the (empty)
   // list so the caller doesn't need a second round-trip.
+  // The environments a .http file can run against, and appending a request
+  // built in the HTTP Client tab to a .http file so it stops being a one-off.
+  'http-environments': { args: [filePath: string]; result: HttpEnvironments }
+  'http-save-request': { args: [filePath: string, block: string]; result: OpResult }
   'http-history': { args: []; result: HttpHistoryEntry[] }
   'http-history-clear': { args: []; result: HttpHistoryEntry[] }
   'lint-python': { args: [absPath: string]; result: LintMarker | null }
@@ -321,6 +325,8 @@ export const INVOKE_CHANNELS = {
   gtasksUpdateTask: 'gtasks-update-task',
   gtasksMoveTask: 'gtasks-move-task',
   httpSend: 'http-send',
+  httpEnvironments: 'http-environments',
+  httpSaveRequest: 'http-save-request',
   httpHistory: 'http-history',
   httpHistoryClear: 'http-history-clear',
   lintPython: 'lint-python',

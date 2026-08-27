@@ -31,6 +31,11 @@ interface FileActionsProps {
   workTogetherEnabled: boolean
   workTogetherSharing: boolean
   workTogetherParticipantCount: number
+  // Environments the active .http file can run against (empty when it has no
+  // http-client.env.json near it), and which one is picked.
+  httpEnvironmentNames: string[]
+  httpEnvironment: string
+  onSelectHttpEnvironment: (name: string) => void
   voice: ReturnType<typeof useVoiceInput>
   readAloud: ReturnType<typeof useReadAloud>
   onRevealActiveFile: () => void
@@ -60,6 +65,9 @@ export const FileActions: React.FC<FileActionsProps> = ({
   workTogetherEnabled,
   workTogetherSharing,
   workTogetherParticipantCount,
+  httpEnvironmentNames,
+  httpEnvironment,
+  onSelectHttpEnvironment,
   voice,
   readAloud,
   onRevealActiveFile,
@@ -93,6 +101,24 @@ export const FileActions: React.FC<FileActionsProps> = ({
         <ToolbarButton onClick={onRunPython} title="Run Python" colorClassName={muted}>
           <Play size={16} />
         </ToolbarButton>
+      )}
+      {isHttpPath(selectedPath) && httpEnvironmentNames.length > 0 && (
+        // Sits next to Run because that is the moment it matters: the
+        // selected environment is what {{host}} and {{token}} resolve to.
+        <select
+          value={httpEnvironmentNames.includes(httpEnvironment) ? httpEnvironment : ''}
+          onChange={(e) => onSelectHttpEnvironment(e.target.value)}
+          aria-label="HTTP environment"
+          title="Environment (http-client.env.json)"
+          className="bg-transparent border border-fleet-border rounded px-1 py-0.5 mx-0.5 text-[11px] text-gray-400 hover:text-white outline-none focus:border-blue-500"
+        >
+          <option value="">No environment</option>
+          {httpEnvironmentNames.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
       )}
       {isHttpPath(selectedPath) && (
         <ToolbarButton onClick={onRunHttp} title="Run Request (Cmd+Enter)" colorClassName={muted}>

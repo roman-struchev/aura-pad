@@ -50,10 +50,16 @@ function isBlank(line: string): boolean {
 // Splits the file into blocks, carrying the variable scope down as it goes -
 // a later `@base = ...` redefinition only affects the blocks below it, which
 // is how these files are written (staging on top, production further down).
-export function parseHttpFile(text: string): HttpBlock[] {
+//
+// `env` is the selected environment's variables (src/main/httpEnv.ts). They
+// seed the scope so a definition can build on them (`@url = {{host}}/v1`),
+// *and* they are re-applied on top of each block: picking an environment has
+// to beat the file's own `@host = ...`, or the same file could never be run
+// against dev and prod - which is the whole reason environments exist.
+export function parseHttpFile(text: string, env: Record<string, string> = {}): HttpBlock[] {
   const lines = text.split('\n')
   const blocks: HttpBlock[] = []
-  const variables: Record<string, string> = {}
+  const variables: Record<string, string> = { ...env }
 
   let current: {
     name: string
@@ -75,7 +81,7 @@ export function parseHttpFile(text: string): HttpBlock[] {
         startLine: current.start,
         endLine,
         lines: current.lines,
-        variables: current.vars
+        variables: { ...current.vars, ...env }
       })
     }
     current = null
@@ -294,9 +300,44 @@ function curlToResult(command: string, cwd: string | null): BuildResult {
 
 // Shared entry point for "run this text": a selection in any file, or the
 // whole of a small scratch buffer.
-export function buildRequestFromText(text: string, cwd: string | null): BuildResult {
+export function buildRequestFromText(
+  text: string,
+  cwd: string | null,
+  env: Record<string, string> = {}
+): BuildResult {
   if (looksLikeCurl(text)) return curlToResult(text, cwd)
-  const blocks = parseHttpFile(text)
+  const blocks = parseHttpFile(text, env)
   if (!blocks.length) return { ok: false, error: 'No request found in the selection' }
   return buildRequest(blocks[0], cwd)
+}
+
+// The other direction: a request built in the HTTP Client form, written out as
+// a block that belongs in a `.http` file. What the form can't express (a
+// multipart body) is left out rather than faked - it would parse back into a
+// different request.
+export function specToHttpBlock(spec: HttpRequestSpec): string {
+  const name = (() => {
+    try {
+      const parsed = new URL(spec.url)
+      const suffix = parsed.pathname === '/' ? parsed.host : parsed.pathname
+      return `${spec.method} ${suffix}`
+    } catch {
+      return `${spec.method} ${spec.url}`
+    }
+  })()
+
+  const lines = [`### ${name}`]
+  if (spec.insecure) lines.push('# @insecure')
+  if (!spec.followRedirects) lines.push('# @no-redirect')
+  if (spec.timeoutMs !== DEFAULT_TIMEOUT_MS) {
+    lines.push(`# @timeout ${Math.round(spec.timeoutMs / 1000)}`)
+  }
+  lines.push(`${spec.method} ${spec.url}`)
+  for (const header of spec.headers) {
+    if (header.name.trim() === '') continue
+    lines.push(`${header.name}: ${header.value}`)
+  }
+  if (spec.bodyFilePath) lines.push('', `< ${spec.bodyFilePath}`)
+  else if (spec.body !== undefined && spec.body !== '') lines.push('', spec.body)
+  return `${lines.join('\n')}\n`
 }

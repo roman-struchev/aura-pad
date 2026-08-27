@@ -12,7 +12,7 @@ S — вечер, M — день-два, L — неделя и больше.
 | ~~История правок~~ | **сделано** (п. 2): версии в `userData/localHistory`, «Local History» в меню вкладки | `src/main/localHistory.ts` |
 | Git | клик по коммиту только копирует хеш; нет diff коммита, истории файла, создания ветки, fetch, stash, remote-веток | `GitPanel.tsx:234`, `getBranches` (`git.ts:359`) — только `refs/heads` |
 | Команды | нет палитры команд: всё живёт в нативном меню и хоткеях | `menu.ts`, `useMenuActions.ts` |
-| HTTP | нет окружений (dev/stage/prod) и секретов вне репозитория; из формы нельзя сохранить запрос в `.http` | `httpFile.ts` — только `@variables` внутри файла |
+| ~~HTTP~~ | **сделано** (п. 5): окружения `http-client(.private).env.json` + «Save as .http» из формы | `src/main/httpEnv.ts`, `src/main/httpSave.ts` |
 | Редактор | шрифт, перенос строк, миникарта, пробелы/табы, trim on save — захардкожены | `App.tsx:93-96` (`minimap: false`, `wordWrap: 'on'`) |
 | Дерево | нет Copy Path / Copy Relative Path, Compare With, Open in Default App | `TreeContextMenu.tsx` |
 | Навигация | quick open не умеет `:строку` и `#символ`; нет структуры файла | `FileSearch.tsx` |
@@ -91,7 +91,17 @@ Toggle Preview, и это правильно оставить как есть.
 
 Побочный эффект: каждая новая фича становится обнаружимой без правки меню.
 
-### 5. HTTP: окружения и сохранение запроса в файл (M)
+### 5. HTTP: окружения и сохранение запроса в файл (M) — **СДЕЛАНО**
+
+Реализовано: `src/main/httpEnv.ts` (`http-client.env.json` +
+`http-client.private.env.json`, ищутся в папке файла и выше до корня
+воркспейса; приватный перекрывает публичный), селектор окружения рядом с ▶ Run
+(`FileActions.tsx`), выбранное окружение перекрывает `@variables` файла —
+иначе один файл нельзя гонять по dev/stage/prod. Вторая половина:
+`src/main/httpSave.ts` — кнопка в форме HTTP Client дописывает запрос
+`###`-блоком в указанный `.http` (только `.http`/`.rest`) и открывает файл.
+Ниже — исходная постановка.
+
 
 `.http` уже понимает `@variables`, но одного и того же файла на dev/stage/prod не
 получится: переменные лежат внутри файла, а секреты вместе с ним уезжают в git.

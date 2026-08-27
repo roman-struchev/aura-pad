@@ -36,6 +36,18 @@ export interface HttpRequestSpec {
   timeoutMs: number
 }
 
+// The environments a `.http` file can be run against, read from the
+// http-client.env.json / http-client.private.env.json pair next to it (see
+// src/main/httpEnv.ts). `variables` is already merged - private over public -
+// so the renderer only has to pick a name.
+export interface HttpEnvironments {
+  // Directory the files were found in; null when the file has none.
+  dir: string | null
+  names: string[]
+  variables: Record<string, Record<string, string>>
+  hasPrivate: boolean
+}
+
 export interface HttpTimings {
   // Time to the response head; the rest is body download.
   ttfbMs: number

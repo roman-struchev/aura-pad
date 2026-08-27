@@ -1,4 +1,6 @@
+import fs from 'fs'
 import http from 'http'
+import path from 'path'
 
 // A12 - the HTTP client: .http request files, curl snippets, and the
 // response pane. Everything runs against a throwaway server on loopback, so
@@ -375,6 +377,129 @@ export default {
         timeoutMs: 6000
       })
       check('the history can be cleared', cleared)
+
+      // ---- saving a form request into a .http file ----
+      // Still on the HTTP Client tab: the form holds the last request that
+      // was refilled from the history, so put something known in it first.
+      const savedFile = path.join(ws, 'saved.http')
+      await fill('[aria-label="URL"]', `http://127.0.0.1:${fixture.httpPort}/ping`)
+      await setSelect('[aria-label="Method"]', 'GET')
+      await ui.clickButton('Save as a request in a .http file')
+      const saveDialog = await waitFor(
+        `!!document.querySelector('input[placeholder="/path/to/requests.http"]')`,
+        { timeoutMs: 5000 }
+      )
+      check('the form offers to save the request to a file', saveDialog)
+      await fill('input[placeholder="/path/to/requests.http"]', savedFile)
+      // "Save", not the toolbar button whose title also contains the word.
+      await cdp.evaluate(`(() => {
+        const b = [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Save')
+        if (!b) return false
+        b.click()
+        return true
+      })()`)
+      const landed = await (async () => {
+        for (let i = 0; i < 40; i++) {
+          if (fs.existsSync(savedFile)) return fs.readFileSync(savedFile, 'utf-8')
+          await sleep(200)
+        }
+        return ''
+      })()
+      // Method, URL, the headers and the body the form holds - a block that
+      // parses back into the same request.
+      check(
+        'the request is written as a .http block',
+        /^### GET \/ping\nGET http:\/\/127\.0\.0\.1:\d+\/ping\nX-Refill: yes\n\n\{"refill":true\}\n$/.test(
+          landed
+        ),
+        JSON.stringify(landed)
+      )
+      check(
+        'and the file it went into is opened',
+        await waitFor(
+          `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(savedFile)})`,
+          { timeoutMs: 8000 }
+        )
+      )
+      // Appended, not overwritten: these files are lists of requests.
+      const appended = await cdp.evaluate(
+        `window.api.httpSaveRequest(${JSON.stringify(savedFile)}, '### second\\nGET http://127.0.0.1:1/x\\n')`
+      )
+      check('a second request is appended', appended.success, appended.error)
+      check(
+        'leaving the first one intact',
+        (fs.readFileSync(savedFile, 'utf-8').match(/^###/gm) || []).length === 2,
+        JSON.stringify(fs.readFileSync(savedFile, 'utf-8'))
+      )
+      // Free text from the renderer may only ever land in a request file.
+      const wrongKind = await cdp.evaluate(
+        `window.api.httpSaveRequest(${JSON.stringify(path.join(ws, 'notes.txt'))}, '### no\\nGET http://x/\\n')`
+      )
+      check('saving into a file that is not .http/.rest is refused', wrongKind.success === false)
+
+      // ---- environments ----
+      // The file names a dead port; the environment is what makes it run.
+      fs.writeFileSync(
+        path.join(ws, 'http-client.env.json'),
+        JSON.stringify({
+          dev: { host: `http://127.0.0.1:${fixture.httpPort}`, token: 'public-placeholder' },
+          prod: { host: 'http://127.0.0.1:1', token: 'nope' }
+        })
+      )
+      fs.writeFileSync(
+        path.join(ws, 'http-client.private.env.json'),
+        JSON.stringify({ dev: { token: 's3cret' } })
+      )
+      const envFile = path.join(ws, 'env-request.http')
+      fs.writeFileSync(
+        envFile,
+        '@host = http://127.0.0.1:1\n\n### env ping\nGET {{host}}/ping\nX-Token: {{token}}\n'
+      )
+      await sleep(800)
+      await ui.clickRow(envFile)
+      await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(envFile)})`, {
+        timeoutMs: 8000
+      })
+      const envNames = await waitFor(
+        `(() => {
+          const el = document.querySelector('[aria-label="HTTP environment"]')
+          return el ? [...el.options].map((o) => o.value).join(',') : null
+        })()`,
+        { timeoutMs: 6000 }
+      )
+      check(
+        'the environments next to the file are offered',
+        envNames === ',dev,prod',
+        String(envNames)
+      )
+
+      await setSelect('[aria-label="HTTP environment"]', 'dev')
+      check(
+        'the choice is remembered',
+        await waitFor(
+          `window.api.getSettings().then((s) => s.extensions.httpClient.environment === 'dev')`,
+          { timeoutMs: 5000 }
+        )
+      )
+      await ui.clickButton('Run Request')
+      check('the request runs against the selected environment', await waitForStatus('200'))
+      check(
+        'the environment beat the file\'s own @host, and the private file filled in the token',
+        requests.at(-1)?.url === '/ping' && requests.at(-1)?.headers['x-token'] === 's3cret',
+        JSON.stringify(requests.at(-1)?.headers ?? {})
+      )
+
+      // Switching environment switches where the same file points.
+      const before = requests.length
+      await setSelect('[aria-label="HTTP environment"]', 'prod')
+      await ui.clickButton('Run Request')
+      await sleep(1500)
+      check(
+        'picking another environment sends it somewhere else',
+        requests.length === before,
+        `${requests.length} vs ${before}`
+      )
+      await setSelect('[aria-label="HTTP environment"]', '')
     } finally {
       server.close()
     }

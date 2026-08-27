@@ -25,6 +25,8 @@ import {
 import { listPathMatches } from './pathBrowse'
 import { replaceInFiles, undoReplaceInFiles } from './replaceInFiles'
 import { readImageDataUrl, savePastedImage } from './pastedImages'
+import { readHttpEnvironments } from './httpEnv'
+import { appendHttpRequest } from './httpSave'
 import { listSnapshots, readSnapshot, recordSnapshot, shouldSnapshot } from './localHistory'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
@@ -336,6 +338,18 @@ function registerGoogleTasksIpc(): void {
 function registerHttpIpc(): void {
   handleInvoke('http-send', (requestId, spec) => sendHttpRequest(requestId, spec))
   handleSend('http-cancel', (_event, requestId) => cancelHttpRequest(requestId))
+  handleInvoke('http-environments', (filePath) =>
+    pathDenial(filePath)
+      ? { dir: null, names: [], variables: {}, hasPrivate: false }
+      : readHttpEnvironments(filePath)
+  )
+
+  handleInvoke('http-save-request', (filePath, block) => {
+    const denial = pathDenial(filePath)
+    if (denial) return { success: false, error: denial }
+    return appendHttpRequest(filePath, block)
+  })
+
   handleInvoke('http-history', () => loadHttpHistory())
   handleInvoke('http-history-clear', () => clearHttpHistory())
 }

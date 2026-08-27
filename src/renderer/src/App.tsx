@@ -42,6 +42,7 @@ import { useWorkTogether } from './hooks/useWorkTogether'
 import { useMenuActions } from './hooks/useMenuActions'
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
 import type { UpdateNotification, UpdateProgress } from '../../shared/updateNotification'
+import type { HttpEnvironments, HttpRequestSpec } from '../../shared/http'
 import { TranslatePopup } from './components/TranslatePopup'
 import { DialogHost } from './components/DialogHost'
 import { alertDialog, confirmDialog } from './lib/dialogs'
@@ -61,6 +62,7 @@ import {
   buildRequest,
   buildRequestFromText,
   parseHttpFile,
+  specToHttpBlock,
   type BuildResult
 } from './lib/http/httpFile'
 import { setHttpBlockHandlers } from './lib/http/monacoHttp'
@@ -441,6 +443,15 @@ function App(): React.JSX.Element {
   const [showFileSearch, setShowFileSearch] = useState(false)
   // The tab whose local history is open (null = closed).
   const [historyPath, setHistoryPath] = useState<string | null>(null)
+  // The environments the active .http file can run against, and the request
+  // waiting to be written to a .http file (from the HTTP Client tab).
+  const [httpEnvironments, setHttpEnvironments] = useState<{
+    path: string
+    envs: HttpEnvironments
+  } | null>(null)
+  const [httpSaveSpec, setHttpSaveSpec] = useState<HttpRequestSpec | null>(null)
+  const [httpSavePath, setHttpSavePath] = useState('')
+  const httpSaveInputRef = useRef<HTMLInputElement | null>(null)
   // Quick open's live query, so switching to search-in-files carries it over.
   // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
   const fileSearchQueryRef = useRef('')
@@ -744,6 +755,58 @@ function App(): React.JSX.Element {
     return unsubscribe
   }, [])
 
+  // The .http file's environments (http-client.env.json next to it, or at the
+  // project root). Read per file rather than kept in sync with a watcher: it
+  // is one small JSON read on tab switch, and the selector is only looked at
+  // when a request is about to run.
+  useEffect(() => {
+    const path = tabs.selectedPath
+    if (!path || !isHttpPath(path)) return
+    let alive = true
+    void window.api.httpEnvironments(path).then((envs) => {
+      if (alive) setHttpEnvironments({ path, envs })
+    })
+    return () => {
+      alive = false
+    }
+  }, [tabs.selectedPath])
+
+  // Only the answer that belongs to the file on screen; anything else is a
+  // stale read for a tab that has already been switched away from.
+  const httpEnv =
+    httpEnvironments && httpEnvironments.path === tabs.selectedPath ? httpEnvironments.envs : null
+  const httpEnvironmentName = settings.extensions.httpClient.environment
+  const httpEnvVariables = (httpEnvironmentName && httpEnv?.variables[httpEnvironmentName]) || {}
+
+  // "Save as .http" from the HTTP Client form: ask for a path (prefilled with
+  // a requests.http in the first open folder), then append the request there.
+  const startHttpSave = (spec: HttpRequestSpec): void => {
+    const root = tree.rootNodes[0]?.path ?? ''
+    setHttpSavePath(root ? `${root}/requests.http` : 'requests.http')
+    setHttpSaveSpec(spec)
+  }
+
+  const confirmHttpSave = async (): Promise<void> => {
+    const spec = httpSaveSpec
+    const target = httpSavePath.trim()
+    if (!spec || !target) return
+    setHttpSaveSpec(null)
+    const result = await window.api.httpSaveRequest(target, specToHttpBlock(spec))
+    if (!result.success) {
+      await alertDialog(result.error ?? 'The request could not be saved.')
+      return
+    }
+    // Opened right away: seeing the block land in the file is what tells the
+    // user what was saved, and where.
+    await tabs.openTab(target)
+  }
+
+  const selectHttpEnvironment = (name: string): void =>
+    updateSetting('extensions', {
+      ...settings.extensions,
+      httpClient: { ...settings.extensions.httpClient, environment: name }
+    })
+
   // "Run" for the HTTP client. Every trigger (the ▶ Run CodeLens, Cmd+Enter,
   // the toolbar button, the Edit menu) lands here; they differ only in how
   // the request is located. An explicit selection always wins, then the
@@ -764,9 +827,9 @@ function App(): React.JSX.Element {
 
     let built: BuildResult
     if (selected.trim()) {
-      built = buildRequestFromText(selected, cwd)
+      built = buildRequestFromText(selected, cwd, httpEnvVariables)
     } else if (isHttpPath(path)) {
-      const block = blockAtLine(parseHttpFile(text), cursorLine)
+      const block = blockAtLine(parseHttpFile(text, httpEnvVariables), cursorLine)
       built = block ? buildRequest(block, cwd) : { ok: false, error: 'No request in this file' }
     } else {
       // Any other file: a curl command the cursor is inside of, so a snippet
@@ -788,7 +851,7 @@ function App(): React.JSX.Element {
     const path = tabs.selectedPath
     if (!path) return
     const text = editorInstanceRef.current?.getModel()?.getValue() ?? tabs.fileContent
-    const block = blockAtLine(parseHttpFile(text), line)
+    const block = blockAtLine(parseHttpFile(text, httpEnvVariables), line)
     const built = block ? buildRequest(block, dirname(path)) : null
     if (!built) return
     if (!built.ok) {
@@ -983,6 +1046,9 @@ function App(): React.JSX.Element {
                     workTogether.sessions[tabs.selectedPath]?.participants.length) ||
                   0
                 }
+                httpEnvironmentNames={httpEnv?.names ?? []}
+                httpEnvironment={httpEnvironmentName}
+                onSelectHttpEnvironment={selectHttpEnvironment}
                 voice={voice}
                 readAloud={readAloud}
                 onRevealActiveFile={() => {
@@ -1034,6 +1100,7 @@ function App(): React.JSX.Element {
                     exchange={activeExchange}
                     onSend={(spec) => tabs.selectedPath && http.send(tabs.selectedPath, spec)}
                     onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
+                    onSaveToFile={startHttpSave}
                   />
                 ) : (
                   <div className="h-full flex items-center justify-center text-gray-500 text-sm">
@@ -1189,6 +1256,19 @@ function App(): React.JSX.Element {
             setShowFileSearch(false)
           }}
           rootNodes={tree.rootNodes}
+        />
+      )}
+
+      {httpSaveSpec && (
+        <NameInputModal
+          title="Save Request to a .http File"
+          value={httpSavePath}
+          placeholder="/path/to/requests.http"
+          confirmLabel="Save"
+          inputRef={httpSaveInputRef}
+          onChange={setHttpSavePath}
+          onConfirm={confirmHttpSave}
+          onCancel={() => setHttpSaveSpec(null)}
         />
       )}
 
