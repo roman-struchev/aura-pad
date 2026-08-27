@@ -61,7 +61,7 @@ prefers these:
 |---|---|---|
 | A1 | Workspace tree | Roots and children render; `node_modules`/dotfiles and `.gitignore` entries stay hidden; folders expand and collapse |
 | A2 | Open, edit, autosave | Clicking a file opens it, the editor mounts, typing reaches disk, the dirty dot clears |
-| A3 | Tabs | Several files open at once, the last opened is active, clicking switches, closing removes, the session is persisted, files from outside a workspace open and are remembered |
+| A3 | Tabs | Several files open at once, the last opened is active, clicking switches, closing removes, the session is persisted, files from outside a workspace open and are remembered; a crowded strip scrolls, offers the full tab list, and keeps the active tab in view in both directions |
 | A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation, and the right-click menu staying inside the window with the sidebar docked right (§15) |
 | A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |
 | A6 | Search and quick open | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape; switching between quick open and search-in-files swaps the one dialog and carries the query both ways |

@@ -5,7 +5,7 @@ import path from 'path'
 export default {
   id: 'A3',
   title: 'Tabs',
-  async run({ cdp, ui, ws, fixture, check, waitFor, sleep }) {
+  async run({ cdp, ui, ws, fixture, check, skip, connectMain, waitFor, sleep }) {
     // Opened here rather than relying on A2 having run, so the case stands on
     // its own under `npm run smoke -- A3`.
     await ui.clickRow(`${ws}/notes.txt`)
@@ -68,6 +68,86 @@ export default {
       `window.api.getRecentExternalFiles().then((e) => e.map((x) => x.path))`
     )
     check('it lands in the "recently opened outside" list', recent.includes(external))
+
+    // A crowded strip: more tabs than fit must scroll, and the active one has
+    // to stay in view - it used to be appended past the right edge, invisible,
+    // with no scrollbar (the strip hides it) to say so. Opened through main's
+    // 'open-file-request' rather than by clicking tree rows: a dozen rows do
+    // not all fit on screen, and coordinate clicks need them visible.
+    const main = await connectMain()
+    if (!main) {
+      skip('a crowded tab strip keeps the active tab in view', 'no --inspect target')
+    } else {
+      const crowd = Array.from({ length: 12 }, (_, i) =>
+        path.join(ws, `crowd-${String(i + 1).padStart(2, '0')}.txt`)
+      )
+      for (const file of crowd) fs.writeFileSync(file, 'crowded\n')
+      const send = (p) =>
+        main.evaluate(
+          `(() => { require('electron').BrowserWindow.getAllWindows()[0]` +
+            `.webContents.send('open-file-request', ${JSON.stringify(p)}); return true })()`
+        )
+      for (const file of crowd) {
+        await send(file)
+        await sleep(120)
+      }
+      const allOpen = await waitFor(
+        `window.api.getOpenTabs().then((s) => s.paths.filter((p) => p.includes('crowd-')).length === ${crowd.length})`,
+        { timeoutMs: 15000 }
+      )
+      check('a dozen files open as a dozen tabs', allOpen, JSON.stringify(await ui.openTabLabels()))
+
+      const strip = `document.querySelector('[data-tab-strip]')`
+      check(
+        'the strip scrolls instead of squeezing the tabs away',
+        await cdp.evaluate(
+          `(() => { const s = ${strip}; return !!s && s.scrollWidth > s.clientWidth + 1 })()`
+        )
+      )
+      check('an overflowing strip offers the full tab list', await ui.buttonExists('All Open Tabs'))
+
+      // Fully visible, not merely intersecting: half a tab peeking out from
+      // under the fade is the bug this guards.
+      const activeInView = `(() => {
+        const s = ${strip}
+        const t = s && s.querySelector('[data-tab-active]')
+        if (!s || !t) return false
+        const sr = s.getBoundingClientRect(), tr = t.getBoundingClientRect()
+        return tr.left >= sr.left - 1 && tr.right <= sr.right + 1
+      })()`
+      check(
+        'the newly opened tab is scrolled into view',
+        await waitFor(activeInView, { timeoutMs: 5000 })
+      )
+
+      // The other direction: the strip parked at its right end, then a tab
+      // from the far left activated.
+      await cdp.evaluate(`(() => { ${strip}.scrollLeft = 1e6; return true })()`)
+      await send(`${ws}/notes.txt`)
+      const backToFirst = await waitFor(
+        `window.api.getOpenTabs().then((s) => s.activeTabPath.endsWith('notes.txt'))`,
+        { timeoutMs: 8000 }
+      )
+      check('activating a tab that scrolled off works', backToFirst)
+      check('it is scrolled back into view', await waitFor(activeInView, { timeoutMs: 5000 }))
+
+      // Leave the strip (and the workspace) as the later cases expect it.
+      const notesTab = await ui.rectOf(`[data-tab-path="${ws}/notes.txt"]`)
+      await ui.clickAt(notesTab.cx, notesTab.cy, { button: 'right' })
+      await ui.clickButton('Close Others')
+      await waitFor(`window.api.getOpenTabs().then((s) => s.paths.length === 1)`, {
+        timeoutMs: 5000
+      })
+      // Back to what the earlier checks left open, so the cases after this one
+      // start from the strip they used to.
+      await send(`${ws}/readme.md`)
+      await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath.endsWith('readme.md'))`, {
+        timeoutMs: 8000
+      })
+      for (const file of crowd) fs.rmSync(file, { force: true })
+      main.close()
+      await sleep(400)
+    }
 
     await sleep(700)
     const persisted = JSON.parse(

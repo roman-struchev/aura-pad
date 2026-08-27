@@ -47,6 +47,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Syntax highlighting for ~25 languages (46 file extensions), multi-cursor editing,
   find & replace.
 - Tabs with pinning and drag-to-reorder; reopen the last closed tab with `Cmd+Shift+T`.
+  With more tabs than fit, the strip scrolls (wheel included), always keeps the
+  active tab in view, and the chevron at its end lists every open tab.
   Tabs can be switched off entirely for a one-file-at-a-time view.
 - Autosave a moment after you stop typing.
 - Error checking for TypeScript, JavaScript, and Python; uses your project's own ESLint
