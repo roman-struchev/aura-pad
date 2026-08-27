@@ -10,12 +10,13 @@ import {
   Mic,
   Play,
   Share2,
+  SpellCheck,
   Square,
   Volume2
 } from 'lucide-react'
 import { ToolbarButton } from './ToolbarButton'
 import { VoiceLevelMeter } from './VoiceLevelMeter'
-import { isFormattablePath, isHttpPath, isPythonPath } from '../lib/fileType'
+import { isFormattablePath, isHttpPath, isProsePath, isPythonPath } from '../lib/fileType'
 import type { useVoiceInput } from '../hooks/useVoiceInput'
 import type { useReadAloud } from '../hooks/useReadAloud'
 
@@ -33,6 +34,11 @@ interface FileActionsProps {
   workTogetherParticipantCount: number
   // Environments the active .http file can run against (empty when it has no
   // http-client.env.json near it), and which one is picked.
+  // Spell checking, when it is on for this file: how many unknown words the
+  // last pass found, and jumping to the next one.
+  spellcheckOn: boolean
+  spellIssueCount: number
+  onNextSpellingIssue: () => void
   httpEnvironmentNames: string[]
   httpEnvironment: string
   onSelectHttpEnvironment: (name: string) => void
@@ -65,6 +71,9 @@ export const FileActions: React.FC<FileActionsProps> = ({
   workTogetherEnabled,
   workTogetherSharing,
   workTogetherParticipantCount,
+  spellcheckOn,
+  spellIssueCount,
+  onNextSpellingIssue,
   httpEnvironmentNames,
   httpEnvironment,
   onSelectHttpEnvironment,
@@ -123,6 +132,25 @@ export const FileActions: React.FC<FileActionsProps> = ({
       {isHttpPath(selectedPath) && (
         <ToolbarButton onClick={onRunHttp} title="Run Request (Cmd+Enter)" colorClassName={muted}>
           <Play size={16} />
+        </ToolbarButton>
+      )}
+      {spellcheckOn && isProsePath(selectedPath) && (
+        // A count rather than a badge: clicking it walks to the next unknown
+        // word, which is the only thing anyone wants to do with the number.
+        <ToolbarButton
+          onClick={onNextSpellingIssue}
+          title={
+            spellIssueCount === 0
+              ? 'Spelling: nothing unknown'
+              : `Spelling: ${spellIssueCount} unknown ${spellIssueCount === 1 ? 'word' : 'words'} (click for the next)`
+          }
+          ariaLabel={`Spelling issues: ${spellIssueCount}`}
+          colorClassName={muted}
+        >
+          <span className="flex items-center gap-0.5">
+            <SpellCheck size={16} />
+            {spellIssueCount > 0 && <span className="text-[10px] leading-none">{spellIssueCount}</span>}
+          </span>
         </ToolbarButton>
       )}
       {isFormattable && (

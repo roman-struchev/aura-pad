@@ -23,6 +23,7 @@ import type { WindowInit } from '../../shared/ipc'
 import { EXTENSIONS } from './lib/extensions'
 import { TreeContextMenu } from './components/TreeContextMenu'
 import { LocalHistoryModal } from './components/LocalHistoryModal'
+import { SpellcheckConfigModal } from './components/SpellcheckConfigModal'
 import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
 import { useSettings } from './hooks/useSettings'
@@ -39,6 +40,7 @@ import { useVoiceInput } from './hooks/useVoiceInput'
 import { useReadAloud } from './hooks/useReadAloud'
 import { useTranslate } from './hooks/useTranslate'
 import { useWorkTogether } from './hooks/useWorkTogether'
+import { useSpellcheck } from './hooks/useSpellcheck'
 import { useMenuActions } from './hooks/useMenuActions'
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
 import type { UpdateNotification, UpdateProgress } from '../../shared/updateNotification'
@@ -441,6 +443,7 @@ function App(): React.JSX.Element {
   // "Replace in Files" is the same overlay, opened with its replace row out.
   const [searchStartsInReplace, setSearchStartsInReplace] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
+  const [showSpellcheckConfig, setShowSpellcheckConfig] = useState(false)
   // The tab whose local history is open (null = closed).
   const [historyPath, setHistoryPath] = useState<string | null>(null)
   // The environments the active .http file can run against, and the request
@@ -807,6 +810,23 @@ function App(): React.JSX.Element {
       httpClient: { ...settings.extensions.httpClient, environment: name }
     })
 
+  // Spell checking for the active prose file. The words the user adds go into
+  // settings like any other preference, so they survive a restart and follow
+  // the rest of the app's state.
+  const addSpellWord = useStableCallback((word: string): void => {
+    const existing = settings.spellUserWords
+    if (existing.some((w) => w.toLowerCase() === word.toLowerCase())) return
+    updateSetting('spellUserWords', [...existing, word])
+  })
+  const spell = useSpellcheck({
+    enabled: settings.spellcheckEnabled,
+    languages: settings.spellLanguages,
+    userWords: settings.spellUserWords,
+    path: tabs.selectedPath,
+    content: tabs.fileContent,
+    onAddWord: addSpellWord
+  })
+
   // "Run" for the HTTP client. Every trigger (the ▶ Run CodeLens, Cmd+Enter,
   // the toolbar button, the Edit menu) lands here; they differ only in how
   // the request is located. An explicit selection always wins, then the
@@ -1047,6 +1067,9 @@ function App(): React.JSX.Element {
                     workTogether.sessions[tabs.selectedPath]?.participants.length) ||
                   0
                 }
+                spellcheckOn={settings.spellcheckEnabled && settings.spellLanguages.length > 0}
+                spellIssueCount={spell.issues.length}
+                onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
                 httpEnvironmentNames={httpEnv?.names ?? []}
                 httpEnvironment={httpEnvironmentName}
                 onSelectHttpEnvironment={selectHttpEnvironment}
@@ -1342,9 +1365,19 @@ function App(): React.JSX.Element {
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
           onConfigureTranslate={() => setShowTranslateConfig(true)}
+          onConfigureSpellcheck={() => setShowSpellcheckConfig(true)}
           onConfigureGoogleTasks={() => setShowGoogleTasksConfig(true)}
           onConfigureWorkTogether={() => setShowWorkTogetherConfig(true)}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showSpellcheckConfig && (
+        <SpellcheckConfigModal
+          settings={settings}
+          updateSetting={updateSetting}
+          density={density}
+          onClose={() => setShowSpellcheckConfig(false)}
         />
       )}
 

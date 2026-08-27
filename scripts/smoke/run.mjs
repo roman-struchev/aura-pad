@@ -40,6 +40,7 @@ const CASE_FILES = [
   'preview.mjs',
   'markdown-images.mjs',
   'local-history.mjs',
+  'spellcheck.mjs',
   'terminal.mjs',
   'settings.mjs',
   'git.mjs',

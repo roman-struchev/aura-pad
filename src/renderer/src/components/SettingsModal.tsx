@@ -27,6 +27,7 @@ interface SettingsModalProps {
   onConfigureDictation: () => void
   onConfigureReadAloud: () => void
   onConfigureTranslate: () => void
+  onConfigureSpellcheck: () => void
   onConfigureGoogleTasks: () => void
   onConfigureWorkTogether: () => void
   onClose: () => void
@@ -81,6 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onConfigureDictation,
   onConfigureReadAloud,
   onConfigureTranslate,
+  onConfigureSpellcheck,
   onConfigureGoogleTasks,
   onConfigureWorkTogether,
   onClose
@@ -280,6 +282,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               'Read Aloud',
               `${settings.readAloudEnabled ? 'Enabled' : 'Disabled'} · Voices: ${settings.readVoices.en.replace('_', ' ')} / ${settings.readVoices.ru}`,
               onConfigureReadAloud
+            )}
+            {configureRow(
+              'Spelling',
+              `${settings.spellcheckEnabled ? 'Enabled' : 'Disabled'} · ${
+                settings.spellLanguages.length
+                  ? `dictionaries: ${settings.spellLanguages.join(', ')}`
+                  : 'no dictionary installed'
+              }`,
+              onConfigureSpellcheck
             )}
             {configureRow(
               'Translation',

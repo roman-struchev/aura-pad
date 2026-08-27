@@ -79,6 +79,13 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   Russian automatically. Also fully offline (Piper). Speed toggle 1×/1.5×/2×, `Esc` stops.
 - **Translate** (`Option+Cmd+T` or right-click a selection): Google Translate for best
   quality, or local offline models if the text should never leave your machine.
+- **Spell checking** (Settings → Voice & Language → Spelling): unknown words are underlined
+  in Markdown and text files, with `Cmd+.` on one offering corrections and *Add to
+  Dictionary*; the toolbar shows how many are left and walks you to the next. Code spans,
+  fenced blocks, URLs and file names are skipped, so it underlines prose and not `useState`.
+  English and Russian dictionaries (Hunspell, from `wooorm/dictionaries`, pinned to one
+  commit) are downloaded once and used together — a word only counts as wrong when neither
+  knows it, which is what a Russian note full of English terms needs.
 - Voice and translation models are downloaded once (after you confirm) and cached for
   offline use.
 

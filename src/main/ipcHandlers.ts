@@ -26,6 +26,12 @@ import { listPathMatches } from './pathBrowse'
 import { replaceInFiles, undoReplaceInFiles } from './replaceInFiles'
 import { readImageDataUrl, savePastedImage } from './pastedImages'
 import { readHttpEnvironments } from './httpEnv'
+import {
+  downloadDictionary,
+  listInstalledDictionaries,
+  readDictionary,
+  removeDictionary
+} from './spellDictionaries'
 import { appendHttpRequest } from './httpSave'
 import { listSnapshots, readSnapshot, recordSnapshot, shouldSnapshot } from './localHistory'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
@@ -86,6 +92,14 @@ function registerAppIpc(): void {
     if (denial) return { success: false, error: denial }
     return readSnapshot(filePath, id)
   })
+
+  // Spelling dictionaries. No path arguments at all: the language names the
+  // dictionary and main decides where it lives, so nothing here widens the
+  // filesystem surface.
+  handleInvoke('spell-dictionaries', () => listInstalledDictionaries())
+  handleInvoke('spell-download-dictionary', (lang) => downloadDictionary(lang))
+  handleInvoke('spell-remove-dictionary', (lang) => removeDictionary(lang))
+  handleInvoke('spell-read-dictionary', (lang) => readDictionary(lang))
 
   handleInvoke('get-theme', () => nativeTheme.shouldUseDarkColors)
   handleSend('apply-update', () => applyUpdate())

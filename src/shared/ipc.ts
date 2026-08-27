@@ -9,6 +9,7 @@ import type { HttpEnvironments, HttpHistoryEntry, HttpRequestSpec, HttpSendResul
 import type { LintMarker } from './lint'
 import type { LocalHistoryEntry } from './localHistory'
 import type { RecentExternalFile } from './recentExternalFile'
+import type { SpellDictionaryFiles, SpellLanguage } from './spellcheck'
 import type { PathListingResult } from './pathMatch'
 
 // Handed to a window as it mounts. The files a torn-off window opens with
@@ -151,6 +152,12 @@ export interface InvokeContracts {
   // "Open in Default App"). An invoke, not a send: "no application knows how
   // to open this" is an answer the user needs to see.
   'open-in-default-app': { args: [targetPath: string]; result: OpResult }
+  // Spelling dictionaries: which are installed, getting one, dropping one,
+  // and handing its text to the checker's worker (src/main/spellDictionaries).
+  'spell-dictionaries': { args: []; result: SpellLanguage[] }
+  'spell-download-dictionary': { args: [lang: string]; result: OpResult }
+  'spell-remove-dictionary': { args: [lang: string]; result: OpResult }
+  'spell-read-dictionary': { args: [lang: string]; result: SpellDictionaryFiles }
   'get-theme': { args: []; result: boolean }
   'get-settings': { args: []; result: AppSettings }
   'save-settings': { args: [settings: AppSettings]; result: AppSettings }
@@ -303,6 +310,10 @@ export const INVOKE_CHANNELS = {
   localHistoryList: 'local-history-list',
   localHistoryRead: 'local-history-read',
   openInDefaultApp: 'open-in-default-app',
+  spellDictionaries: 'spell-dictionaries',
+  spellDownloadDictionary: 'spell-download-dictionary',
+  spellRemoveDictionary: 'spell-remove-dictionary',
+  spellReadDictionary: 'spell-read-dictionary',
   getTheme: 'get-theme',
   getSettings: 'get-settings',
   saveSettings: 'save-settings',

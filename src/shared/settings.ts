@@ -1,3 +1,5 @@
+import type { SpellLanguage } from './spellcheck'
+
 export type UiMode = 'micro' | 'compact' | 'normal' | 'large'
 export type SidebarPosition = 'left' | 'right'
 // 'dark'/'light' are the app's original two looks; 'system' follows the OS
@@ -179,6 +181,14 @@ export interface AppSettings {
   translateEnabled: boolean
   translatePair: TranslatePair
   translateModel: TranslateModel
+  // Offline spell checking. Off by default because it needs a dictionary
+  // downloaded first; `spellLanguages` is which of the installed dictionaries
+  // to check against (all of them at once - a word is only wrong when none of
+  // them knows it, which is what mixed-language notes need), and
+  // `spellUserWords` is what the user added from the editor.
+  spellcheckEnabled: boolean
+  spellLanguages: SpellLanguage[]
+  spellUserWords: string[]
   extensions: ExtensionSettings
 }
 
@@ -198,6 +208,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceLanguage: 'auto',
   readAloudEnabled: true,
   readVoices: { ru: 'ruslan', en: 'ryan' },
+  spellcheckEnabled: false,
+  spellLanguages: [],
+  spellUserWords: [],
   translateEnabled: true,
   translatePair: 'en-ru',
   // Online engine by default: first translation works instantly, no ~850 MB

@@ -67,6 +67,7 @@ prefers these:
 | A6 | Search, options and replace | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape; switching between quick open and search-in-files swaps the one dialog and carries the query both ways; match case / whole word / regex / file filter each narrow as advertised and an unfinished regex is reported not thrown; replace-in-files rewrites what it says it did, refuses paths outside the allowed folders, and one Undo puts it back — driven through the API and through the overlay (preview, Replace All, Undo) |
 | A16 | Markdown image paste | An image on the clipboard pasted into a `.md` file lands in `assets/` next to it, the document gets a relative link, the preview renders it as a data: URL, the same paste in a non-Markdown file writes nothing, and a document path outside the allowed folders is refused |
 | A17 | Local history | A save stores the state it replaced, a second save moments later is coalesced into it, replace-across-files always stores one, versions read back byte-for-byte, an unknown id and a file outside the allowed folders are refused, and the tab menu's Local History restores a picked version into the tab |
+| A18 | Spell checking | An installed dictionary is listed and an unknown language refused; Settings → Spelling turns it on and remembers it; a prose file's unknown words are counted in the toolbar (affixed forms counting as known), typing another one is picked up, a clean file reports none, and a non-prose file is not checked at all |
 | A7 | Preview and formatting | Markdown and HTML previews render and toggle back to source; Format rewrites JSON and autosaves |
 | A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced; the toolbar opens a terminal in the panel, and Cmd+K is routed to it (git panel stays shut) while it still toggles the git panel elsewhere |
 | A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
@@ -443,6 +444,27 @@ produce - hence by hand.
 | 19.4 | Open a terminal in the main window, then reload the torn-off window (Cmd+R) | The main window's terminal keeps running (ptys are owned per window) |
 | 19.5 | Close the last tab in a torn-off window with its × | The window closes with it |
 | 19.6 | Tear a tab off, then quit and relaunch | Only the main window comes back, with the session it had - a torn-off window is not part of the persisted session |
+
+---
+
+## 20. Spell checking with a real dictionary
+
+Guards: `src/main/spellDictionaries.ts`, `lib/spell/hunspell.ts`, the
+quick-fix provider in `hooks/useSpellcheck.ts`.
+
+**A18 covers everything a planted fixture dictionary can reach.** What it
+can't: the download (network), and Monaco's own quick-fix menu, which the
+lightbulb opens through the editor's context menu.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 20.1 | Settings → Voice & Language → Spelling → download English | Progress spinner, then "Installed"; `userData/dictionaries/en` holds index.aff, index.dic and license |
+| 20.2 | Open a `.md`, write "Ths is a sentnce with two typos." | Both misspellings get a squiggle within a second; the toolbar shows 2 |
+| 20.3 | Put the cursor in one and press `Cmd+.` | Corrections are offered, and applying one replaces the word |
+| 20.4 | Choose "Add … to Dictionary" on a word the dictionary lacks | The squiggle goes, the count drops, and the word is listed under "Your words" in the Spelling dialog |
+| 20.5 | Download Russian too, then write a Russian sentence with an English term in it | Neither the Russian words nor the English term are flagged - every loaded dictionary gets a say |
+| 20.6 | Paste a fenced code block, a URL and a file name into the same document | None of them are underlined |
+| 20.7 | Remove the dictionary from the Spelling dialog | The squiggles disappear and `userData/dictionaries/<lang>` is gone |
 
 ---
 
