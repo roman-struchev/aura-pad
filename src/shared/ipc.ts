@@ -2,6 +2,7 @@ import type { AppSettings } from './settings'
 import type { OpenTabsState } from './openTabsState'
 import type { FileNode } from './fileNode'
 import type { SearchResult } from './searchResult'
+import type { ReplaceRequest, ReplaceResult, SearchOptions } from './searchQuery'
 import type { GitCommit, GitRepoStatus } from './gitStatus'
 import type { GTask, GTaskInput, GTaskList } from './googleTasks'
 import type { HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
@@ -86,7 +87,11 @@ export interface InvokeContracts {
   // null when the user cancels the folder picker.
   'add-workspace': { args: []; result: FileNode[] | null }
   'remove-workspace': { args: [path: string]; result: FileNode[] }
-  'search-projects': { args: [query: string]; result: SearchResult[] }
+  'search-projects': { args: [query: string, options?: SearchOptions]; result: SearchResult[] }
+  // Replace across files, and the single step back out of it. Both act on the
+  // renderer's explicit selection - see src/main/replaceInFiles.ts.
+  'replace-in-files': { args: [request: ReplaceRequest]; result: ReplaceResult }
+  'undo-replace-in-files': { args: []; result: ReplaceResult }
   'get-recent-external-files': { args: []; result: RecentExternalFile[] }
   'touch-recent-external-file': { args: [filePath: string]; result: RecentExternalFile[] }
   'remove-recent-external-file': { args: [filePath: string]; result: RecentExternalFile[] }
@@ -232,6 +237,8 @@ export const INVOKE_CHANNELS = {
   addWorkspace: 'add-workspace',
   removeWorkspace: 'remove-workspace',
   searchProjects: 'search-projects',
+  replaceInFiles: 'replace-in-files',
+  undoReplaceInFiles: 'undo-replace-in-files',
   getRecentExternalFiles: 'get-recent-external-files',
   touchRecentExternalFile: 'touch-recent-external-file',
   removeRecentExternalFile: 'remove-recent-external-file',

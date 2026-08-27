@@ -1,15 +1,40 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Search as SearchIcon, X, FileText, ChevronDown, ChevronRight } from 'lucide-react'
+import clsx from 'clsx'
+import {
+  Search as SearchIcon,
+  X,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  CaseSensitive,
+  WholeWord,
+  Regex,
+  Replace as ReplaceIcon,
+  Undo2
+} from 'lucide-react'
 import type { SearchResult } from '../../../shared/searchResult'
+import {
+  buildSearchRegex,
+  replacementFor,
+  type ReplaceResult,
+  type SearchOptions
+} from '../../../shared/searchQuery'
 
 interface GlobalSearchProps {
   onClose: () => void
   onSelect: (path: string, line?: number, highlight?: { col: number; matchLen: number }) => void
+  // Files whose tab has edits that haven't hit disk yet. Replacing in one
+  // would be overwritten by that tab's next autosave, so they are excluded
+  // from the selection and say why.
+  unsavedPaths?: string[]
   // IDEA-style query persistence: the query this overlay opens with (last
   // session query, or the editor selection), reported back on every change
   // so the next opening can restore it.
   initialQuery?: string
   onQueryChange?: (query: string) => void
+  // "Replace in Files" opens the same overlay with the replace row already
+  // showing (Cmd+Shift+R), rather than being a second dialog.
+  initialShowReplace?: boolean
 }
 
 interface FileGroup {
@@ -26,15 +51,42 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
   onClose,
   onSelect,
   initialQuery,
-  onQueryChange
+  onQueryChange,
+  initialShowReplace,
+  unsavedPaths
 }) => {
   const [query, setQuery] = useState(initialQuery ?? '')
   const [results, setResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
+  // Search options, kept as separate primitives so the fetch effect depends on
+  // values rather than on a freshly-built object every render.
+  const [matchCase, setMatchCase] = useState(false)
+  const [wholeWord, setWholeWord] = useState(false)
+  const [useRegex, setUseRegex] = useState(false)
+  const [include, setInclude] = useState('')
+  const [showReplace, setShowReplace] = useState(!!initialShowReplace)
+  const [replacement, setReplacement] = useState('')
+  // Opt-*out*: everything found is replaced unless the user unchecks it, which
+  // is the way this is used - narrow with the query, not with the checkboxes.
+  const [excludedPaths, setExcludedPaths] = useState<Set<string>>(new Set())
+  const [isReplacing, setIsReplacing] = useState(false)
+  const [replaceStatus, setReplaceStatus] = useState<{
+    text: string
+    canUndo: boolean
+    failed: boolean
+  } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const selectedRowRef = useRef<HTMLDivElement>(null)
+
+  const options = useMemo<SearchOptions>(
+    () => ({ caseSensitive: matchCase, wholeWord, regex: useRegex, include }),
+    [matchCase, wholeWord, useRegex, include]
+  )
+  const unsaved = useMemo(() => new Set(unsavedPaths ?? []), [unsavedPaths])
+  // Only a regex the user typed can be invalid; a literal query is escaped.
+  const patternInvalid = useRegex && query.length > 0 && !buildSearchRegex(query, options)
   // `results`/`isSearching` can briefly hold stale data from an abandoned
   // search (e.g. right after the query shrinks back below 2 characters,
   // before this becomes false) - gating every render branch on it, rather
@@ -140,11 +192,12 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     let cancelled = false
     const timer = setTimeout(async () => {
       setIsSearching(true)
-      const searchResults = await window.api.searchProjects(query)
+      const searchResults = await window.api.searchProjects(query, options)
       if (cancelled) return
       setResults(searchResults)
       setSelectedIndex(0)
       setCollapsedPaths(new Set())
+      setExcludedPaths(new Set())
       setIsSearching(false)
     }, 300)
 
@@ -152,28 +205,174 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [query, hasQuery])
+  }, [query, hasQuery, options])
+
+  // The files Replace All would rewrite: everything found, minus what the
+  // user unchecked, minus anything with unsaved edits in a tab.
+  const targetPaths = useMemo(
+    () => groups.map((g) => g.path).filter((p) => !excludedPaths.has(p) && !unsaved.has(p)),
+    [groups, excludedPaths, unsaved]
+  )
+  const targetMatches = useMemo(
+    () => results.filter((r) => targetPaths.includes(r.path)).length,
+    [results, targetPaths]
+  )
+  const blockedByUnsaved = useMemo(
+    () => groups.filter((g) => unsaved.has(g.path)).length,
+    [groups, unsaved]
+  )
+
+  // What a line looks like after the replacement, computed with the same
+  // matcher main will use (shared/searchQuery) so the preview cannot promise
+  // something else.
+  const previewLine = useCallback(
+    (line: string): string => {
+      const matcher = buildSearchRegex(query, options)
+      if (!matcher) return line
+      return line.replace(matcher, replacementFor(replacement, options))
+    },
+    [query, options, replacement]
+  )
+
+  const refreshResults = useCallback(async (): Promise<void> => {
+    const searchResults = await window.api.searchProjects(query, options)
+    setResults(searchResults)
+    setSelectedIndex(0)
+  }, [query, options])
+
+  const runReplace = useCallback(async (): Promise<void> => {
+    if (targetPaths.length === 0 || isReplacing) return
+    setIsReplacing(true)
+    const result: ReplaceResult = await window.api.replaceInFiles({
+      paths: targetPaths,
+      query,
+      replacement,
+      options
+    })
+    const summary = `Replaced ${result.replacements} ${
+      result.replacements === 1 ? 'occurrence' : 'occurrences'
+    } in ${result.filesChanged} ${result.filesChanged === 1 ? 'file' : 'files'}`
+    setReplaceStatus({
+      text: result.error ? `${summary} — ${result.error.split('\n')[0]}` : summary,
+      canUndo: result.canUndo,
+      failed: !result.success
+    })
+    await refreshResults()
+    setIsReplacing(false)
+  }, [targetPaths, isReplacing, query, replacement, options, refreshResults])
+
+  const undoReplace = useCallback(async (): Promise<void> => {
+    setIsReplacing(true)
+    const result = await window.api.undoReplaceInFiles()
+    setReplaceStatus({
+      text: result.success
+        ? `Reverted ${result.filesChanged} ${result.filesChanged === 1 ? 'file' : 'files'}`
+        : (result.error ?? 'Could not undo'),
+      canUndo: false,
+      failed: !result.success
+    })
+    await refreshResults()
+    setIsReplacing(false)
+  }, [refreshResults])
+
+  const toggleFile = useCallback((path: string): void => {
+    setExcludedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-[600px] max-h-[60vh] bg-fleet-sidebar border border-fleet-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
         {/* Search Input Area */}
-        <div className="flex items-center p-4 border-b border-fleet-border gap-3">
-          <SearchIcon size={20} className="text-gray-500" />
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Search in all projects..."
-            className="flex-1 bg-transparent border-none outline-none text-fleet-text text-lg"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
-              onQueryChange?.(e.target.value)
-            }}
-          />
-          <button onClick={onClose} className="p-1 hover:bg-fleet-active rounded text-gray-500">
-            <X size={18} />
-          </button>
+        <div className="p-4 border-b border-fleet-border flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowReplace((open) => !open)}
+              aria-label={showReplace ? 'Hide Replace' : 'Show Replace'}
+              title={showReplace ? 'Hide replace' : 'Replace in files'}
+              className="p-1 rounded text-gray-500 hover:bg-fleet-active hover:text-gray-200"
+            >
+              {showReplace ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </button>
+            <SearchIcon size={20} className="text-gray-500" />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Search in all projects..."
+              className="flex-1 min-w-0 bg-transparent border-none outline-none text-fleet-text text-lg"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                onQueryChange?.(e.target.value)
+              }}
+            />
+            {/* The three matcher toggles, in the order every search field puts
+                them; each one re-runs the search through the same effect the
+                query does. */}
+            {(
+              [
+                ['Match case', CaseSensitive, matchCase, setMatchCase],
+                ['Whole word', WholeWord, wholeWord, setWholeWord],
+                ['Regular expression', Regex, useRegex, setUseRegex]
+              ] as const
+            ).map(([label, Icon, active, set]) => (
+              <button
+                key={label}
+                aria-label={label}
+                title={label}
+                aria-pressed={active}
+                onClick={() => set((on) => !on)}
+                className={clsx(
+                  'p-1 rounded shrink-0',
+                  active
+                    ? 'bg-fleet-active text-blue-400'
+                    : 'text-gray-500 hover:bg-fleet-active hover:text-gray-200'
+                )}
+              >
+                <Icon size={16} />
+              </button>
+            ))}
+            <button onClick={onClose} className="p-1 hover:bg-fleet-active rounded text-gray-500">
+              <X size={18} />
+            </button>
+          </div>
+
+          {showReplace && (
+            <div className="flex items-center gap-3 pl-[30px]">
+              <ReplaceIcon size={20} className="text-gray-500 shrink-0" />
+              <input
+                type="text"
+                placeholder="Replace with..."
+                className="flex-1 min-w-0 bg-transparent border-none outline-none text-fleet-text text-lg"
+                value={replacement}
+                onChange={(e) => setReplacement(e.target.value)}
+              />
+              <button
+                onClick={runReplace}
+                disabled={!hasQuery || patternInvalid || isReplacing || targetPaths.length === 0}
+                className="px-3 py-1 text-xs rounded bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 shrink-0"
+              >
+                {isReplacing ? 'Replacing…' : `Replace All (${targetMatches})`}
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pl-[30px]">
+            <input
+              type="text"
+              placeholder="Files to include: *.ts, src/**"
+              className="flex-1 min-w-0 bg-fleet-header/60 rounded px-2 py-1 border border-transparent focus:border-fleet-border outline-none text-xs text-fleet-text placeholder:text-gray-600"
+              value={include}
+              onChange={(e) => setInclude(e.target.value)}
+            />
+            {patternInvalid && (
+              <span className="text-[10px] text-red-400 shrink-0">Invalid regular expression</span>
+            )}
+          </div>
         </div>
 
         {/* Results Area */}
@@ -189,6 +388,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                 const rowBg = selIndex === i ? 'bg-fleet-active' : 'hover:bg-fleet-active'
                 if (item.kind === 'file') {
                   const isCollapsed = collapsedPaths.has(item.group.path)
+                  const isUnsaved = unsaved.has(item.group.path)
                   return (
                     <div
                       key={item.group.path}
@@ -199,6 +399,20 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                         toggleCollapsed(item.group.path)
                       }}
                     >
+                      {showReplace && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Replace in ${item.group.file}`}
+                          className="shrink-0 accent-blue-500 disabled:opacity-40"
+                          checked={!excludedPaths.has(item.group.path) && !isUnsaved}
+                          disabled={isUnsaved}
+                          title={
+                            isUnsaved ? 'Save this tab first — its edits are not on disk yet' : ''
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => toggleFile(item.group.path)}
+                        />
+                      )}
                       {isCollapsed ? (
                         <ChevronRight size={14} className="text-gray-500 shrink-0" />
                       ) : (
@@ -211,12 +425,21 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                       <span className="text-[10px] text-gray-600 truncate flex-1">
                         {item.group.path}
                       </span>
+                      {showReplace && isUnsaved && (
+                        <span className="text-[10px] text-amber-400 shrink-0">unsaved</span>
+                      )}
                       <span className="text-[10px] text-gray-500 bg-fleet-header rounded-full px-2 py-0.5 shrink-0">
                         {item.group.matches.length}
                       </span>
                     </div>
                   )
                 }
+                const preview = showReplace ? previewLine(item.result.content) : null
+                const willChange =
+                  preview !== null &&
+                  preview !== item.result.content &&
+                  !unsaved.has(item.result.path) &&
+                  !excludedPaths.has(item.result.path)
                 return (
                   <div
                     key={`${item.result.path}-${item.result.line}-${i}`}
@@ -227,8 +450,22 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     <span className="text-[10px] text-gray-600 shrink-0 w-8 text-right">
                       {item.result.line}
                     </span>
-                    <span className="text-xs text-gray-400 font-mono truncate">
-                      {item.result.content}
+                    <span className="min-w-0 flex flex-col">
+                      <span
+                        className={clsx(
+                          'text-xs font-mono truncate',
+                          willChange
+                            ? 'text-gray-500 line-through decoration-gray-700'
+                            : 'text-gray-400'
+                        )}
+                      >
+                        {item.result.content}
+                      </span>
+                      {willChange && (
+                        <span className="text-xs text-emerald-400 font-mono truncate">
+                          {preview}
+                        </span>
+                      )}
                     </span>
                   </div>
                 )
@@ -250,9 +487,34 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         </div>
 
         {/* Footer */}
+        {replaceStatus && (
+          <div
+            className={clsx(
+              'px-4 py-2 border-t border-fleet-border text-xs flex items-center justify-between gap-3',
+              replaceStatus.failed ? 'text-red-400' : 'text-emerald-400'
+            )}
+          >
+            <span className="truncate">{replaceStatus.text}</span>
+            {replaceStatus.canUndo && (
+              <button
+                onClick={undoReplace}
+                disabled={isReplacing}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-gray-300 hover:bg-fleet-active shrink-0 disabled:opacity-40"
+              >
+                <Undo2 size={12} />
+                Undo
+              </button>
+            )}
+          </div>
+        )}
         <div className="px-4 py-2 bg-fleet-header border-t border-fleet-border text-[10px] text-gray-600 flex justify-between">
           <span>
             {hasQuery ? `${results.length} matches in ${groups.length} files` : '0 matches found'}
+            {showReplace && blockedByUnsaved > 0 && (
+              <span className="text-amber-500">
+                {` • ${blockedByUnsaved} skipped (unsaved edits)`}
+              </span>
+            )}
           </span>
           <span>ESC to close • ENTER to open • ←/→ to fold</span>
         </div>

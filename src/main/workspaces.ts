@@ -6,6 +6,7 @@ import { readConfigFile, writeConfigFile } from './configFile'
 import { decodeFileBuffer, remapEncodingPaths } from './encoding'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResult } from '../shared/searchResult'
+import { buildIncludeMatcher, buildSearchRegex, type SearchOptions } from '../shared/searchQuery'
 
 const workspacesConfigPath = path.join(app.getPath('userData'), 'workspaces.json')
 
@@ -171,13 +172,24 @@ class SearchSuperseded extends Error {}
 // disk to completion, stacking up and starving every other IPC call.
 let searchGeneration = 0
 
-export async function searchInWorkspaces(query: string): Promise<SearchResult[]> {
+export async function searchInWorkspaces(
+  query: string,
+  options: SearchOptions = {}
+): Promise<SearchResult[]> {
   const generation = ++searchGeneration
   const workspacePaths = loadWorkspaces()
   const results: SearchResult[] = []
   if (!query || query.length < 2) return results
 
-  const queryLower = query.toLowerCase()
+  // An unfinished regex ("foo(") is a normal keystroke, not an error: no
+  // matcher, no results, and the field says so on the renderer's side.
+  const built = buildSearchRegex(query, options)
+  if (!built) return results
+  const matcher = built
+  // A file filter, when given, replaces the built-in extension list rather
+  // than narrowing it - asking for "*.log" should search .log files, which
+  // the default list deliberately leaves out.
+  const includes = buildIncludeMatcher(options.include)
 
   // Walks with fs.promises (not the *Sync variants the rest of this module
   // uses) so each readdir/stat/readFile call yields to the event loop -
@@ -223,30 +235,41 @@ export async function searchInWorkspaces(query: string): Promise<SearchResult[]>
         }
         if (ancestors.has(real)) continue
         await searchDir(rootPath, ig, fullPath, new Set(ancestors).add(real))
-      } else if (SEARCHABLE_EXTENSION_RE.test(file) && stat.size <= MAX_SEARCHABLE_FILE_BYTES) {
+      } else if (
+        (includes ? includes(relPath) : SEARCHABLE_EXTENSION_RE.test(file)) &&
+        stat.size <= MAX_SEARCHABLE_FILE_BYTES
+      ) {
         let content: string
         try {
           content = await fs.promises.readFile(fullPath, 'utf-8')
         } catch (e) {
           continue
         }
-        if (!content.toLowerCase().includes(queryLower)) continue
 
         const lines = content.split('\n')
         let matchesInFile = 0
         for (let index = 0; index < lines.length; index++) {
-          const colIdx = lines[index].toLowerCase().indexOf(queryLower)
-          if (colIdx === -1) continue
-          results.push({
-            file,
-            path: fullPath,
-            line: index + 1,
-            col: colIdx + 1,
-            matchLen: queryLower.length,
-            content: lines[index].trim()
-          })
-          matchesInFile++
-          if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
+          // Every occurrence on the line, not just the first: replace acts on
+          // all of them, so a count that stopped at one per line would
+          // under-report what the button is about to do.
+          matcher.lastIndex = 0
+          let match: RegExpExecArray | null
+          while ((match = matcher.exec(lines[index])) !== null) {
+            results.push({
+              file,
+              path: fullPath,
+              line: index + 1,
+              col: match.index + 1,
+              matchLen: match[0].length,
+              content: lines[index].trim()
+            })
+            matchesInFile++
+            if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
+            if (matchesInFile >= MAX_RESULTS_PER_FILE) break
+            // A pattern that can match nothing ("x*") would otherwise spin
+            // forever on the same index.
+            if (match[0].length === 0) matcher.lastIndex++
+          }
           if (matchesInFile >= MAX_RESULTS_PER_FILE) break
         }
       }

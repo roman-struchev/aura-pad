@@ -23,6 +23,7 @@ import {
   removeRecentExternalFile
 } from './recentExternalFiles'
 import { listPathMatches } from './pathBrowse'
+import { replaceInFiles, undoReplaceInFiles } from './replaceInFiles'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
 import { setupWatchers, recordSelfWrite } from './watcher'
@@ -114,7 +115,9 @@ function registerWorkspaceIpc(): void {
     return getWorkspaceTrees()
   })
 
-  handleInvoke('search-projects', (query) => searchInWorkspaces(query))
+  handleInvoke('search-projects', (query, options) => searchInWorkspaces(query, options))
+  handleInvoke('replace-in-files', (request) => replaceInFiles(request))
+  handleInvoke('undo-replace-in-files', () => undoReplaceInFiles())
 
   handleInvoke('get-recent-external-files', () => loadRecentExternalFiles())
   // Only records a file the renderer was allowed to open in the first place:

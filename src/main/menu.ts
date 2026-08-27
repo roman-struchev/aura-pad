@@ -107,6 +107,13 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
           click: () => sendAction('find-in-files')
         },
         {
+          // The IDEA key for "Replace in Path" - the same overlay as Find in
+          // Files, opened with its replace row already showing.
+          label: 'Replace in Files',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => sendAction('replace-in-files')
+        },
+        {
           label: 'Toggle Sidebar',
           accelerator: 'CmdOrCtrl+B',
           click: () => sendAction('toggle-sidebar')

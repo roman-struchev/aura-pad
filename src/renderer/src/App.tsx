@@ -415,6 +415,8 @@ function App(): React.JSX.Element {
   // render).
   const lastSearchQueryRef = useRef('')
   const [searchInitialQuery, setSearchInitialQuery] = useState('')
+  // "Replace in Files" is the same overlay, opened with its replace row out.
+  const [searchStartsInReplace, setSearchStartsInReplace] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
   // Quick open's live query, so switching to search-in-files carries it over.
   // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
@@ -428,7 +430,8 @@ function App(): React.JSX.Element {
   // quick open that the file is better found by its contents switches this
   // one dialog over, query and all, instead of stacking a second one behind
   // it (and vice versa, below).
-  const openGlobalSearch = (): void => {
+  const openGlobalSearch = (openWithReplace = false): void => {
+    setSearchStartsInReplace(openWithReplace)
     if (showFileSearch) {
       lastSearchQueryRef.current = fileSearchQueryRef.current
       setShowFileSearch(false)
@@ -651,7 +654,8 @@ function App(): React.JSX.Element {
     },
     'reopen-tab': () => tabsRef.current.reopenClosedTab(),
     'go-to-file': toggleFileSearch,
-    'find-in-files': openGlobalSearch,
+    'find-in-files': () => openGlobalSearch(),
+    'replace-in-files': () => openGlobalSearch(true),
     // Context-sensitive like close-tab above: with focus inside the terminal
     // panel Cmd+K clears that terminal (iTerm2/VS Code muscle memory) rather
     // than toggling the git panel behind it.
@@ -858,6 +862,13 @@ function App(): React.JSX.Element {
   const handleTabCloseAll = useStableCallback(tabs.closeAllTabs)
   const handleTabTogglePin = useStableCallback(tabs.togglePin)
   const handleTabReorder = useStableCallback(tabs.reorderTab)
+  // Replace-in-files must not touch a file whose tab still holds unsaved
+  // edits: that tab's next autosave would write the pre-replacement buffer
+  // straight back over it.
+  const unsavedTabPaths = useMemo(
+    () => tabs.tabs.filter((t) => !t.isSaved).map((t) => t.path),
+    [tabs.tabs]
+  )
   // Plain .map in the JSX would hand Sidebar a fresh array every render.
   const recentExternalPaths = useMemo(
     () => recentExternalFiles.entries.map((e) => e.path),
@@ -875,7 +886,7 @@ function App(): React.JSX.Element {
         sidebarPosition={settings.sidebarPosition}
         terminalShown={terminal.showTerminal}
         onToggleSidebar={toggleSidebar}
-        onOpenGlobalSearch={openGlobalSearch}
+        onOpenGlobalSearch={() => openGlobalSearch()}
         onToggleTerminal={toggleTerminal}
         onOpenSettings={() => setShowSettings(true)}
         tabBar={
@@ -1104,6 +1115,8 @@ function App(): React.JSX.Element {
         <GlobalSearch
           onClose={() => setShowSearch(false)}
           initialQuery={searchInitialQuery}
+          initialShowReplace={searchStartsInReplace}
+          unsavedPaths={unsavedTabPaths}
           onQueryChange={(q) => {
             lastSearchQueryRef.current = q
           }}

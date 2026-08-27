@@ -79,8 +79,13 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   `Cmd`-click to add a row, `Shift`-click for a range. The clipboard is the system one on
   macOS, so a file copied in Finder pastes into the tree and vice versa.
 - Quick open with a double-tap of `Shift`; full-text search across all folders
-  (`Shift+Cmd+F`). Only one search dialog is ever open: switching between quick open and
+  (`Shift+Cmd+F`), with match case, whole word, regular expressions and a file filter
+  (`*.ts, src/**`). Only one search dialog is ever open: switching between quick open and
   search-in-files carries the typed query across.
+- Replace across files (`Shift+Cmd+R`, or the arrow next to the search field): every match
+  previews the line as it will be written, files are unchecked one by one, and one Undo
+  puts the whole batch back. Files with unsaved edits in a tab are skipped and say so —
+  their next autosave would write the old text straight back.
 - Stays in sync with changes made outside the app — and warns instead of losing your
   unsaved edits.
 - Files opened from outside the workspaces (Finder, "Open With…") stay in a "Recently
