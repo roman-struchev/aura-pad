@@ -80,12 +80,7 @@ export default {
       )
 
     try {
-      await ui.clickRow(`${ws}/requests.http`)
-      const opened = await waitFor(
-        `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(`${ws}/requests.http`)})`,
-        { timeoutMs: 8000 }
-      )
-      check('a .http file opens', opened)
+      check('a .http file opens', await ui.openFile(`${ws}/requests.http`))
       check('the toolbar offers a Run action for it', await ui.buttonExists('Run Request'))
 
       // Nothing selected and the cursor at the top of the file: the first
@@ -182,13 +177,7 @@ export default {
       // the command is found by walking back up the backslashes. (Selecting it
       // with Cmd+A would be the other supported route, but a select-all racing
       // a just-clicked editor is flaky - the run then sees no selection.)
-      const openFile = async (file) => {
-        await ui.clickRow(`${ws}/${file}`)
-        await waitFor(
-          `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(`${ws}/${file}`)})`,
-          { timeoutMs: 8000 }
-        )
-      }
+      const openFile = (file) => ui.openFile(`${ws}/${file}`)
 
       // .rest is the same format under VS Code REST Client's extension.
       await openFile('requests.rest')
@@ -455,11 +444,7 @@ export default {
         envFile,
         '@host = http://127.0.0.1:1\n\n### env ping\nGET {{host}}/ping\nX-Token: {{token}}\n'
       )
-      await sleep(800)
-      await ui.clickRow(envFile)
-      await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(envFile)})`, {
-        timeoutMs: 8000
-      })
+      await ui.openFile(envFile)
       const envNames = await waitFor(
         `(() => {
           const el = document.querySelector('[aria-label="HTTP environment"]')

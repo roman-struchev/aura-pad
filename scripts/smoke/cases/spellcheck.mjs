@@ -70,11 +70,7 @@ export default {
     // two typos.
     const doc = path.join(ws, 'spelling.md')
     fs.writeFileSync(doc, 'hello world\n\nnotes check spelling\n\nhelo wrld\n')
-    await sleep(700)
-    await ui.clickRow(doc)
-    await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath === ${J(doc)})`, {
-      timeoutMs: 8000
-    })
+    await ui.openFile(doc)
 
     const count = () =>
       cdp.evaluate(`(() => {
@@ -117,11 +113,7 @@ export default {
     // A file whose every word is known reports nothing.
     const clean = path.join(ws, 'clean.md')
     fs.writeFileSync(clean, 'hello world\n\nnotes check spelling\n')
-    await sleep(700)
-    await ui.clickRow(clean)
-    await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath === ${J(clean)})`, {
-      timeoutMs: 8000
-    })
+    await ui.openFile(clean)
     const none = await waitFor(
       `(() => {
         const b = [...document.querySelectorAll('button')].find((b) =>
@@ -133,10 +125,7 @@ export default {
     check('a file with nothing unknown in it reports none', none === true, String(await count()))
 
     // Source files are left alone: every identifier in them would be a typo.
-    await ui.clickRow(`${ws}/data.json`)
-    await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath.endsWith('data.json'))`, {
-      timeoutMs: 8000
-    })
+    await ui.openFile(`${ws}/data.json`)
     await sleep(500)
     check('a file that is not prose is not checked', (await count()) === null)
 

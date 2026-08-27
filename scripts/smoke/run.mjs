@@ -11,7 +11,7 @@
 // runtime, so cases are written to leave the app in a usable state rather
 // than to get a fresh one.
 
-import { spawn } from 'child_process'
+import { execFileSync, spawn } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -55,6 +55,11 @@ const CASE_FILES = [
 
 const results = []
 let currentCase = null
+// Held at module scope so the crash handler below can take the app and the
+// fixture down with it: a run that dies half way used to leave an Electron
+// holding the CDP port, and the *next* run then failed for a reason that had
+// nothing to do with the code being tested.
+let running = null
 
 function check(name, ok, detail = '') {
   results.push({ case: currentCase, name, ok: !!ok, detail })
@@ -129,20 +134,46 @@ async function assertPortFree() {
   } catch {
     return
   }
+  // Naming the process saves the next person the lsof: nine times out of ten
+  // it is a --keep run (or an aborted one) still holding the port.
+  let holder = ''
+  try {
+    const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`], { encoding: 'utf-8' }).trim()
+    if (pids) holder = `\nIt is pid ${pids.split('\n').join(', ')} - \`kill ${pids.split('\n').join(' ')}\`.`
+  } catch {
+    // No lsof, or nothing to report - the message below still stands.
+  }
   console.error(
     `Something is already listening on CDP port ${PORT} - most likely a smoke run\n` +
-      `started with --keep. Quit it (or set SMOKE_CDP_PORT) and try again.`
+      `started with --keep. Quit it (or set SMOKE_CDP_PORT) and try again.${holder}`
+  )
+  process.exit(1)
+}
+
+// A case file nobody listed here never runs, and nothing else would say so -
+// the suite would just quietly cover less than it looks like it does.
+function assertEveryCaseRegistered() {
+  const onDisk = fs
+    .readdirSync(path.join(here, 'cases'))
+    .filter((f) => f.endsWith('.mjs'))
+    .sort()
+  const missing = onDisk.filter((f) => !CASE_FILES.includes(f))
+  if (missing.length === 0) return
+  console.error(
+    `These case files are not listed in CASE_FILES, so they never run:\n  ${missing.join('\n  ')}`
   )
   process.exit(1)
 }
 
 async function main() {
   const started = Date.now()
+  assertEveryCaseRegistered()
   await assertPortFree()
   const fixture = createFixture()
   console.log(`workspace: ${fixture.ws}\n`)
 
   let app = launch(fixture)
+  running = { app, fixture }
   let cdp
   try {
     cdp = await connect(PORT)
@@ -222,6 +253,7 @@ async function main() {
       await sleep(1500)
       app.child.kill('SIGKILL')
       app = launch(fixture)
+      running = { app, fixture }
       cdp = await connect(PORT)
       await raiseWindow()
       ctx.cdp = cdp
@@ -234,9 +266,19 @@ async function main() {
     }
   }
 
-  for (const file of CASE_FILES) {
-    const mod = (await import(path.join(here, 'cases', file))).default
-    if (filters.length > 0 && !filters.some((f) => mod.id.startsWith(f))) continue
+  // Loaded up front rather than inside the loop: the full id list is what
+  // makes `-- A1` mean A1 and not also A10..A18 (an id that matches a filter
+  // exactly wins; a filter that names no case falls back to prefix matching,
+  // so `-- A` still runs everything).
+  const cases = []
+  for (const file of CASE_FILES) cases.push((await import(path.join(here, 'cases', file))).default)
+  const ids = cases.map((c) => c.id)
+  const selected = (id) =>
+    filters.length === 0 ||
+    filters.some((f) => (ids.includes(f) ? id === f : id.startsWith(f)))
+
+  for (const mod of cases) {
+    if (!selected(mod.id)) continue
     currentCase = mod.id
     console.log(`\x1b[1m${mod.id} ${mod.title}\x1b[0m`)
     const caseStart = Date.now()
@@ -273,5 +315,9 @@ async function main() {
 
 main().catch((e) => {
   console.error(e)
+  if (running) {
+    running.app.child.kill('SIGKILL')
+    running.fixture.cleanup()
+  }
   process.exit(1)
 })

@@ -19,12 +19,7 @@ export default {
 
     const doc = path.join(ws, 'pasted.md')
     fs.writeFileSync(doc, 'before\n')
-    await sleep(600)
-    await ui.clickRow(doc)
-    await waitFor(
-      `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(doc)})`,
-      { timeoutMs: 8000 }
-    )
+    check('the new document opens', await ui.openFile(doc))
     await ui.focusEditor()
 
     // The clipboard is the real one - main reads it, not the renderer.
@@ -88,11 +83,7 @@ export default {
 
     // Only Markdown: the same paste in a .txt file is left to Monaco.
     const plain = path.join(ws, 'notes.txt')
-    await ui.clickRow(plain)
-    await waitFor(
-      `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(plain)})`,
-      { timeoutMs: 8000 }
-    )
+    await ui.openFile(plain)
     const before = fs.readdirSync(assetsDir).length
     await cdp.evaluate(`(() => {
       const dom = document.querySelector('.monaco-editor')

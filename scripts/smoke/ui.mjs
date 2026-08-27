@@ -134,6 +134,34 @@ export function makeUi(cdp) {
   const rowExists = (path) =>
     cdp.evaluate(`!!document.querySelector(${JSON.stringify(treeRow(path))})`)
 
+  // Waits for a row to appear rather than sleeping a guessed number of
+  // milliseconds after writing the file: the tree's watcher is debounced, and
+  // "long enough on this machine" is how a case becomes flaky on another one.
+  const waitForRow = async (path, timeoutMs = 8000) => {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (await rowExists(path)) return true
+      await sleep(100)
+    }
+    return false
+  }
+
+  // The whole "open this file" gesture, which nearly every case starts with:
+  // wait for the row, click it, and wait until the app says that tab is the
+  // active one. Hand-rolled in each case before, three of the four steps at a
+  // time, which is where the "the tree kept shifting" flakes came from.
+  const openFile = async (path, options) => {
+    if (!(await waitForRow(path))) throw new Error(`no tree row for ${path}`)
+    await clickRow(path, options)
+    const isActive = `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(path)})`
+    const deadline = Date.now() + 8000
+    while (Date.now() < deadline) {
+      if (await cdp.evaluate(isActive)) return true
+      await sleep(100)
+    }
+    return false
+  }
+
   // A row is highlighted when its class list carries the bare active classes -
   // not the `hover:` variants, which are always present in the string.
   const selectedPaths = () =>
@@ -232,6 +260,8 @@ export function makeUi(cdp) {
     treeRow,
     clickRow,
     rowExists,
+    waitForRow,
+    openFile,
     selectedPaths,
     buttonExists,
     clickButton,

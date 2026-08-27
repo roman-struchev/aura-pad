@@ -50,6 +50,17 @@ prefers these:
 - **Settings**: `window.api.getSettings()` or `<userDataDir>/settings.json`.
 - **Terminal output**: collect `window.api.onPtyData`, not the xterm DOM.
 
+And two helpers worth reaching for instead of a `sleep`:
+
+- `ui.openFile(path)` — waits for the tree row, clicks it, waits until that tab
+  is the active one. Almost every case starts with this; hand-rolling it is
+  where the "the tree kept shifting under the click" flakes came from.
+- `ui.waitForRow(path)` — for a file the case just wrote. The tree's watcher is
+  debounced, and "long enough on my machine" is how a case goes red on someone
+  else's. Note that a file first written and then only ever saved *through the
+  app* may never reach the tree at all: the watcher suppresses its own writes,
+  so wait for the row before those saves.
+
 ---
 
 # Part A — baseline (automated)

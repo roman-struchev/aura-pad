@@ -12,7 +12,10 @@ export default {
   async run({ cdp, ui, ws, check, waitFor, sleep }) {
     const doc = path.join(ws, 'history.txt')
     fs.writeFileSync(doc, 'version one\n')
-    await sleep(600)
+    // Before the saves below: they record self-writes, and the watcher
+    // suppresses the tree rebuild for those - so a file first seen *after*
+    // them would never reach the tree.
+    check('the new file reaches the tree', await ui.waitForRow(doc))
 
     const list = () => cdp.evaluate(`window.api.localHistoryList(${J(doc)})`)
     const read = (id) => cdp.evaluate(`window.api.localHistoryRead(${J(doc)}, ${J(id)})`)
@@ -85,10 +88,7 @@ export default {
     fs.rmSync(lair, { recursive: true, force: true })
 
     // ---- through the UI ----
-    await ui.clickRow(doc)
-    await waitFor(`window.api.getOpenTabs().then((s) => s.activeTabPath === ${J(doc)})`, {
-      timeoutMs: 8000
-    })
+    check('the file opens', await ui.openFile(doc))
     const tab = await ui.rectOf(`[data-tab-path="${doc}"]`)
     await ui.clickAt(tab.x + 20, tab.cy, { button: 'right' })
     await ui.clickButton('Local History')
