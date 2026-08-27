@@ -14,7 +14,7 @@ S — вечер, M — день-два, L — неделя и больше.
 | Команды | нет палитры команд: всё живёт в нативном меню и хоткеях | `menu.ts`, `useMenuActions.ts` |
 | ~~HTTP~~ | **сделано** (п. 5): окружения `http-client(.private).env.json` + «Save as .http» из формы | `src/main/httpEnv.ts`, `src/main/httpSave.ts` |
 | Редактор | шрифт, перенос строк, миникарта, пробелы/табы, trim on save — захардкожены | `App.tsx:93-96` (`minimap: false`, `wordWrap: 'on'`) |
-| Дерево | нет Copy Path / Copy Relative Path, Compare With, Open in Default App | `TreeContextMenu.tsx` |
+| Дерево | нет Compare With (Copy Path / Copy Relative Path / Open in Default App — **сделано**, п. 7) | `TreeContextMenu.tsx` |
 | Навигация | quick open не умеет `:строку` и `#символ`; нет структуры файла | `FileSearch.tsx` |
 | Окна | одно окно на процесс (`mainWindowRef`), нет New Window | `src/main/index.ts` |
 
@@ -118,8 +118,10 @@ Toggle Preview, и это правильно оставить как есть.
 
 6. **Compare With… (S).** Выделить два файла в дереве → diff. `DiffEditor` уже
    подключён, нужен только пункт меню и режим вкладки.
-7. **Copy Path / Copy Relative Path / Open in Default App (S).** Контекстное меню
-   дерева и вкладки. Ежедневная привычка из IDEA, стоит полчаса.
+7. ~~**Copy Path / Copy Relative Path / Open in Default App (S).**~~ **СДЕЛАНО:**
+   оба меню (дерево и вкладка), относительный путь — от ближайшего корня
+   воркспейса (`relativeToRoot` в `lib/path.ts`), несколько выделенных строк
+   дают путь на строку; «Open in Default App» — invoke с тем же allowlist.
 8. **Настройки редактора (S).** Размер и семейство шрифта, перенос строк,
    миникарта, размер табов, «убирать пробелы в конце строк при сохранении».
    Сейчас всё захардкожено в `App.tsx`; для «лёгкого редактора» это самые

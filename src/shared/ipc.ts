@@ -147,6 +147,10 @@ export interface InvokeContracts {
   // newest first, and the text of one of them (see src/main/localHistory.ts).
   'local-history-list': { args: [filePath: string]; result: LocalHistoryEntry[] }
   'local-history-read': { args: [filePath: string, id: string]; result: FileReadResult }
+  // Hand a file to whatever the OS opens it with (the tree's and the tab's
+  // "Open in Default App"). An invoke, not a send: "no application knows how
+  // to open this" is an answer the user needs to see.
+  'open-in-default-app': { args: [targetPath: string]; result: OpResult }
   'get-theme': { args: []; result: boolean }
   'get-settings': { args: []; result: AppSettings }
   'save-settings': { args: [settings: AppSettings]; result: AppSettings }
@@ -298,6 +302,7 @@ export const INVOKE_CHANNELS = {
   readImageDataUrl: 'read-image-data-url',
   localHistoryList: 'local-history-list',
   localHistoryRead: 'local-history-read',
+  openInDefaultApp: 'open-in-default-app',
   getTheme: 'get-theme',
   getSettings: 'get-settings',
   saveSettings: 'save-settings',

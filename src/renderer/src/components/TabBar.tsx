@@ -23,6 +23,8 @@ interface TabBarProps {
   // Open the file's local history (the states AuraPad stored before writing
   // over it).
   showHistory: (path: string) => void
+  // Open workspace roots, for the menu's "Copy Relative Path".
+  rootPaths: string[]
   reorderTab: (sourcePath: string, targetPath: string) => void
   isPathShared?: (path: string) => boolean
 }
@@ -55,6 +57,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   detachTab,
   isPrimaryWindow = true,
   showHistory,
+  rootPaths,
   reorderTab,
   isPathShared
 }) => {
@@ -337,6 +340,8 @@ export const TabBar: React.FC<TabBarProps> = ({
           onDetach={() => detachTab(contextMenu.path)}
           onShowHistory={() => showHistory(contextMenu.path)}
           canShowHistory={!extensionTabInfo(contextMenu.path)}
+          filePath={extensionTabInfo(contextMenu.path) ? null : contextMenu.path}
+          rootPaths={rootPaths}
           detachLabel={isPrimaryWindow ? 'Move to New Window' : 'Move Back to Main Window'}
           onCloseTab={() => closeTab(contextMenu.path)}
           onCloseOthers={() => closeOtherTabs(contextMenu.path)}

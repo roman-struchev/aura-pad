@@ -5,7 +5,7 @@ import fs from 'fs'
 export default {
   id: 'A4',
   title: 'File operations',
-  async run({ cdp, ui, ws, check, waitFor, sleep }) {
+  async run({ cdp, ui, ws, check, skip, waitFor, sleep }) {
     // Create: the "New File" action on the root row, then the name dialog.
     await ui.hover(ui.treeRow(ws))
     const newFile = await cdp.evaluate(`(() => {
@@ -138,6 +138,47 @@ export default {
       await sleep(400)
       return ok
     }
+
+    // ---- Copy Path / Copy Relative Path / Open in Default App ----
+    const nested = `${ws}/src/main.ts`
+    if (!(await ui.rowExists(nested))) await ui.clickRow(`${ws}/src`)
+    const readClipboard = async () => {
+      try {
+        return await cdp.evaluate('navigator.clipboard.readText()')
+      } catch {
+        return null
+      }
+    }
+    const menuAction = async (label) => {
+      const row = await ui.rectOf(ui.treeRow(nested))
+      await ui.clickAt(row.x + 20, row.y + row.h / 2, { button: 'right' })
+      await sleep(200)
+      await ui.clickButton(label)
+      await sleep(200)
+    }
+
+    await menuAction('Copy Path')
+    const absolute = await readClipboard()
+    if (absolute === null) skip('the tree copies a file path', 'clipboard read denied')
+    else check('the tree copies a file path', absolute === nested, String(absolute))
+
+    await menuAction('Copy Relative Path')
+    const relative = await readClipboard()
+    if (relative === null) skip('and the same path relative to its project', 'clipboard denied')
+    else
+      check('and the same path relative to its project', relative === 'src/main.ts', String(relative))
+
+    // Present but never clicked: it would hand the file to a real application
+    // on whoever's machine is running the suite.
+    const row = await ui.rectOf(ui.treeRow(nested))
+    await ui.clickAt(row.x + 20, row.y + row.h / 2, { button: 'right' })
+    await sleep(200)
+    check('the menu offers Open in Default App', await ui.buttonExists('Open in Default App'))
+    await cdp.evaluate(`window.dispatchEvent(new MouseEvent('click', { bubbles: true }))`)
+    await sleep(200)
+    // Handing a file to another program is behind the same allowlist (BUGS §2).
+    const refused = await cdp.evaluate(`window.api.openInDefaultApp('/etc/hosts')`)
+    check('opening a path outside the workspaces is refused', refused.success === false, refused.error)
 
     if (await setSidebar('right')) {
       const row = await ui.rectOf(ui.treeRow(ws))

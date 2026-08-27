@@ -157,6 +157,17 @@ function registerWorkspaceIpc(): void {
     shell.showItemInFolder(targetPath)
   })
 
+  // Tree/tab "Open in Default App". Same allowlist as every other path: this
+  // hands a file to another program, which is a bigger step than reading it.
+  handleInvoke('open-in-default-app', async (targetPath) => {
+    const denial = pathDenial(targetPath)
+    if (denial) return { success: false, error: denial }
+    // openPath answers with an empty string on success and the OS's own
+    // message otherwise ("no application is associated with...").
+    const message = await shell.openPath(targetPath)
+    return message ? { success: false, error: message } : { success: true }
+  })
+
   handleInvoke('read-file', (filePath) => {
     const denial = pathDenial(filePath)
     return denial ? { success: false, error: denial } : readFileContent(filePath)

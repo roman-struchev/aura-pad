@@ -1,6 +1,7 @@
 import React from 'react'
 import type { FileNode } from './FileTree'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
+import { relativeToRoot } from '../lib/path'
 
 interface TreeContextMenuProps {
   x: number
@@ -13,6 +14,8 @@ interface TreeContextMenuProps {
   selectedNodes: FileNode[]
   // Number of files/folders currently on the clipboard (ours or the OS's).
   clipboardCount: number
+  // Open workspace roots, for "Copy Relative Path".
+  rootPaths: string[]
   onClose: () => void
   onOpenTerminalHere: (node: FileNode) => void
   onCreateNew: (node: FileNode, type: 'file' | 'directory') => void
@@ -33,6 +36,7 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
   node,
   selectedNodes,
   clipboardCount,
+  rootPaths,
   onClose,
   onOpenTerminalHere,
   onCreateNew,
@@ -48,6 +52,12 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
   }
 
   const copyCount = Math.max(selectedNodes.length, 1)
+  // The whole selection, one path per line - the shape that pastes straight
+  // into a terminal or a commit message.
+  const pathsOf = (relative: boolean): string =>
+    (selectedNodes.length ? selectedNodes : [node])
+      .map((n) => (relative ? relativeToRoot(n.path, rootPaths) : n.path))
+      .join('\n')
   // Workspace roots are unlinked via "Remove from Workspace", never trashed.
   const deleteCount = selectedNodes.filter((n) => !n.isRoot).length
   const isMulti = copyCount > 1
@@ -64,6 +74,11 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
             ? 'Reveal in File Explorer'
             : 'Reveal in Files'}
       </ContextMenuItem>
+      {node.type === 'file' && (
+        <ContextMenuItem onClick={() => run(() => void window.api.openInDefaultApp(node.path))}>
+          Open in Default App
+        </ContextMenuItem>
+      )}
       <ContextMenuItem onClick={() => run(() => onCreateNew(node, 'file'))}>
         New File
       </ContextMenuItem>
@@ -76,6 +91,14 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
       <ContextMenuSeparator />
       <ContextMenuItem onClick={() => run(onCopy)}>
         {isMulti ? `Copy ${plural(copyCount, 'Item')}` : 'Copy'}
+      </ContextMenuItem>
+      <ContextMenuItem
+        onClick={() => run(() => void navigator.clipboard.writeText(pathsOf(false)))}
+      >
+        Copy Path
+      </ContextMenuItem>
+      <ContextMenuItem onClick={() => run(() => void navigator.clipboard.writeText(pathsOf(true)))}>
+        Copy Relative Path
       </ContextMenuItem>
       {clipboardCount > 0 && (
         <ContextMenuItem onClick={() => run(() => onPaste(node))}>

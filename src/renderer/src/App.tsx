@@ -998,6 +998,7 @@ function App(): React.JSX.Element {
             detachTab={isLeanWindow ? handleTabReturn : handleTabDetach}
             isPrimaryWindow={!isLeanWindow}
             showHistory={setHistoryPath}
+            rootPaths={tree.rootNodes.map((r) => r.path)}
             reorderTab={handleTabReorder}
             isPathShared={workTogether.isSharing}
           />
@@ -1291,6 +1292,7 @@ function App(): React.JSX.Element {
           node={tree.contextMenu.node}
           selectedNodes={tree.selectedNodes}
           clipboardCount={tree.clipboardCount}
+          rootPaths={tree.rootNodes.map((r) => r.path)}
           onClose={() => tree.setContextMenu(null)}
           onOpenTerminalHere={openTerminalHere}
           onCreateNew={tree.startCreate}

@@ -87,6 +87,9 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Open several folders side by side in one tree.
 - Create, rename, and delete files; drag them between folders to move them. Drop a file in
   from Finder/Explorer to open it.
+- Right-click a file (in the tree or on its tab) for **Copy Path**, **Copy Relative Path**
+  (relative to the project it is in) and **Open in Default App**; with several rows selected,
+  the copy actions give one path per line.
 - Copy & paste files and folders (`Cmd+C` / `Cmd+V`), including several at once —
   `Cmd`-click to add a row, `Shift`-click for a range. The clipboard is the system one on
   macOS, so a file copied in Finder pastes into the tree and vice versa.

@@ -155,6 +155,22 @@ export default {
       await sleep(400)
     }
 
+    // The tab's own menu carries the same two path actions as the tree's.
+    const readmeTab = await ui.rectOf(`[data-tab-path="${ws}/readme.md"]`)
+    await ui.clickAt(readmeTab.x + 20, readmeTab.cy, { button: 'right' })
+    await sleep(200)
+    await ui.clickButton('Copy Relative Path')
+    await sleep(200)
+    let tabPath = null
+    try {
+      tabPath = await cdp.evaluate('navigator.clipboard.readText()')
+    } catch {
+      tabPath = null
+    }
+    if (tabPath === null) skip('a tab copies its path relative to the project', 'clipboard denied')
+    else
+      check('a tab copies its path relative to the project', tabPath === 'readme.md', String(tabPath))
+
     await sleep(700)
     const persisted = JSON.parse(
       fs.readFileSync(path.join(fixture.profile, 'openTabs.json'), 'utf-8')

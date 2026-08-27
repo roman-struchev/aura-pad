@@ -1,5 +1,6 @@
 import React from 'react'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
+import { relativeToRoot } from '../lib/path'
 
 interface TabContextMenuProps {
   x: number
@@ -8,6 +9,10 @@ interface TabContextMenuProps {
   onDetach: () => void
   detachLabel: string
   onShowHistory: () => void
+  // The tab's file, and the workspace roots "Copy Relative Path" measures
+  // against. Absent for an extension tab, which has no file.
+  filePath: string | null
+  rootPaths: string[]
   // False for extension tabs (Google Tasks, HTTP form): nothing on disk, so
   // nothing was ever written over.
   canShowHistory: boolean
@@ -27,6 +32,8 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
   detachLabel,
   onShowHistory,
   canShowHistory,
+  filePath,
+  rootPaths,
   onDismiss,
   onTogglePin,
   onCloseTab,
@@ -46,6 +53,24 @@ export const TabContextMenu: React.FC<TabContextMenuProps> = ({
       <ContextMenuItem disabled={!canShowHistory} onClick={() => run(onShowHistory)}>
         Local History
       </ContextMenuItem>
+      {filePath && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => run(() => void navigator.clipboard.writeText(filePath))}>
+            Copy Path
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() =>
+              run(() => void navigator.clipboard.writeText(relativeToRoot(filePath, rootPaths)))
+            }
+          >
+            Copy Relative Path
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => run(() => void window.api.openInDefaultApp(filePath))}>
+            Open in Default App
+          </ContextMenuItem>
+        </>
+      )}
       <ContextMenuSeparator />
       <ContextMenuItem onClick={() => run(onCloseTab)}>Close</ContextMenuItem>
       <ContextMenuItem disabled={!hasOtherTabs} onClick={() => run(onCloseOthers)}>
