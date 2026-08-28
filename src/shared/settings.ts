@@ -174,6 +174,11 @@ export interface ExtensionSettings {
     environments: HttpClientEnvironment[]
     selectedEnvironment: string
   }
+  // "Address already in use": what is listening on this machine, and stopping
+  // it. Nothing to configure - it reads the ports when its tab is open.
+  ports: {
+    enabled: boolean
+  }
 }
 
 export interface AppSettings {
@@ -258,6 +263,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
         followRedirects: true,
         insecure: false
       }
-    }
+    },
+    // On by default for the same reason as the HTTP client: it needs no
+    // setup, and the sidebar's Extensions list is the only place it is found.
+    ports: { enabled: true }
   }
 }

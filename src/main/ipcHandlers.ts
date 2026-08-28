@@ -33,6 +33,7 @@ import {
   removeDictionary
 } from './spellDictionaries'
 import { appendHttpRequest } from './httpSave'
+import { killListeningProcess, listListeningPorts } from './ports'
 import { listSnapshots, readSnapshot, recordSnapshot, shouldSnapshot } from './localHistory'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
@@ -96,6 +97,12 @@ function registerAppIpc(): void {
   // Spelling dictionaries. No path arguments at all: the language names the
   // dictionary and main decides where it lives, so nothing here widens the
   // filesystem surface.
+  // The Ports extension. No path is involved, so the allowlist has nothing to
+  // say here; killListeningProcess does its own checking - it will only ever
+  // signal a pid that is currently listening (see src/main/ports.ts).
+  handleInvoke('list-listening-ports', () => listListeningPorts())
+  handleInvoke('kill-listening-process', (pid, force) => killListeningProcess(pid, force))
+
   handleInvoke('spell-dictionaries', () => listInstalledDictionaries())
   handleInvoke('spell-download-dictionary', (lang) => downloadDictionary(lang))
   handleInvoke('spell-remove-dictionary', (lang) => removeDictionary(lang))

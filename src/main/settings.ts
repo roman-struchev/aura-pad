@@ -34,7 +34,8 @@ export function loadSettings(): AppSettings {
           ...DEFAULT_SETTINGS.extensions.httpClient.request,
           ...saved.extensions?.httpClient?.request
         }
-      }
+      },
+      ports: { ...DEFAULT_SETTINGS.extensions.ports, ...saved.extensions?.ports }
     }
   }
   // Legacy flat key from before extension settings were namespaced. Only

@@ -13,6 +13,7 @@ import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateToast } from './components/UpdateToast'
 import { NameInputModal } from './components/NameInputModal'
 import { HttpSaveRequestModal } from './components/HttpSaveRequestModal'
+import { PortsTab } from './components/PortsTab'
 import { AiModals } from './components/AiModals'
 import { GoogleTasksTab } from './components/GoogleTasksTab'
 import { HttpClientTab } from './components/HttpClientTab'
@@ -937,6 +938,7 @@ function App(): React.JSX.Element {
   const enabledExtensions = (
     [
       ['http-client', settings.extensions.httpClient.enabled],
+      ['ports', settings.extensions.ports.enabled],
       ['google-tasks', settings.extensions.googleTasks.enabled]
     ] as const
   )
@@ -1112,6 +1114,8 @@ function App(): React.JSX.Element {
               {activeExt ? (
                 activeExt.id === 'google-tasks' ? (
                   <GoogleTasksTab settings={settings} updateSetting={updateSetting} />
+                ) : activeExt.id === 'ports' ? (
+                  <PortsTab />
                 ) : activeExt.id === 'http-client' ? (
                   <HttpClientTab
                     settings={settings}

@@ -1,6 +1,7 @@
 import type { AppSettings } from './settings'
 import type { OpenTabsState } from './openTabsState'
 import type { FileNode } from './fileNode'
+import type { ListeningPort } from './ports'
 import type { SearchResult } from './searchResult'
 import type { ReplaceRequest, ReplaceResult, SearchOptions } from './searchQuery'
 import type { GitCommit, GitRepoStatus } from './gitStatus'
@@ -154,6 +155,10 @@ export interface InvokeContracts {
   'open-in-default-app': { args: [targetPath: string]; result: OpResult }
   // Spelling dictionaries: which are installed, getting one, dropping one,
   // and handing its text to the checker's worker (src/main/spellDictionaries).
+  // The Ports extension: what is listening on this machine, and stopping one
+  // of them (src/main/ports.ts).
+  'list-listening-ports': { args: []; result: ListeningPort[] }
+  'kill-listening-process': { args: [pid: number, force: boolean]; result: OpResult }
   'spell-dictionaries': { args: []; result: SpellLanguage[] }
   'spell-download-dictionary': { args: [lang: string]; result: OpResult }
   'spell-remove-dictionary': { args: [lang: string]; result: OpResult }
@@ -310,6 +315,8 @@ export const INVOKE_CHANNELS = {
   localHistoryList: 'local-history-list',
   localHistoryRead: 'local-history-read',
   openInDefaultApp: 'open-in-default-app',
+  listListeningPorts: 'list-listening-ports',
+  killListeningProcess: 'kill-listening-process',
   spellDictionaries: 'spell-dictionaries',
   spellDownloadDictionary: 'spell-download-dictionary',
   spellRemoveDictionary: 'spell-remove-dictionary',

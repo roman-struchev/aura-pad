@@ -181,6 +181,14 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   and reuses no browser session, so a session-cookie API needs its `Cookie` header written
   out (`-b`, or a `Cookie:` line).
 
+**Ports**
+
+- A **Ports tab** (sidebar → Extensions) for the "address already in use" minute: every TCP
+  port this machine is listening on, with the process, its pid and the user. Type a port
+  (or part of a process name) to filter, then stop it — `SIGTERM`, or `SIGKILL` for one
+  that ignores it. It asks first, naming what it is about to stop, and only ever signals a
+  process that is currently listening: the list is the allowlist.
+
 **Work Together**
 
 - Share any open tab as a live link — others edit or read it in a regular browser, no

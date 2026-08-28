@@ -258,6 +258,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               labelClassName={density.settingsLabelClass}
               descriptionClassName={density.settingsDescriptionClass}
             />
+            <SettingToggle
+              label="Ports"
+              description="A tab listing what is listening on this machine, and a button to stop it"
+              checked={settings.extensions.ports.enabled}
+              onChange={(v) => updateExtension('ports', { enabled: v })}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
             {configureRow(
               'Google Tasks',
               `${settings.extensions.googleTasks.enabled ? 'Enabled' : 'Disabled'} · accounts and OAuth client`,

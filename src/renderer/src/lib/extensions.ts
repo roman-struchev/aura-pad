@@ -1,4 +1,4 @@
-import { Globe, SquareCheckBig, Puzzle } from 'lucide-react'
+import { Globe, Network, SquareCheckBig, Puzzle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { parseExtensionPath } from '../../../shared/extensionTab'
 
@@ -24,6 +24,10 @@ export const EXTENSIONS: Record<string, ExtensionDescriptor> = {
   'http-client': {
     icon: Globe,
     title: () => 'HTTP Client'
+  },
+  ports: {
+    icon: Network,
+    title: () => 'Ports'
   }
 }
 

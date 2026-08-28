@@ -45,6 +45,7 @@ const CASE_FILES = [
   'settings.mjs',
   'git.mjs',
   'http.mjs',
+  'ports.mjs',
   'security.mjs',
   'update-toast.mjs',
   'windows.mjs',
