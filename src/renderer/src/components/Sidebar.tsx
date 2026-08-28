@@ -122,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center justify-between mb-1 px-2">
               <span className="text-[10px] uppercase tracking-wider text-gray-500">Workspaces</span>
               <button
-                className="p-0.5 rounded text-gray-400 hover:text-white hover:bg-fleet-border"
+                className="p-0.5 rounded text-gray-400 hover:text-fleet-textHover hover:bg-fleet-border"
                 title="Open Folder"
                 onClick={onAddFolder}
               >
@@ -211,7 +211,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                   <span className="truncate flex-1">{path.split('/').pop()}</span>
                   <button
-                    className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
+                    className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover shrink-0"
                     title="Remove from list"
                     onClick={(e) => {
                       e.stopPropagation()

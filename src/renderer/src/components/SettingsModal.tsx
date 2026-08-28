@@ -307,7 +307,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className={clsx(density.settingsDescriptionClass, 'text-gray-400')}>
                   {s.description}
                 </span>
-                <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-gray-300 font-mono shrink-0">
+                <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-fleet-bg border border-fleet-border text-fleet-text font-mono shrink-0">
                   {s.keys}
                 </kbd>
               </div>

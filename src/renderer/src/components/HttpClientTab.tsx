@@ -225,7 +225,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                 dense
                 title="Clear history"
                 tooltipAlign="right"
-                colorClassName="text-gray-500 hover:text-white"
+                colorClassName="text-gray-500 hover:text-fleet-textHover"
                 onClick={() => window.api.httpHistoryClear().then(setHistory)}
               >
                 <Trash2 size={13} />
@@ -300,7 +300,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               className={clsx(
                 'flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors',
                 running
-                  ? 'bg-fleet-active text-fleet-text hover:text-white'
+                  ? 'bg-fleet-active text-fleet-text hover:text-fleet-textHover'
                   : canSend
                     ? 'bg-blue-600 text-white hover:bg-blue-500'
                     : 'bg-fleet-active text-gray-500 cursor-not-allowed'
@@ -318,7 +318,9 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                 onClick={() => setTab(id)}
                 className={clsx(
                   'px-2 py-1 rounded capitalize',
-                  tab === id ? 'bg-fleet-active text-white' : 'text-gray-400 hover:text-white'
+                  tab === id
+                    ? 'bg-fleet-active text-fleet-textHover'
+                    : 'text-gray-400 hover:text-fleet-textHover'
                 )}
               >
                 {id === 'headers' ? `Headers (${headers.filter((h) => h.name.trim()).length})` : id}
@@ -331,7 +333,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               dense
               title="Fill from a cURL command on the clipboard"
               tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-white"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
               onClick={importCurl}
             >
               <ClipboardPaste size={14} />
@@ -340,7 +342,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               dense
               title="Save as a request in a .http file"
               tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-white"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
               onClick={() => onSaveToFile(buildSpec())}
             >
               <FilePlus2 size={14} />
@@ -349,7 +351,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               dense
               title="Copy as cURL"
               tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-white"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
               onClick={() => navigator.clipboard.writeText(toCurl(buildSpec()))}
             >
               <Terminal size={14} />
@@ -362,7 +364,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               active={!historyCollapsed}
               title={historyCollapsed ? 'Show history' : 'Hide history'}
               tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-white"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
               onClick={() => setHistoryCollapsed(!historyCollapsed)}
             >
               <History size={14} />
@@ -395,7 +397,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                     dense
                     title="Remove header"
                     tooltipAlign="right"
-                    colorClassName="text-gray-500 hover:text-white"
+                    colorClassName="text-gray-500 hover:text-fleet-textHover"
                     onClick={() => setHeaders((prev) => prev.filter((_, i) => i !== index))}
                   >
                     <X size={13} />
@@ -404,7 +406,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               ))}
               <button
                 onClick={() => setHeaders((prev) => [...prev, { name: '', value: '' }])}
-                className="self-start flex items-center gap-1 text-[11px] text-gray-400 hover:text-white px-1 py-0.5"
+                className="self-start flex items-center gap-1 text-[11px] text-gray-400 hover:text-fleet-textHover px-1 py-0.5"
               >
                 <Plus size={12} />
                 Add header

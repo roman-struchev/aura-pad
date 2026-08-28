@@ -51,7 +51,7 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     className={clsx(
       'group relative rounded hover:bg-fleet-active transition-colors',
       dense ? 'p-1' : 'p-1.5',
-      active ? 'text-white bg-fleet-active' : colorClassName
+      active ? 'text-fleet-textHover bg-fleet-active' : colorClassName
     )}
   >
     {children}

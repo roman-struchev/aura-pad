@@ -14,6 +14,13 @@ interface ContextMenuProps {
   children: React.ReactNode
 }
 
+// Colours come from the theme tokens, never from fixed greys: the menu paints
+// itself on the sidebar colour, which is near-black in the dark themes and
+// near-white in the light ones, so a hardcoded text-gray-300 is legible on
+// exactly one of them - and it was the wrong one for anybody on the light
+// theme. Same for the hover state: text-white over bg-fleet-active is white on
+// light grey there.
+//
 // Positions a popup menu at the cursor while keeping it fully on screen:
 // flips it to the other side of the cursor when it would overflow (the usual
 // case near the bottom edge, or with the sidebar docked right), then clamps
@@ -62,7 +69,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, surface, childre
     <div
       ref={ref}
       data-surface={surface}
-      className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-gray-300 flex flex-col min-w-[160px] overflow-y-auto no-scrollbar"
+      className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-fleet-text flex flex-col min-w-[160px] overflow-y-auto no-scrollbar"
       style={{
         left: pos?.left ?? x,
         top: pos?.top ?? y,
@@ -94,7 +101,7 @@ export const ContextMenuItem: React.FC<ContextMenuItemProps> = ({
       'px-4 py-1.5 text-left shrink-0 disabled:opacity-40 disabled:cursor-not-allowed transition-colors',
       danger
         ? 'text-red-400 hover:bg-red-500 hover:text-white'
-        : 'hover:bg-fleet-active hover:text-white'
+        : 'hover:bg-fleet-active hover:text-fleet-textHover'
     )}
     disabled={disabled}
     onClick={onClick}

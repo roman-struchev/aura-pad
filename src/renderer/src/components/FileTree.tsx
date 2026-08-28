@@ -282,7 +282,7 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
         {isDirectory && (
           <div className="hidden group-hover:flex items-center gap-1 ml-1 shrink-0">
             <button
-              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white"
+              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover"
               title="New File"
               onClick={(e) => {
                 e.stopPropagation()
@@ -292,7 +292,7 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
               <FilePlus size={13} />
             </button>
             <button
-              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white"
+              className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover"
               title="New Folder"
               onClick={(e) => {
                 e.stopPropagation()

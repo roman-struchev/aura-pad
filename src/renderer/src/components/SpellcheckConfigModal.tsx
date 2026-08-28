@@ -119,7 +119,7 @@ export const SpellcheckConfigModal: React.FC<SpellcheckConfigModalProps> = ({
                   aria-label={here ? `Remove ${dictionary.label}` : `Download ${dictionary.label}`}
                   disabled={busy !== null}
                   onClick={() => void (here ? remove(dictionary.id) : install(dictionary.id))}
-                  className="rounded p-1 text-gray-400 hover:text-white hover:bg-fleet-active disabled:opacity-40"
+                  className="rounded p-1 text-gray-400 hover:text-fleet-textHover hover:bg-fleet-active disabled:opacity-40"
                 >
                   {busy === dictionary.id ? (
                     <Loader2 size={14} className="animate-spin" />

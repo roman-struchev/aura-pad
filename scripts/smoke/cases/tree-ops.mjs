@@ -180,6 +180,70 @@ export default {
     const refused = await cdp.evaluate(`window.api.openInDefaultApp('/etc/hosts')`)
     check('opening a path outside the workspaces is refused', refused.success === false, refused.error)
 
+    // The menu has to be readable in every theme, not just the dark one it was
+    // designed in: it paints itself on the sidebar colour, so fixed greys are
+    // legible on exactly one side of the theme list. Measured as a real
+    // contrast ratio, at rest and under the mouse (a real mouseMoved, so :hover
+    // actually applies).
+    const setTheme = async (value) => {
+      await ui.clickButton('settings')
+      await sleep(400)
+      const ok = await cdp.evaluate(`(() => {
+        const sel = [...document.querySelectorAll('select')].find((s) =>
+          [...s.options].some((o) => o.value === 'light') &&
+          [...s.options].some((o) => o.value === 'dark'))
+        if (!sel) return false
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+        setter.call(sel, ${JSON.stringify(value)})
+        sel.dispatchEvent(new Event('change', { bubbles: true }))
+        return true
+      })()`)
+      await ui.key('Escape', 'Escape', 27)
+      await sleep(400)
+      return ok
+    }
+
+    // Relative luminance and the WCAG contrast ratio, computed in the page
+    // against whatever the theme actually resolved the CSS variables to.
+    const menuContrast = () =>
+      cdp.evaluate(`(() => {
+        const item = document.querySelector('div.fixed[data-surface="tree"] button')
+        if (!item) return null
+        const rgb = (c) => (c.match(/[\\d.]+/g) || []).slice(0, 3).map(Number)
+        const chan = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+        const lum = ([r, g, b]) => 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+        const backdrop = (el) => {
+          for (let n = el; n; n = n.parentElement) {
+            const c = getComputedStyle(n).backgroundColor
+            if (c && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(c)) return c
+          }
+          return 'rgb(255, 255, 255)'
+        }
+        const a = lum(rgb(getComputedStyle(item).color))
+        const b = lum(rgb(backdrop(item)))
+        return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100
+      })()`)
+
+    if (await setTheme('light')) {
+      const row = await ui.rectOf(ui.treeRow(nested))
+      await ui.clickAt(row.x + 20, row.y + row.h / 2, { button: 'right' })
+      await sleep(250)
+      const resting = await menuContrast()
+      check('the context menu is readable in the light theme', resting >= 4.5, String(resting))
+
+      const item = await ui.rectOf('div.fixed[data-surface="tree"] button')
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: item.cx, y: item.cy })
+      await sleep(200)
+      const hovered = await menuContrast()
+      check('and stays readable under the mouse', hovered >= 4.5, String(hovered))
+
+      await cdp.evaluate(`window.dispatchEvent(new MouseEvent('click', { bubbles: true }))`)
+      await sleep(200)
+      await setTheme('dark')
+    } else {
+      check('the theme can be changed from settings', false)
+    }
+
     if (await setSidebar('right')) {
       const row = await ui.rectOf(ui.treeRow(ws))
       // A few px inside the row's right edge: the worst case for the flip.

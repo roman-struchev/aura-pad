@@ -93,7 +93,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
   const isFormattable = isFormattablePath(selectedPath)
   // Uniform, muted secondary tone: file actions are a quiet toolbar, not
   // status decoration - they light up on hover to read as clickable.
-  const muted = 'text-gray-500 hover:text-white'
+  const muted = 'text-gray-500 hover:text-fleet-textHover'
 
   return (
     <div className="flex items-center gap-0.5 shrink-0 rounded-md bg-fleet-header/80 px-0.5 backdrop-blur-sm">
@@ -119,7 +119,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
           onChange={(e) => onSelectHttpEnvironment(e.target.value)}
           aria-label="HTTP environment"
           title="Environment (http-client.env.json)"
-          className="bg-transparent border border-fleet-border rounded px-1 py-0.5 mx-0.5 text-[11px] text-gray-400 hover:text-white outline-none focus:border-blue-500"
+          className="bg-transparent border border-fleet-border rounded px-1 py-0.5 mx-0.5 text-[11px] text-gray-400 hover:text-fleet-textHover outline-none focus:border-blue-500"
         >
           <option value="">No environment</option>
           {httpEnvironmentNames.map((name) => (
@@ -149,7 +149,9 @@ export const FileActions: React.FC<FileActionsProps> = ({
         >
           <span className="flex items-center gap-0.5">
             <SpellCheck size={16} />
-            {spellIssueCount > 0 && <span className="text-[10px] leading-none">{spellIssueCount}</span>}
+            {spellIssueCount > 0 && (
+              <span className="text-[10px] leading-none">{spellIssueCount}</span>
+            )}
           </span>
         </ToolbarButton>
       )}
@@ -264,7 +266,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
             ) : (
               <button
                 onClick={readAloud.cycleRate}
-                className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium hover:text-white select-none"
+                className="px-1.5 py-0.5 rounded-full bg-fleet-active text-blue-400 text-[11px] font-medium hover:text-fleet-textHover select-none"
                 title="Reading speed"
               >
                 {readAloud.rate}×

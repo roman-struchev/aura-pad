@@ -288,7 +288,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button
           aria-label="All Open Tabs"
           title="All Open Tabs"
-          className="shrink-0 self-center px-1 py-1 rounded text-gray-400 hover:text-white hover:bg-fleet-active"
+          className="shrink-0 self-center px-1 py-1 rounded text-gray-400 hover:text-fleet-textHover hover:bg-fleet-active"
           onClick={(e) => {
             e.stopPropagation()
             const r = e.currentTarget.getBoundingClientRect()

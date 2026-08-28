@@ -499,7 +499,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
               <button
                 onClick={undoReplace}
                 disabled={isReplacing}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-gray-300 hover:bg-fleet-active shrink-0 disabled:opacity-40"
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-fleet-text hover:bg-fleet-active shrink-0 disabled:opacity-40"
               >
                 <Undo2 size={12} />
                 Undo

@@ -503,7 +503,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
           ))}
         </div>
         <button
-          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-white shrink-0 disabled:opacity-40"
+          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-fleet-textHover shrink-0 disabled:opacity-40"
           title="Add Google Account"
           disabled={connecting}
           onClick={addAccount}
@@ -512,7 +512,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
         </button>
         <div className="flex-1" />
         <button
-          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-white shrink-0"
+          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-fleet-textHover shrink-0"
           title="Refresh"
           onClick={() => setRefreshSeq((s) => s + 1)}
         >
@@ -572,7 +572,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                     </span>
                     <span className="text-[10px] text-gray-500 shrink-0">{open.length}</span>
                     <button
-                      className="p-0.5 rounded shrink-0 hover:bg-fleet-border text-gray-400 hover:text-white disabled:opacity-50 disabled:hover:bg-transparent"
+                      className="p-0.5 rounded shrink-0 hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover disabled:opacity-50 disabled:hover:bg-transparent"
                       title="Sort by due date"
                       disabled={!!sortingListId}
                       onClick={() => sortListByDue(list.id)}
@@ -584,7 +584,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                       )}
                     </button>
                     <button
-                      className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
+                      className="p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover shrink-0"
                       title="New Task"
                       onClick={() => setEditState({ mode: 'create', listId: list.id })}
                     >
@@ -639,7 +639,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                       ))}
                       {completed.length > 0 && (
                         <button
-                          className="w-full flex items-center gap-1 px-2 py-1 text-[10px] text-gray-500 hover:text-gray-300"
+                          className="w-full flex items-center gap-1 px-2 py-1 text-[10px] text-gray-500 hover:text-fleet-text"
                           onClick={() => toggleShowCompleted(list.id)}
                         >
                           {showCompleted ? <ChevronDown size={11} /> : <ChevronRight size={11} />}

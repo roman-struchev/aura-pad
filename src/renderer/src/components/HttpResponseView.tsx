@@ -101,7 +101,7 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
         </span>
         {exchange.running && (
           <button
-            className="text-[11px] px-1.5 py-0.5 rounded text-gray-300 hover:bg-fleet-active"
+            className="text-[11px] px-1.5 py-0.5 rounded text-fleet-text hover:bg-fleet-active"
             onClick={onCancel}
           >
             Cancel
@@ -112,7 +112,7 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
             dense
             title="Copy as cURL"
             tooltipAlign="right"
-            colorClassName="text-gray-500 hover:text-white"
+            colorClassName="text-gray-500 hover:text-fleet-textHover"
             onClick={() => exchange.spec && copy('curl', toCurl(exchange.spec))}
           >
             {copied === 'curl' ? <Check size={14} /> : <Terminal size={14} />}
@@ -123,7 +123,7 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
             dense
             title="Close"
             tooltipAlign="right"
-            colorClassName="text-gray-500 hover:text-white"
+            colorClassName="text-gray-500 hover:text-fleet-textHover"
             onClick={onClose}
           >
             <X size={14} />
@@ -175,7 +175,9 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
                 onClick={() => setTab(id)}
                 className={clsx(
                   'px-2 py-1 rounded capitalize',
-                  tab === id ? 'bg-fleet-active text-white' : 'text-gray-400 hover:text-white'
+                  tab === id
+                    ? 'bg-fleet-active text-fleet-textHover'
+                    : 'text-gray-400 hover:text-fleet-textHover'
                 )}
               >
                 {id === 'headers' ? `Headers (${response.headers.length})` : id}
@@ -187,7 +189,9 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
                 onClick={() => setRaw((r) => !r)}
                 className={clsx(
                   'px-2 py-1 rounded',
-                  raw ? 'text-gray-400 hover:text-white' : 'bg-fleet-active text-white'
+                  raw
+                    ? 'text-gray-400 hover:text-fleet-textHover'
+                    : 'bg-fleet-active text-fleet-textHover'
                 )}
                 title="Pretty-print the body"
               >
@@ -199,7 +203,7 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
               title={wrap ? 'No wrap' : 'Wrap lines'}
               tooltipAlign="right"
               active={wrap}
-              colorClassName="text-gray-500 hover:text-white"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
               onClick={() => setWrap((w) => !w)}
             >
               <WrapText size={14} />
@@ -208,7 +212,7 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
               dense
               title={tab === 'headers' ? 'Copy headers' : 'Copy body'}
               tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-white"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
               onClick={() =>
                 copy(
                   'content',

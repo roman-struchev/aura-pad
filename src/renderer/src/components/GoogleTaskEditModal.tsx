@@ -111,7 +111,7 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
         type="button"
         className={clsx(
           'p-1 rounded hover:bg-fleet-border disabled:opacity-30',
-          recording ? 'text-blue-400' : 'text-gray-500 hover:text-white'
+          recording ? 'text-blue-400' : 'text-gray-500 hover:text-fleet-textHover'
         )}
         title={recording ? 'Stop dictation' : busy ? 'Working…' : 'Dictate'}
         disabled={blockedByOtherField}
@@ -170,7 +170,7 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
               />
               <button
                 type="button"
-                className="p-1.5 rounded border border-fleet-border hover:bg-fleet-active text-gray-500 hover:text-white disabled:opacity-30 shrink-0"
+                className="p-1.5 rounded border border-fleet-border hover:bg-fleet-active text-gray-500 hover:text-fleet-textHover disabled:opacity-30 shrink-0"
                 title="Clear due date"
                 disabled={!due}
                 onClick={() => setDue('')}

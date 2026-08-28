@@ -198,7 +198,7 @@ const FileRow: React.FC<FileRowProps> = ({
         </span>
       )}
       <button
-        className="hidden group-hover:block p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-white shrink-0"
+        className="hidden group-hover:block p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover shrink-0"
         title={discardTitle}
         onClick={(e) => {
           e.stopPropagation()
@@ -470,14 +470,14 @@ export const GitPanel: React.FC<GitPanelProps> = ({
         {!!repo.behind && <span className="text-[10px] text-gray-500">↓{repo.behind}</span>}
         <div className="flex-1" />
         <button
-          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-white"
+          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-fleet-textHover"
           title="Pull"
           onClick={() => git.pull(repo.root)}
         >
           <ArrowDownToLine size={13} />
         </button>
         <button
-          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-white"
+          className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-fleet-textHover"
           title="Push"
           onClick={() => git.push(repo.root)}
         >

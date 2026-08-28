@@ -58,7 +58,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       active={!sidebarVisible}
       title={sidebarVisible ? 'Hide Sidebar (Cmd+B)' : 'Show Sidebar (Cmd+B)'}
       tooltipAlign={align}
-      colorClassName="text-gray-400 hover:text-white"
+      colorClassName="text-gray-400 hover:text-fleet-textHover"
     >
       {sidebarVisible ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
     </ToolbarButton>,
@@ -68,7 +68,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       onClick={onOpenGlobalSearch}
       title="Global Search (Cmd+Shift+F)"
       tooltipAlign={align}
-      colorClassName="text-gray-400 hover:text-white"
+      colorClassName="text-gray-400 hover:text-fleet-textHover"
     >
       <Search size={16} />
     </ToolbarButton>,
@@ -86,7 +86,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       onClick={onOpenSettings}
       title="Settings (Cmd+,)"
       tooltipAlign={align}
-      colorClassName="text-gray-400 hover:text-white"
+      colorClassName="text-gray-400 hover:text-fleet-textHover"
     >
       <SettingsIcon size={16} />
     </ToolbarButton>
