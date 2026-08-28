@@ -116,6 +116,13 @@ const REJECTED: Record<string, string> = {
 // Splits a command line into argv the way a POSIX shell would, minus every
 // feature that would need an actual shell. Backslash-newline continuations
 // (how curl commands are usually pasted) collapse into nothing.
+//
+// What a terminal actually puts on the clipboard is messier than what people
+// type: CRLF endings, trailing spaces after the continuation backslash (the
+// shell pads the line out to the window width), a dangling backslash on the
+// last line, non-breaking spaces from a browser's devtools. All of that is
+// whitespace nobody meant to write, so it is treated as such rather than
+// parsed into a stray argument or an error.
 function tokenize(input: string): { ok: true; argv: string[] } | { ok: false; error: string } {
   const argv: string[] = []
   let current = ''
@@ -131,24 +138,26 @@ function tokenize(input: string): { ok: true; argv: string[] } | { ok: false; er
   while (i < input.length) {
     const c = input[i]
 
-    if (c === '\\' && input[i + 1] === '\n') {
-      i += 2
-      continue
-    }
-    if (c === '^' && input[i + 1] === '\n') {
-      // Windows cmd line continuation, so a command copied from a .bat or
-      // from Windows browser devtools parses too.
-      i += 2
-      continue
+    if (c === '\\' || c === '^') {
+      // A line continuation: the backslash (or, from a .bat file or Windows
+      // devtools, a caret), anything the terminal padded the line with, and
+      // the newline itself.
+      const continuation = /^[ \t]*\r?\n/.exec(input.slice(i + 1))
+      if (continuation) {
+        i += 1 + continuation[0].length
+        continue
+      }
     }
     if (c === '\\') {
-      if (i + 1 >= input.length) return { ok: false, error: 'Command ends with a backslash' }
+      // Nothing left to escape: a command copied one line short of its end,
+      // which is a continuation to nowhere rather than a broken command.
+      if (i + 1 >= input.length) break
       current += input[i + 1]
       hasCurrent = true
       i += 2
       continue
     }
-    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\u00a0') {
       push()
       i += 1
       continue

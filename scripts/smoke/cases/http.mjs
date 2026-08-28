@@ -485,6 +485,86 @@ export default {
         `${requests.length} vs ${before}`
       )
       await setSelect('[aria-label="HTTP environment"]', '')
+
+      // ---- pasting a curl straight into the URL field ----
+      // Exactly what a terminal puts on the clipboard: CRLF endings, spaces
+      // padding the line after the continuation backslash, and a dangling
+      // backslash on the last line. None of it is part of the command.
+      await ui.click('[title="HTTP Client"]')
+      await waitFor(`!!document.querySelector('[data-testid="http-client-tab"]')`, {
+        timeoutMs: 8000
+      })
+      const pastedCurl =
+        '\n  ' +
+        [
+          `curl -X POST 'http://127.0.0.1:${fixture.httpPort}/echo' \\   `,
+          `  -H 'X-Pasted: yes' \\`,
+          `  --data '{"from":"clipboard"}' \\`
+        ].join('\r\n') +
+        '\r\n'
+      const paste = (text) =>
+        cdp.evaluate(`(() => {
+          const el = document.querySelector('[aria-label="URL"]')
+          if (!el) return false
+          const data = new DataTransfer()
+          data.setData('text/plain', ${JSON.stringify(text)})
+          el.focus()
+          el.dispatchEvent(
+            new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+          )
+          return true
+        })()`)
+
+      await paste(pastedCurl)
+      await sleep(250)
+      const pastedForm = await cdp.evaluate(`({
+        url: document.querySelector('[aria-label="URL"]')?.value || '',
+        method: document.querySelector('[aria-label="Method"]')?.value || '',
+        body: document.querySelector('[aria-label="Request body"]')?.value ?? null,
+        error: document.querySelector('[data-testid="http-client-tab"]')?.innerText.includes(
+          'backslash'
+        )
+      })`)
+      check(
+        'pasting a curl into the URL field fills the whole form',
+        pastedForm.url.endsWith('/echo') && pastedForm.method === 'POST',
+        JSON.stringify(pastedForm)
+      )
+      check(
+        'the body survives the line breaks and the trailing backslash',
+        pastedForm.body === '{"from":"clipboard"}' && pastedForm.error === false,
+        JSON.stringify(pastedForm)
+      )
+      await ui.clickButton('Headers')
+      check(
+        'and so do the headers',
+        (await cdp.evaluate(
+          `[...document.querySelectorAll('[aria-label$="name"]')].map((i) => i.value).join(',')`
+        )).includes('X-Pasted'),
+        'headers'
+      )
+      await ui.clickButton('Send')
+      await waitFor(
+        `(document.querySelector('[data-testid="http-response-view"]')?.innerText || '')
+           .includes('clipboard')`,
+        { timeoutMs: 15_000 }
+      )
+      check(
+        'the pasted request runs as it was written',
+        requests.at(-1)?.url === '/echo' && requests.at(-1)?.headers['x-pasted'] === 'yes',
+        JSON.stringify(requests.at(-1)?.headers ?? {})
+      )
+
+      // A plain URL is a plain URL: only text that reads as a command is
+      // taken apart into one.
+      await paste('https://example.com/not-a-curl')
+      await sleep(200)
+      check(
+        'pasting something that is not a curl leaves the form alone',
+        await cdp.evaluate(
+          `document.querySelector('[aria-label="Method"]')?.value === 'POST'`
+        )
+      )
     } finally {
       server.close()
     }

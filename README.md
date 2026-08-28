@@ -150,8 +150,10 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   values win over the file's own `@variables`, which is what lets one file point at three
   hosts; the private file's values win over the committed ones.
 - An **HTTP Client tab** for one-off requests (sidebar → Extensions): pick the method,
-  type the URL, add headers and a body, hit Send. It can also fill itself in from a `curl`
-  command on the clipboard, and hand one back — or **save the request into a `.http` file**
+  type the URL, add headers and a body, hit Send. Paste a `curl` command into the URL
+  field — or use the clipboard button — and the whole form fills itself in: the line
+  breaks, the padding and the stray trailing backslash a terminal adds when you copy a
+  wrapped command are all ignored. It hands one back too — or **save the request into a `.http` file**
   (the page-plus icon), which appends it as a `###` block and opens the file, so an
   experiment turns into something that lives in the repository.
 - The response opens beside the editor (or below the form): status, time and size, the body

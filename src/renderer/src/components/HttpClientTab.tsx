@@ -19,7 +19,7 @@ import {
 import type { AppSettings, HttpScratchRequest } from '../../../shared/settings'
 import { HttpResponseView } from './HttpResponseView'
 import { ToolbarButton } from './ToolbarButton'
-import { parseCurl, toCurl } from '../lib/http/curl'
+import { looksLikeCurl, parseCurl, toCurl } from '../lib/http/curl'
 import { useStableCallback } from '../lib/useStableCallback'
 import type { HttpExchange } from '../hooks/useHttpClient'
 
@@ -163,9 +163,27 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
     onSend(buildSpec())
   }
 
-  // Paste a curl command from anywhere (a terminal, a colleague, browser
-  // devtools) and get it back as a filled-in form - the same parser the
-  // editor's Run uses, so what runs here is what would run there.
+  // A curl command from anywhere (a terminal, a colleague, browser devtools)
+  // becomes a filled-in form - the same parser the editor's Run uses, so what
+  // runs here is what would run there. Whitespace around it is whatever the
+  // terminal wrapped the command in, not part of it.
+  const applyCurl = (text: string): boolean => {
+    const parsed = parseCurl(text.trim(), null)
+    if (!parsed.ok) {
+      setImportError(parsed.error)
+      return false
+    }
+    setImportError(null)
+    setMethod(parsed.spec.method)
+    setUrl(parsed.spec.url)
+    setHeaders(parsed.spec.headers)
+    setBody(parsed.spec.body ?? '')
+    setFollowRedirects(parsed.spec.followRedirects)
+    setInsecure(parsed.spec.insecure)
+    if (parsed.spec.body) setTab('body')
+    return true
+  }
+
   const importCurl = async (): Promise<void> => {
     setImportError(null)
     let text = ''
@@ -175,18 +193,11 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
       setImportError('Could not read the clipboard')
       return
     }
-    const parsed = parseCurl(text, null)
-    if (!parsed.ok) {
-      setImportError(parsed.error)
+    if (text.trim() === '') {
+      setImportError('The clipboard is empty')
       return
     }
-    setMethod(parsed.spec.method)
-    setUrl(parsed.spec.url)
-    setHeaders(parsed.spec.headers)
-    setBody(parsed.spec.body ?? '')
-    setFollowRedirects(parsed.spec.followRedirects)
-    setInsecure(parsed.spec.insecure)
-    if (parsed.spec.body) setTab('body')
+    applyCurl(text)
   }
 
   const setHeaderAt = (index: number, patch: Partial<{ name: string; value: string }>): void =>
@@ -288,6 +299,16 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') send()
+              }}
+              // Pasting a whole curl command into the URL field is what
+              // people try first - it lands as the request it describes
+              // rather than as a URL that happens to start with "curl".
+              // Anything that isn't one pastes normally.
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData('text')
+                if (!looksLikeCurl(pasted)) return
+                e.preventDefault()
+                applyCurl(pasted)
               }}
               placeholder="https://api.example.com/items"
               aria-label="URL"
