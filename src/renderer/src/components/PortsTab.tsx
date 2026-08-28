@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Loader2, RefreshCw, Skull, Zap } from 'lucide-react'
 import clsx from 'clsx'
-import { confirmDialog } from '../lib/dialogs'
 import { ToolbarButton } from './ToolbarButton'
 import type { ListeningPort } from '../../../shared/ports'
 
@@ -51,11 +50,12 @@ export const PortsTab: React.FC = () => {
         String(row.pid) === query
   )
 
+  // Straight to the signal, no confirmation: the whole point of the tab is
+  // "the port I need is taken, free it", and a dialog in front of that turns
+  // one click into three. The two buttons are the safety - a stray click
+  // sends SIGTERM, which a server survives if it wants to; SIGKILL is a
+  // different button.
   const kill = async (row: ListeningPort, force: boolean): Promise<void> => {
-    const ok = await confirmDialog(
-      `${force ? 'Force stop' : 'Stop'} ${row.command} (pid ${row.pid}) listening on port ${row.port}?`
-    )
-    if (!ok) return
     setBusy(row.pid)
     setError(null)
     setNote(null)
@@ -142,14 +142,18 @@ export const PortsTab: React.FC = () => {
                 <tr
                   key={`${row.pid}:${row.port}`}
                   data-port-row={row.port}
-                  className="border-b border-fleet-border/40 hover:bg-fleet-active/40"
+                  // No rule under every row: at six columns a line per row
+                  // turns the table into a grid of lines with text in it
+                  // (the history list next door makes the same call). The
+                  // hover band is what marks the row being aimed at.
+                  className="hover:bg-fleet-active"
                 >
-                  <td className="px-3 py-1.5 font-mono text-fleet-textHover">{row.port}</td>
-                  <td className="px-3 py-1.5 truncate">{row.command}</td>
-                  <td className="px-3 py-1.5 font-mono text-gray-400">{row.pid}</td>
-                  <td className="px-3 py-1.5 font-mono text-gray-400">{row.address}</td>
-                  <td className="px-3 py-1.5 text-gray-400 truncate">{row.user}</td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1 font-mono text-fleet-textHover">{row.port}</td>
+                  <td className="px-3 py-1 truncate">{row.command}</td>
+                  <td className="px-3 py-1 font-mono text-gray-400">{row.pid}</td>
+                  <td className="px-3 py-1 font-mono text-gray-400">{row.address}</td>
+                  <td className="px-3 py-1 text-gray-400 truncate">{row.user}</td>
+                  <td className="px-3 py-1">
                     <div className="flex items-center justify-end gap-1">
                       {busy === row.pid ? (
                         <Loader2 size={13} className="animate-spin text-gray-400" />

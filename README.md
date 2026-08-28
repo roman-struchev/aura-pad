@@ -185,9 +185,10 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 - A **Ports tab** (sidebar → Extensions) for the "address already in use" minute: every TCP
   port this machine is listening on, with the process, its pid and the user. Type a port
-  (or part of a process name) to filter, then stop it — `SIGTERM`, or `SIGKILL` for one
-  that ignores it. It asks first, naming what it is about to stop, and only ever signals a
-  process that is currently listening: the list is the allowlist.
+  (or part of a process name) to filter, then stop it — one click, `SIGTERM`, with
+  `SIGKILL` as a separate button for one that ignores it. No confirmation in the way: the
+  two buttons are the safety, and the row says afterwards what was sent to what. It only
+  ever signals a process that is currently listening: the list is the allowlist.
 
 **Work Together**
 

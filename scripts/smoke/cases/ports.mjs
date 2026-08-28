@@ -65,14 +65,9 @@ export default {
       )
       check('filtering by port leaves only that port', filtered)
 
-      // Stopping it: the confirm dialog is the app's own, so it has to be
-      // answered before anything is signalled.
+      // Stopping it is one click - no confirmation in the way of the gesture
+      // the tab exists for.
       await ui.clickButton(`Stop port ${port}`)
-      const asked = await waitFor(`document.body.innerText.includes('listening on port ${port}')`, {
-        timeoutMs: 5000
-      })
-      check('stopping asks first, naming the process and the port', asked)
-      await ui.clickButton('Confirm')
 
       const died = await (async () => {
         for (let i = 0; i < 50; i++) {
@@ -82,7 +77,7 @@ export default {
         return false
       })()
       check(
-        'confirming stops the process holding the port',
+        'the Stop button stops the process holding the port',
         died,
         `code=${exitCode} signal=${exitSignal}`
       )
@@ -91,6 +86,12 @@ export default {
         await waitFor(`document.querySelectorAll('[data-port-row]').length === 0`, {
           timeoutMs: 8000
         })
+      )
+      check(
+        'and it says what it sent, to what',
+        await cdp.evaluate(
+          `document.querySelector('[data-testid="ports-tab"]')?.innerText.includes('SIGTERM')`
+        )
       )
 
       // The pid is not a free-form argument: only something currently
