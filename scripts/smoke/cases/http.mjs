@@ -555,6 +555,22 @@ export default {
         JSON.stringify(requests.at(-1)?.headers ?? {})
       )
 
+      // The response sits under a form that already says what was sent: no
+      // second copy of the request line, and one Copy as cURL between them.
+      const noEcho = await cdp.evaluate(`(() => {
+        const tab = document.querySelector('[data-testid="http-client-tab"]')
+        const view = tab?.querySelector('[data-testid="http-response-view"]')
+        return {
+          curlButtons: [...(tab?.querySelectorAll('[aria-label="Copy as cURL"]') || [])].length,
+          repeatsUrl: (view?.innerText || '').includes('127.0.0.1')
+        }
+      })()`)
+      check(
+        'the response does not repeat the URL and the curl button above it',
+        noEcho.curlButtons === 1 && noEcho.repeatsUrl === false,
+        JSON.stringify(noEcho)
+      )
+
       // A plain URL is a plain URL: only text that reads as a command is
       // taken apart into one.
       await paste('https://example.com/not-a-curl')

@@ -157,8 +157,10 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   (the page-plus icon), which appends it as a `###` block and opens the file, so an
   experiment turns into something that lives in the repository.
 - The response opens beside the editor (or below the form): status, time and size, the body
-  (JSON and XML pretty-printed, images shown as images), every response header, and one
-  click to copy any of it — or to copy the request back out as a `curl` command.
+  (JSON and XML pretty-printed, images shown as images), every response header, the request
+  as it was actually sent, and one click to copy any of it — or to copy the request back out
+  as a `curl` command. Beside the editor it is headed by the request line, since nothing
+  else on screen says which request answered; in the tab the form above says it already.
 - **History** of the last 50 requests, whichever way they were sent. Click one to load the
   whole request — method, URL, headers, body, redirect and TLS options — back into the form
   and re-run it. The list is hidden until you ask for it (the clock icon in the tab's

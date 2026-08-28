@@ -448,7 +448,9 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
 
         <div className="flex-1 min-h-0">
           {exchange ? (
-            <HttpResponseView exchange={exchange} onCancel={onCancel} />
+            // No request bar: the form above already names the request
+            // and carries its own Copy as cURL.
+            <HttpResponseView exchange={exchange} onCancel={onCancel} showRequestBar={false} />
           ) : (
             <div className="h-full flex items-center justify-center text-gray-500 text-xs">
               Send a request to see the response here

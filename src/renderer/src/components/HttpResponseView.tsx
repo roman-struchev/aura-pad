@@ -12,6 +12,12 @@ interface HttpResponseViewProps {
   // Omitted where the response has no separate frame to dismiss (the HTTP
   // Client tab, which *is* the frame).
   onClose?: () => void
+  // The row naming the request that was sent, with Cancel and Copy as cURL.
+  // Beside the editor it is the only thing that says which request the
+  // response belongs to; in the HTTP Client tab the form right above says it
+  // already, and has both buttons of its own - so the row is off there
+  // rather than repeating the URL and the curl a second time.
+  showRequestBar?: boolean
 }
 
 type ViewTab = 'body' | 'headers' | 'request'
@@ -68,7 +74,8 @@ function prettify(body: string, contentType: string | null): string | null {
 export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
   exchange,
   onCancel,
-  onClose
+  onClose,
+  showRequestBar = true
 }) => {
   const [tab, setTab] = useState<ViewTab>('body')
   const [raw, setRaw] = useState(false)
@@ -95,41 +102,43 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0" data-testid="http-response-view">
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-fleet-border">
-        <span className="text-[11px] text-gray-400 truncate flex-1" title={exchange.title}>
-          {exchange.title}
-        </span>
-        {exchange.running && (
-          <button
-            className="text-[11px] px-1.5 py-0.5 rounded text-fleet-text hover:bg-fleet-active"
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-        )}
-        {exchange.spec && (
-          <ToolbarButton
-            dense
-            title="Copy as cURL"
-            tooltipAlign="right"
-            colorClassName="text-gray-500 hover:text-fleet-textHover"
-            onClick={() => exchange.spec && copy('curl', toCurl(exchange.spec))}
-          >
-            {copied === 'curl' ? <Check size={14} /> : <Terminal size={14} />}
-          </ToolbarButton>
-        )}
-        {onClose && (
-          <ToolbarButton
-            dense
-            title="Close"
-            tooltipAlign="right"
-            colorClassName="text-gray-500 hover:text-fleet-textHover"
-            onClick={onClose}
-          >
-            <X size={14} />
-          </ToolbarButton>
-        )}
-      </div>
+      {showRequestBar && (
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-fleet-border">
+          <span className="text-[11px] text-gray-400 truncate flex-1" title={exchange.title}>
+            {exchange.title}
+          </span>
+          {exchange.running && (
+            <button
+              className="text-[11px] px-1.5 py-0.5 rounded text-fleet-text hover:bg-fleet-active"
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+          )}
+          {exchange.spec && (
+            <ToolbarButton
+              dense
+              title="Copy as cURL"
+              tooltipAlign="right"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
+              onClick={() => exchange.spec && copy('curl', toCurl(exchange.spec))}
+            >
+              {copied === 'curl' ? <Check size={14} /> : <Terminal size={14} />}
+            </ToolbarButton>
+          )}
+          {onClose && (
+            <ToolbarButton
+              dense
+              title="Close"
+              tooltipAlign="right"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
+              onClick={onClose}
+            >
+              <X size={14} />
+            </ToolbarButton>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-fleet-border text-[11px]">
         {exchange.running ? (
