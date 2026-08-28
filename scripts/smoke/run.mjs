@@ -79,13 +79,45 @@ function launch(fixture) {
     {
       cwd: repoRoot,
       env: { ...process.env, AURAPAD_USER_DATA_DIR: fixture.profile },
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Its own process group, so killApp below can take the whole tree down
+      // in one signal (see there for why that matters).
+      detached: true
     }
   )
   const log = []
   child.stdout.on('data', (d) => log.push(String(d)))
   child.stderr.on('data', (d) => log.push(String(d)))
   return { child, log }
+}
+
+// What `npm run dev` leaves behind is a chain - npm, then electron-vite, then
+// Electron itself - and killing only the npm process orphans the two below
+// it. An orphaned Electron keeps the CDP port, so the *next* run refuses to
+// start ("something is already listening"), which is a confusing way to be
+// told that the last run's app vetoed its own close: an open modal, a tab
+// with unsaved text. So the whole process group goes at once, and anything
+// still holding the port afterwards is killed by pid.
+function killApp(app) {
+  try {
+    process.kill(-app.child.pid, 'SIGKILL')
+  } catch {
+    // No group (the spawn failed, or it is already gone) - the child itself
+    // is still worth a signal.
+    app.child.kill('SIGKILL')
+  }
+  try {
+    const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`], { encoding: 'utf-8' }).trim()
+    for (const pid of pids.split('\n').filter(Boolean)) {
+      try {
+        process.kill(Number(pid), 'SIGKILL')
+      } catch {
+        // Already gone between the listing and here.
+      }
+    }
+  } catch {
+    // No lsof, or nothing left holding the port.
+  }
 }
 
 // Chromium throttles rendering (and, with it, Monaco's edit events) in a
@@ -179,7 +211,7 @@ async function main() {
     cdp = await connect(PORT)
   } catch (e) {
     console.error(`\nApp never came up: ${e.message}\n${app.log.join('')}`)
-    app.child.kill('SIGKILL')
+    killApp(app)
     fixture.cleanup()
     process.exit(1)
   }
@@ -251,7 +283,7 @@ async function main() {
       cdp.close()
       await quitApp()
       await sleep(1500)
-      app.child.kill('SIGKILL')
+      killApp(app)
       app = launch(fixture)
       running = { app, fixture }
       cdp = await connect(PORT)
@@ -307,7 +339,7 @@ async function main() {
   } else {
     ctx.cdp.close()
     await quitApp()
-    app.child.kill('SIGKILL')
+    killApp(app)
     fixture.cleanup()
   }
   process.exit(failed.length > 0 ? 1 : 0)
@@ -316,7 +348,7 @@ async function main() {
 main().catch((e) => {
   console.error(e)
   if (running) {
-    running.app.child.kill('SIGKILL')
+    killApp(running.app)
     running.fixture.cleanup()
   }
   process.exit(1)
