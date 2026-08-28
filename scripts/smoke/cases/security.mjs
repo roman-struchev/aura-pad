@@ -59,6 +59,20 @@ export default {
     check('creating a file there is refused', created.success === false, created.error)
     check('nothing was planted', !fs.existsSync(path.join(lair, 'planted.txt')))
 
+    // A path several levels of not-yet-existing folder deep is judged by the
+    // nearest folder that does exist (that is what lets a request be saved
+    // into "api/orders.http"), so a made-up tail must not smuggle one in.
+    const deepOutside = path.join(lair, 'no', 'such', 'folder', 'orders.http')
+    const deepSave = await cdp.evaluate(
+      `window.api.httpSaveRequest(${q(deepOutside)}, ${q('### x\\nGET http://127.0.0.1:1/x\\n')})`
+    )
+    check(
+      'a path deep inside folders that do not exist is judged by its root',
+      deepSave.success === false,
+      deepSave.error
+    )
+    check('and no folders were made outside the workspace', !fs.existsSync(path.join(lair, 'no')))
+
     const deleted = await cdp.evaluate(`window.api.deletePaths([${q(canary)}])`)
     check('trashing it is refused', deleted.success === false, deleted.error)
     check('the file survived', fs.existsSync(canary))

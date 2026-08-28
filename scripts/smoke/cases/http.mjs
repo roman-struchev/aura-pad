@@ -374,19 +374,25 @@ export default {
       await fill('[aria-label="URL"]', `http://127.0.0.1:${fixture.httpPort}/ping`)
       await setSelect('[aria-label="Method"]', 'GET')
       await ui.clickButton('Save as a request in a .http file')
-      const saveDialog = await waitFor(
-        `!!document.querySelector('input[placeholder="/path/to/requests.http"]')`,
-        { timeoutMs: 5000 }
-      )
+      const saveDialog = await waitFor(`!!document.querySelector('[aria-label="Request name"]')`, {
+        timeoutMs: 5000
+      })
       check('the form offers to save the request to a file', saveDialog)
-      await fill('input[placeholder="/path/to/requests.http"]', savedFile)
+      // The heading it is filed under is the user's to write.
+      await fill('[aria-label="Request name"]', 'ping the smoke server')
+      // Into a new file in the workspace root, named without an extension -
+      // the dialog adds the .http.
+      await setSelect('[aria-label="Folder"]', ws)
+      await fill('[aria-label="New request file"]', 'saved')
       // "Save", not the toolbar button whose title also contains the word.
-      await cdp.evaluate(`(() => {
-        const b = [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Save')
-        if (!b) return false
-        b.click()
-        return true
-      })()`)
+      const clickSave = () =>
+        cdp.evaluate(`(() => {
+          const b = [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Save')
+          if (!b) return false
+          b.click()
+          return true
+        })()`)
+      await clickSave()
       const landed = await (async () => {
         for (let i = 0; i < 40; i++) {
           if (fs.existsSync(savedFile)) return fs.readFileSync(savedFile, 'utf-8')
@@ -397,8 +403,8 @@ export default {
       // Method, URL, the headers and the body the form holds - a block that
       // parses back into the same request.
       check(
-        'the request is written as a .http block',
-        /^### GET \/ping\nGET http:\/\/127\.0\.0\.1:\d+\/ping\nX-Refill: yes\n\n\{"refill":true\}\n$/.test(
+        'the request is written as a .http block under the name it was given',
+        /^### ping the smoke server\nGET http:\/\/127\.0\.0\.1:\d+\/ping\nX-Refill: yes\n\n\{"refill":true\}\n$/.test(
           landed
         ),
         JSON.stringify(landed)
@@ -641,6 +647,38 @@ export default {
         await cdp.evaluate(
           `window.api.getSettings().then((s) => s.extensions.httpClient.selectedEnvironment === 'local')`
         )
+      )
+
+      // A second save goes into a folder that doesn't exist yet: naming the
+      // file is the whole gesture, digging its folder out of the file tree
+      // first is not.
+      await ui.click('[title="HTTP Client"]')
+      await waitFor(`!!document.querySelector('[data-testid="http-client-tab"]')`, {
+        timeoutMs: 8000
+      })
+      await ui.clickButton('Save as a request in a .http file')
+      await waitFor(`!!document.querySelector('[aria-label="Request name"]')`, { timeoutMs: 5000 })
+      const nested = path.join(ws, 'api', 'orders.http')
+      check(
+        'the dialog lists the request files already in the workspace',
+        await cdp.evaluate(
+          `!!document.querySelector('[data-http-target=${JSON.stringify(savedFile)}]')`
+        )
+      )
+      await setSelect('[aria-label="Folder"]', ws)
+      await fill('[aria-label="New request file"]', 'api/orders.http')
+      await clickSave()
+      const nestedLanded = await (async () => {
+        for (let i = 0; i < 40; i++) {
+          if (fs.existsSync(nested)) return fs.readFileSync(nested, 'utf-8')
+          await sleep(200)
+        }
+        return ''
+      })()
+      check(
+        'a name with a folder in it makes the folder on the way',
+        nestedLanded.startsWith('###'),
+        JSON.stringify(nestedLanded.slice(0, 80))
       )
     } finally {
       server.close()

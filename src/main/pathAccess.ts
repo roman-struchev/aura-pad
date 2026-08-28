@@ -37,8 +37,15 @@ const grants = new Set<string>()
 
 // Resolves symlinks so two names for the same file can't disagree about
 // whether they are allowed. A path that doesn't exist yet - the target of a
-// create, a rename or a save of a new file - resolves through its parent
-// directory instead, which does have to exist.
+// create, a rename, or a save into a folder that is about to be made along
+// with it - resolves through its nearest existing ancestor instead, with the
+// missing tail appended.
+//
+// Walking up rather than looking only at the parent is what lets "api/
+// orders.http" be checked before either the file or its folder exists. It
+// gives nothing away: `resolve` above has already collapsed every `..`, so
+// the tail can only go deeper, and every symlink in the part that does exist
+// is still followed before the decision is made.
 function realPath(target: string): string | null {
   if (typeof target !== 'string' || target.length === 0) return null
   const absolute = path.resolve(target)
@@ -47,10 +54,18 @@ function realPath(target: string): string | null {
   } catch {
     // Not there (yet).
   }
-  try {
-    return path.join(fs.realpathSync(path.dirname(absolute)), path.basename(absolute))
-  } catch {
-    return null
+  const tail: string[] = []
+  let dir = absolute
+  while (true) {
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
+    tail.unshift(path.basename(dir))
+    dir = parent
+    try {
+      return path.join(fs.realpathSync(dir), ...tail)
+    } catch {
+      // Keep walking up.
+    }
   }
 }
 

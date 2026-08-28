@@ -315,18 +315,20 @@ export function buildRequestFromText(
 // a block that belongs in a `.http` file. What the form can't express (a
 // multipart body) is left out rather than faked - it would parse back into a
 // different request.
-export function specToHttpBlock(spec: HttpRequestSpec): string {
-  const name = (() => {
-    try {
-      const parsed = new URL(spec.url)
-      const suffix = parsed.pathname === '/' ? parsed.host : parsed.pathname
-      return `${spec.method} ${suffix}`
-    } catch {
-      return `${spec.method} ${spec.url}`
-    }
-  })()
+// What the request is called when nobody says: enough to tell two blocks in
+// the same file apart at a glance.
+export function defaultRequestName(spec: HttpRequestSpec): string {
+  try {
+    const parsed = new URL(spec.url)
+    const suffix = parsed.pathname === '/' ? parsed.host : parsed.pathname
+    return `${spec.method} ${suffix}`
+  } catch {
+    return `${spec.method} ${spec.url}`
+  }
+}
 
-  const lines = [`### ${name}`]
+export function specToHttpBlock(spec: HttpRequestSpec, requestName?: string): string {
+  const lines = [`### ${requestName?.trim() || defaultRequestName(spec)}`]
   if (spec.insecure) lines.push('# @insecure')
   if (!spec.followRedirects) lines.push('# @no-redirect')
   if (spec.timeoutMs !== DEFAULT_TIMEOUT_MS) {

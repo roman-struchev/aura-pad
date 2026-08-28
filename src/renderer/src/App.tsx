@@ -12,6 +12,7 @@ import { FileActions } from './components/FileActions'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateToast } from './components/UpdateToast'
 import { NameInputModal } from './components/NameInputModal'
+import { HttpSaveRequestModal } from './components/HttpSaveRequestModal'
 import { AiModals } from './components/AiModals'
 import { GoogleTasksTab } from './components/GoogleTasksTab'
 import { HttpClientTab } from './components/HttpClientTab'
@@ -64,6 +65,7 @@ import {
   buildRequest,
   buildRequestFromText,
   parseHttpFile,
+  defaultRequestName,
   specToHttpBlock,
   type BuildResult
 } from './lib/http/httpFile'
@@ -453,8 +455,6 @@ function App(): React.JSX.Element {
     envs: HttpEnvironments
   } | null>(null)
   const [httpSaveSpec, setHttpSaveSpec] = useState<HttpRequestSpec | null>(null)
-  const [httpSavePath, setHttpSavePath] = useState('')
-  const httpSaveInputRef = useRef<HTMLInputElement | null>(null)
   // Quick open's live query, so switching to search-in-files carries it over.
   // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
   const fileSearchQueryRef = useRef('')
@@ -781,20 +781,15 @@ function App(): React.JSX.Element {
   const httpEnvironmentName = settings.extensions.httpClient.environment
   const httpEnvVariables = (httpEnvironmentName && httpEnv?.variables[httpEnvironmentName]) || {}
 
-  // "Save as .http" from the HTTP Client form: ask for a path (prefilled with
-  // a requests.http in the first open folder), then append the request there.
-  const startHttpSave = (spec: HttpRequestSpec): void => {
-    const root = tree.rootNodes[0]?.path ?? ''
-    setHttpSavePath(root ? `${root}/requests.http` : 'requests.http')
-    setHttpSaveSpec(spec)
-  }
+  // "Save as .http" from the HTTP Client form: which file, under which
+  // heading (HttpSaveRequestModal), then append it there.
+  const startHttpSave = (spec: HttpRequestSpec): void => setHttpSaveSpec(spec)
 
-  const confirmHttpSave = async (): Promise<void> => {
+  const confirmHttpSave = async (target: string, name: string): Promise<void> => {
     const spec = httpSaveSpec
-    const target = httpSavePath.trim()
     if (!spec || !target) return
     setHttpSaveSpec(null)
-    const result = await window.api.httpSaveRequest(target, specToHttpBlock(spec))
+    const result = await window.api.httpSaveRequest(target, specToHttpBlock(spec, name))
     if (!result.success) {
       await alertDialog(result.error ?? 'The request could not be saved.')
       return
@@ -1290,14 +1285,10 @@ function App(): React.JSX.Element {
       )}
 
       {httpSaveSpec && (
-        <NameInputModal
-          title="Save Request to a .http File"
-          value={httpSavePath}
-          placeholder="/path/to/requests.http"
-          confirmLabel="Save"
-          inputRef={httpSaveInputRef}
-          onChange={setHttpSavePath}
-          onConfirm={confirmHttpSave}
+        <HttpSaveRequestModal
+          rootNodes={tree.rootNodes}
+          defaultName={defaultRequestName(httpSaveSpec)}
+          onSave={confirmHttpSave}
           onCancel={() => setHttpSaveSpec(null)}
         />
       )}

@@ -24,6 +24,20 @@ export function appendHttpRequest(filePath: string, block: string): OpResult {
   }
 
   const exists = fs.existsSync(filePath)
+  // "api/orders.http" in a folder that has no api/ yet: the point of naming
+  // the file here is not having to go and make its folder first. Only ever
+  // below a path the renderer is already allowed to write to - the caller
+  // checks that (pathDenial in ipcHandlers.ts) before this runs.
+  if (!exists) {
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    } catch (e) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'That folder could not be created.'
+      }
+    }
+  }
   let existing = ''
   if (exists) {
     const read = readFileContent(filePath)

@@ -160,8 +160,10 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   quietly requesting a URL with a hole in it. (These live in the app's settings; for a
   secret that shouldn't, keep the request in a `.http` file with a private env file beside
   it.) It hands one back too — or **save the request into a `.http` file**
-  (the page-plus icon), which appends it as a `###` block and opens the file, so an
-  experiment turns into something that lives in the repository.
+  (the page-plus icon): name it, pick one of the request files already in the project or a
+  folder to make a new one in — `api/orders.http` makes the `api/` folder too — and it is
+  appended there as a `###` block and opened, so an experiment turns into something that
+  lives in the repository, filed where the rest of that service's calls are.
 - The response opens beside the editor (or below the form): status, time and size, the body
   (JSON and XML pretty-printed, images shown as images), every response header, the request
   as it was actually sent, and one click to copy any of it — or to copy the request back out

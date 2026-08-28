@@ -108,6 +108,14 @@ inside the repo they name, so `../../..` can't walk back out.
 `touch-recent-external-file` now ignores paths that aren't already allowed —
 otherwise the renderer could write itself a permanent grant.
 
+A path that doesn't exist yet — a file being created, a rename's target, a
+request saved into `api/orders.http` before there is an `api/` — is judged by
+its nearest ancestor that *does* exist, with the missing tail appended.
+`path.resolve` has already collapsed every `..` by then, so the tail can only
+go deeper, and the part that exists is still `realpath`ed: a made-up tail
+cannot reach a directory its root isn't allowed to reach (A11 checks exactly
+that).
+
 **The deliberate limit:** Quick Open's path mode is how a file outside every
 workspace gets opened at all, and its listings grant what they return. Injected
 script can still walk directories the same way instead of naming a path
