@@ -14,9 +14,15 @@ interface TerminalPanelProps {
 
 // The bottom terminal drawer: tab strip, resize grip, and one live xterm per
 // terminal (hidden ones stay mounted so their scrollback survives switching).
+//
+// A row of the window's own column, spanning its full width - not an overlay
+// inside the editor column. `shrink-0` keeps the height the grip sets (the
+// editor above takes what's left); `relative` is what the grip, which sits on
+// the panel's top edge, positions against.
 export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize, onOpenNew }) => (
   <div
-    className="absolute bottom-0 left-0 right-0 border-t border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30 shadow-2xl"
+    data-terminal-panel
+    className="relative shrink-0 border-t border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30"
     style={{ height: `${terminal.terminalHeight}px` }}
   >
     <div

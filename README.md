@@ -126,8 +126,9 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 **Terminal**
 
-- A real terminal inside the app: multiple tabs, resizable panel, opens at any folder from
-  the file tree.
+- A real terminal inside the app: multiple tabs, opens at any folder from the file tree.
+  The panel is a drawer across the bottom of the window — full width, under the sidebar
+  too — and drag its top edge to resize; the editor keeps the height that's left.
 - `Cmd+K` with the cursor in the terminal clears its scrollback (the same key toggles the
   Git panel everywhere else); the shell keeps running and a half-typed command survives.
 

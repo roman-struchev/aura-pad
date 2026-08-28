@@ -1176,14 +1176,6 @@ function App(): React.JSX.Element {
               />
             )}
           </div>
-
-          {terminal.showTerminal && terminal.terminals.length > 0 && !isLeanWindow && (
-            <TerminalPanel
-              terminal={terminal}
-              fontSize={density.terminalFontSize}
-              onOpenNew={openDefaultTerminal}
-            />
-          )}
         </div>
 
         {settings.sidebarVisible && !isLeanWindow && (
@@ -1238,6 +1230,20 @@ function App(): React.JSX.Element {
           </div>
         )}
       </div>
+
+      {/* Below everything, the full width of the window: the sidebar stops
+          where the terminal starts rather than the terminal living inside the
+          editor column, which left it a narrow sliver on a narrow window. In
+          the layout rather than floating over the editor, so the editor gets
+          the height that's left - a long file scrolls to its last line
+          instead of ending underneath the panel. */}
+      {terminal.showTerminal && terminal.terminals.length > 0 && !isLeanWindow && (
+        <TerminalPanel
+          terminal={terminal}
+          fontSize={density.terminalFontSize}
+          onOpenNew={openDefaultTerminal}
+        />
+      )}
 
       {showSearch && (
         <GlobalSearch

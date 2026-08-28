@@ -83,6 +83,38 @@ export default {
     check('the toolbar button opens a terminal in the panel', panelUp)
     if (!panelUp) return
 
+    // A file has to be open for the second half of this: the editor is what
+    // the panel used to be drawn on top of.
+    await ui.openFile(`${ws}/notes.txt`)
+
+    // Where the panel sits: the full width of the window (a narrow window
+    // used to squeeze it into whatever the sidebar left of the editor
+    // column), and above the editor rather than over it - a file whose last
+    // lines end up underneath the panel can't be scrolled to.
+    const geom = await cdp.evaluate(`(() => {
+      const panel = document.querySelector('[data-terminal-panel]')
+      const editor = document.querySelector('.monaco-editor')
+      if (!panel) return null
+      const p = panel.getBoundingClientRect()
+      return {
+        left: Math.round(p.left),
+        right: Math.round(p.right),
+        top: Math.round(p.top),
+        width: window.innerWidth,
+        editorBottom: editor ? Math.round(editor.getBoundingClientRect().bottom) : null
+      }
+    })()`)
+    check(
+      'the panel spans the window from edge to edge',
+      geom && geom.left === 0 && Math.abs(geom.right - geom.width) <= 1,
+      JSON.stringify(geom)
+    )
+    check(
+      'and the editor ends where it starts, not underneath it',
+      geom && geom.editorBottom !== null && geom.editorBottom <= geom.top + 1,
+      JSON.stringify(geom)
+    )
+
     // Give the terminal both focus and something to clear.
     await cdp.evaluate(`document.querySelector('.xterm-helper-textarea').focus()`)
     for (const ch of 'echo SMOKE_CLEAR_MARKER') {

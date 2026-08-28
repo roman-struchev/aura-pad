@@ -2,6 +2,15 @@ import React, { useEffect, useRef, useState } from 'react'
 
 export type TerminalTab = { id: string; name: string }
 
+// The panel is a row of the window, not a sheet floating over the editor, so
+// every pixel it takes comes out of the editor's height. These keep both ends
+// usable: a terminal worth looking at, and a strip of file above it.
+const MIN_TERMINAL_PX = 150
+const MIN_EDITOR_PX = 120
+
+const clampTerminalHeight = (height: number): number =>
+  Math.max(MIN_TERMINAL_PX, Math.min(height, window.innerHeight - MIN_EDITOR_PX))
+
 export function useTerminals() {
   const [rawShowTerminal, setShowTerminal] = useState(false)
   const [terminalHeight, setTerminalHeight] = useState(256)
@@ -34,9 +43,9 @@ export function useTerminals() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return
       const newHeight = window.innerHeight - e.clientY
-      if (newHeight > 150 && newHeight < window.innerHeight * 0.9) {
-        setTerminalHeight(newHeight)
-      }
+      // Dragging past either end parks the panel there rather than stopping
+      // the drag dead: the grip keeps following the mouse back.
+      if (newHeight > MIN_TERMINAL_PX) setTerminalHeight(clampTerminalHeight(newHeight))
     }
     const handleMouseUp = () => setIsResizing(false)
     if (isResizing) {
@@ -51,6 +60,16 @@ export function useTerminals() {
       window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isResizing])
+
+  // A window that gets shorter than the panel would otherwise leave nothing
+  // for the editor - down to a Monaco of zero height, which renders as an
+  // empty pane. The height gives way instead; the grip drags it back once
+  // there's room again.
+  useEffect(() => {
+    const handleWindowResize = (): void => setTerminalHeight((h) => clampTerminalHeight(h))
+    window.addEventListener('resize', handleWindowResize)
+    return () => window.removeEventListener('resize', handleWindowResize)
+  }, [])
 
   const openNewTerminal = async (cwd?: string, runCommand?: string): Promise<void> => {
     setShowTerminal(true)

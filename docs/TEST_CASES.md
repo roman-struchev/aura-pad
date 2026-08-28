@@ -80,7 +80,7 @@ And two helpers worth reaching for instead of a `sleep`:
 | A17 | Local history | A save stores the state it replaced, a second save moments later is coalesced into it, replace-across-files always stores one, versions read back byte-for-byte, an unknown id and a file outside the allowed folders are refused, and the tab menu's Local History restores a picked version into the tab |
 | A18 | Spell checking | An installed dictionary is listed and an unknown language refused; Settings → Spelling turns it on and remembers it; a prose file's unknown words are counted in the toolbar (affixed forms counting as known), typing another one is picked up, a clean file reports none, and a non-prose file is not checked at all |
 | A7 | Preview and formatting | Markdown and HTML previews render and toggle back to source; Format rewrites JSON and autosaves |
-| A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced; the toolbar opens a terminal in the panel, and Cmd+K is routed to it (git panel stays shut) while it still toggles the git panel elsewhere |
+| A8 | Terminal | A shell starts in the requested directory, runs a command, returns output, and can be replaced; the toolbar opens a terminal in the panel, the panel spans the window edge to edge with the editor ending above it (not running on underneath), and Cmd+K is routed to it (git panel stays shut) while it still toggles the git panel elsewhere |
 | A9 | Settings and session restore | Settings round-trip and persist; the sidebar toggle works and is remembered; a relaunch restores tabs and settings (§13) |
 | A10 | Git | The repo, branch, unstaged changes, diff, branch list, staging, and untracked files (needs `git`; skips itself without it) |
 | A11 | Preload surface and path allowlist | `window.electron`/`require` stay unexposed, the typed api and `platform` are there (§14); paths outside the open workspaces are refused for read/write/create/delete/move and for spawning a shell, a symlink out of a workspace doesn't smuggle one back in, while a Quick Open listing opens an outside file up and workspace files are unaffected (§2) |
@@ -411,6 +411,8 @@ one and is unreachable from CDP either way.
 | 17.2 | Type half a command (don't press Enter), press **Cmd+K** | The half-typed command is still on the prompt line - the shell never saw the key |
 | 17.3 | With two terminal tabs, clear one and switch to the other | Only the active one was cleared |
 | 17.4 | Click into the editor or the file tree and press **Cmd+K** | The git panel toggles, as before |
+| 17.5 | Open a long file, scroll to its end with the terminal open | The last line is reachable and sits just above the panel - the editor is sized to what the panel leaves, not covered by it |
+| 17.6 | Drag the panel's top edge to the top of the window, then make the window short | The editor keeps a usable strip (~120px); the panel gives way rather than squeezing it out |
 
 ---
 
