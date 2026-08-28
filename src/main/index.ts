@@ -306,22 +306,23 @@ handleSend('open-in-new-window', (_event, paths) => {
 })
 
 // And pushing one back: the main window opens the file the way it opens any
-// other, and the window it came from goes away once it has nothing left.
-handleSend('move-tab-to-primary', (event, filePath, closeSender) => {
+// other. The window it came from closes itself once it has nothing left,
+// through 'close-window' below.
+handleSend('move-tab-to-primary', (_event, filePath) => {
   const target = primaryWindowRef
   if (target && !target.isDestroyed()) {
     if (target.isMinimized()) target.restore()
     target.focus()
     target.webContents.send('open-file-request', filePath)
   }
-  if (!closeSender) return
-  const sender = BrowserWindow.fromWebContents(event.sender)
-  if (sender && sender !== primaryWindowRef) sender.close()
 })
 
+// A torn-off window asking to go away, having run out of tabs. Never the
+// primary one: that keeps the tree, the terminals and the session, so it
+// stays open with no file just as it does at first launch.
 handleSend('close-window', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  if (win && win !== primaryWindowRef) win.close()
+  if (win && !win.isDestroyed() && win !== primaryWindowRef) win.close()
 })
 
 handleSend('renderer-ready', (event) => {

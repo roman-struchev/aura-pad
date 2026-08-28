@@ -33,13 +33,14 @@ export default {
     await ui.clickAt(rect.x + 20, rect.cy, { button: 'right' })
     await ui.clickButton('Move to New Window')
 
-    const opened = await (async () => {
+    const waitForWindowCount = async (n) => {
       for (let i = 0; i < 40; i++) {
-        if ((await main.evaluate(windowCount)) === 2) return true
+        if ((await main.evaluate(windowCount)) === n) return true
         await sleep(200)
       }
       return false
-    })()
+    }
+    const opened = await waitForWindowCount(2)
     check('tearing a tab off opens a second window', opened, String(await main.evaluate(windowCount)))
 
     check(
@@ -148,20 +149,66 @@ export default {
       )})`
     )
 
-    const backHome = await (async () => {
-      for (let i = 0; i < 40; i++) {
-        if ((await main.evaluate(windowCount)) === 1) return true
-        await sleep(200)
-      }
-      return false
-    })()
-    check('sending the tab back closes the window it was in', backHome)
+    check('sending the tab back closes the window it was in', await waitForWindowCount(1))
     check(
       'and the tab is open in the main window again',
       await waitFor(
         `[...document.querySelectorAll('[data-tab-path]')].some((t) => t.dataset.tabPath === ${JSON.stringify(target)})`,
         { timeoutMs: 8000 }
       )
+    )
+
+    // The other way a torn-off window runs out of tabs: the user closes the
+    // one it holds. There is nothing behind it - no tree, no terminal - so
+    // the empty frame must not be left behind for them to dismiss by hand.
+    const rectAgain = await ui.rectOf(`[data-tab-path="${target}"]`)
+    await ui.clickAt(rectAgain.x + 20, rectAgain.cy, { button: 'right' })
+    await ui.clickButton('Move to New Window')
+    check('the tab can be torn off a second time', await waitForWindowCount(2))
+    const secondIds = (await main.evaluate(windowIds)).filter((id) => !idsBefore.includes(id))
+    if (secondIds.length !== 1) {
+      check('exactly one window was added again', false, JSON.stringify(secondIds))
+      main.close()
+      return
+    }
+    const second = `require('electron').BrowserWindow.fromId(${secondIds[0]})`
+    for (let i = 0; i < 40; i++) {
+      const mounted = await main.evaluate(
+        `${second}.webContents.executeJavaScript("!!document.querySelector('[data-tab-path]')")`
+      )
+      if (mounted) break
+      await sleep(200)
+    }
+    // Its own tab context menu, "Close" - matched exactly so it isn't
+    // "Close Others" or "Close All" that gets clicked.
+    await main.evaluate(
+      `${second}.webContents.executeJavaScript(${JSON.stringify(
+        `(() => {
+          const tab = document.querySelector('[data-tab-path]')
+          const r = tab.getBoundingClientRect()
+          tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.x + 10, clientY: r.y + 10 }))
+          return true
+        })()`
+      )})`
+    )
+    await sleep(300)
+    const clickedClose = await main.evaluate(
+      `${second}.webContents.executeJavaScript(${JSON.stringify(
+        `(() => {
+          const item = [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Close')
+          if (!item) return false
+          item.click()
+          return true
+        })()`
+      )})`
+    )
+    check('the torn-off window offers Close on its only tab', clickedClose === true)
+    check('closing the last tab closes the window with it', await waitForWindowCount(1))
+    check(
+      'and the main window is still there',
+      (await main.evaluate(
+        `require('electron').BrowserWindow.getAllWindows().some((w) => !w.isDestroyed())`
+      )) === true
     )
     main.close()
   }

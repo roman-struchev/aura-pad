@@ -49,7 +49,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Pull a tab out into a window of its own — drag it off the strip, or `Shift+Cmd+D` /
   right-click → Move to New Window. That window is just the tab and the editor: no file
   tree, no git panel, no terminal. Drag it out again (or right-click → Move Back to Main
-  Window) and it returns to the main window, taking the empty window with it.
+  Window) and it returns to the main window. Either way the window goes when its last
+  tab does — sent back or simply closed — rather than staying behind empty.
 - Tabs with pinning and drag-to-reorder; reopen the last closed tab with `Cmd+Shift+T`.
   With more tabs than fit, the strip scrolls (wheel included), always keeps the
   active tab in view, and the chevron at its end lists every open tab.

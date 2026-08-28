@@ -366,9 +366,10 @@ export const INVOKE_CHANNELS = {
 export interface SendContracts {
   // Tear a tab off into its own window.
   'open-in-new-window': [paths: string[]]
-  // The way back: hand a tab to the main window and (usually) close the
-  // detached one it came from.
-  'move-tab-to-primary': [path: string, closeSender: boolean]
+  // The way back: hand a tab to the main window. Emptying the detached one
+  // out is what closes it, via 'close-window' below - same as closing its
+  // last tab any other way.
+  'move-tab-to-primary': [path: string]
   'close-window': []
   'reveal-in-finder': [targetPath: string]
   'confirm-close': []

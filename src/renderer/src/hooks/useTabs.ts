@@ -423,9 +423,10 @@ export function useTabs(
       updateTab(path, { isSaved: true })
     }
     if (back) {
-      // The last tab going home takes the window with it: a torn-off window
-      // with nothing in it is just an empty frame.
-      window.api.moveTabToPrimary(path, tabsRef.current.length <= 1)
+      // The last tab going home takes the window with it - not from here
+      // though: dropTab below empties this window out, and the effect that
+      // watches for that closes it.
+      window.api.moveTabToPrimary(path)
     } else {
       window.api.openInNewWindow([path])
     }
@@ -435,6 +436,28 @@ export function useTabs(
 
   const detachTab = (path: string): Promise<boolean> => moveTabToWindow(path, false)
   const returnTab = (path: string): Promise<boolean> => moveTabToWindow(path, true)
+
+  // A torn-off window is its tabs and nothing else - no tree, no terminal
+  // panel, no git panel - so once the last one is closed (or sent back to
+  // the main window) what's left is an empty frame the user has to dismiss
+  // by hand. It closes itself instead. Every route out of the last tab ends
+  // here, which is why this watches the count rather than living inside
+  // closeTab: closing all tabs, closing the ones to the right, deleting the
+  // file in the tree and pushing the tab back all empty the window just as
+  // well.
+  //
+  // `hadTabsRef` is what keeps the window from closing on the way up: it
+  // mounts with no tabs and is told which file to open a moment later
+  // (open-file-request, see renderer-ready in src/main/index.ts). The main
+  // window is exempt - it is perfectly useful with nothing open.
+  const hadTabsRef = useRef(false)
+  useEffect(() => {
+    if (tabs.length > 0) {
+      hadTabsRef.current = true
+      return
+    }
+    if (!ownsSession && hadTabsRef.current) window.api.closeWindow()
+  }, [tabs.length, ownsSession])
 
   const handleCloseFile = (): void => {
     if (!activeTabPath) return
