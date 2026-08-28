@@ -71,7 +71,7 @@ And two helpers worth reaching for instead of a `sleep`:
 | id | Case | Covers |
 |---|---|---|
 | A1 | Workspace tree | Roots and children render; `node_modules`/dotfiles and `.gitignore` entries stay hidden; folders expand and collapse |
-| A2 | Open, edit, autosave | Clicking a file opens it, the editor mounts, typing reaches disk, the dirty dot clears |
+| A2 | Open, edit, autosave | Clicking a file opens it, the editor mounts, typing reaches disk, the dirty dot clears; an outside edit to a file the app itself saved reaches the tab instead of being silently overwritten by the next autosave (§8) |
 | A3 | Tabs | Several files open at once, the last opened is active, clicking switches, closing removes, the session is persisted, files from outside a workspace open and are remembered; a crowded strip scrolls, offers the full tab list, and keeps the active tab in view in both directions; the tab menu copies the file's relative path |
 | A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation, the context menu's Copy Path / Copy Relative Path (and Open in Default App being offered, and refused for a path outside the workspaces), the right-click menu staying inside the window with the sidebar docked right (§15), and its text keeping a WCAG-AA contrast ratio in the light theme, at rest and under the mouse |
 | A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |

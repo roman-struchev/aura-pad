@@ -229,10 +229,10 @@ limits.
 
 ---
 
-## 8. HIGH — an external edit to a file AuraPad itself saved is never reported
+## 8. HIGH — an external edit to a file AuraPad itself saved is never reported — **FIXED**
 
 Listed out of severity order because it was found later — while verifying the
-fix for finding 5, not during the original pass. **Not fixed.**
+fix for finding 5, not during the original pass.
 
 **Verified live, deterministic.** Save a file through the app, then modify it
 from outside (another editor, `git checkout`, a sync daemon): the recursive
@@ -258,17 +258,32 @@ watcher then suppresses that write as a self-write, so it happens without a
 trace. This is the exact scenario the branch-switch guard in `useTabs.ts` was
 written to prevent, reached by a different route.
 
-**Since local history landed** (`src/main/localHistory.ts`), the overwrite is at
-least recoverable: the stale autosave stores the state it replaced — the
-outside edit — so the user can get it back from the tab's Local History. That
-softens the impact; it does not fix the detection, and the tab still shows no
-banner.
+**The fix** (`src/main/watcher.ts`) stops keying the decision on the event type
+alone. The `'rename'` branch runs the same suppression checks it always did —
+the grace window, then the stat/hash comparison against what we last wrote —
+and anything that survives them *and is still a file* is now broadcast as
+`file-changed-externally` alongside the debounced tree rebuild. Getting that far
+already means the content is not what this app put there, whatever the event was
+called. The same path covers editors that save atomically themselves (vim, VS
+Code), whose writes reach us as `'rename'` even for files AuraPad never touched.
 
-**Fix direction:** stop keying the decision on the event type alone. In the
-`'rename'` branch, when the path still exists and has a self-write record whose
-content no longer matches, broadcast `file-changed-externally` in addition to
-scheduling the tree rebuild — the content comparison already there is enough to
-tell "our own save echoing back" from "someone else wrote this".
+One thing had to change with it: after telling the renderer about a change, the
+watcher now **records the content it reported** under the same key self-writes
+use, instead of dropping the record. One outside save arrives as several events
+(macOS delivers a `'rename'` and a `'change'` for an atomic write), and the
+repeat used to be broadcast again — landing on a tab the user had meanwhile
+started typing in, flagging it as changed on disk when nothing had, and, because
+`saveAllDirtyFileTabs` skips such tabs, stranding that typing in the buffer. A
+later change *away* from the reported content still differs from the record, so
+it is still reported.
+
+Belt and braces: local history (`src/main/localHistory.ts`) stores what each
+write replaced, so even a clobber that slipped through is recoverable from the
+tab's Local History.
+
+Covered by smoke A2, which saves a file through the app, edits it from outside,
+and watches the Markdown preview (ordinary React DOM, unlike Monaco's) pick the
+outside edit up.
 
 ---
 

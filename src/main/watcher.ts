@@ -23,7 +23,10 @@ import type { EventContracts } from '../shared/ipc'
 //   however generous, kept producing "edited outside the app" banners over
 //   files nobody touched.
 // - A structural change ('rename': create/delete/move) always triggers a
-//   debounced tree rebuild, since other files may be affected.
+//   debounced tree rebuild, since other files may be affected - and, when the
+//   path is still a file whose content isn't ours, an external-change event
+//   too: on macOS a path that we once saved keeps reporting 'rename' for
+//   everyone else's writes as well (docs/BUGS.md §8).
 const activeWatchers = new Map<string, fs.FSWatcher>()
 // Cached per root and rebuilt whenever setupWatchers() re-scans the
 // workspace list (add/remove/rename/delete of a root) - not on every event,
@@ -140,6 +143,36 @@ export function recordSelfWrite(filePath: string, content: string | Buffer): voi
   )
 }
 
+// Remember the content we have just told the renderer about, under the same
+// record self-writes use. One outside save can reach us as several events -
+// macOS delivers both a 'rename' and a 'change' for an atomic write, and
+// coalesces flags per path on top of that - and every repeat used to be
+// broadcast again. The second one lands on a tab the user has meanwhile
+// started typing in, which flags it as "changed on disk" when nothing had, and
+// (because such tabs are skipped by autosave) leaves their typing stranded in
+// the buffer.
+//
+// Deliberately not a delete: the record's job is "what does the renderer
+// already know this file holds", and after a broadcast that is the file's
+// current content. A later change away from it still differs, so it is still
+// reported.
+function recordObservedContent(key: string, fullPath: string): void {
+  lastSelfWrites.delete(key)
+  try {
+    const stat = fs.statSync(fullPath)
+    lastSelfWrites.set(key, {
+      hash: contentHash(fs.readFileSync(fullPath)),
+      size: stat.size,
+      mtimeMs: stat.mtimeMs
+    })
+  } catch {
+    // Gone again already - nothing to remember.
+  }
+  if (lastSelfWrites.size > LAST_HASH_LIMIT) {
+    lastSelfWrites.delete(lastSelfWrites.keys().next().value!)
+  }
+}
+
 function forgetSelfWrite(key: string): void {
   clearTimeout(selfWriteCleanupTimers.get(key))
   selfWriteCleanupTimers.delete(key)
@@ -217,9 +250,7 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
       return
     }
     forgetSelfWrite(key)
-    // A real external change makes our last-write record stale - drop it, so a
-    // later revert back to that exact content isn't mistaken for our own.
-    lastSelfWrites.delete(key)
+    recordObservedContent(key, fullPath)
     broadcast('file-changed-externally', fullPath)
     return
   }
@@ -234,6 +265,36 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   const recent = recentSelfWrites.get(key)
   if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return
   if (matchesLastSelfWrite()) return
+
+  // Past the suppression checks, an entry that is still a file is a file whose
+  // content is not what we last wrote - which is an external change, whatever
+  // the event was called (docs/BUGS.md §8).
+  //
+  // macOS coalesces FSEvents flags per path: once our own atomic save has
+  // marked a path as renamed, *later* outside edits to it keep arriving as
+  // 'rename' too. Reporting only the tree shape then left the tab sitting on a
+  // stale buffer with no banner, until its next autosave wrote that buffer back
+  // over the other side's change - and the watcher swallowed that write as a
+  // self-write, so the loss happened silently. The same applies to editors that
+  // save atomically themselves (vim, VS Code): their writes are 'rename' events
+  // for us even when we never touched the file.
+  //
+  // Broadcasting a little too widely is the safe direction: the renderer only
+  // acts on paths it has open, reloads a clean tab (a no-op when the content
+  // matches), and shows the Reload/Ignore banner on a dirty one rather than
+  // quietly picking a side.
+  let stillAFile = false
+  try {
+    stillAFile = fs.statSync(fullPath).isFile()
+  } catch {
+    // Deleted or moved away - the tree rebuild below is the whole story.
+  }
+  if (stillAFile) {
+    forgetSelfWrite(key)
+    recordObservedContent(key, fullPath)
+    broadcast('file-changed-externally', fullPath)
+  }
+
   clearTimeout(structureDebounceTimers.get(rootPath))
   structureDebounceTimers.set(
     rootPath,
