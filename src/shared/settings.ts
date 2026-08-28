@@ -157,10 +157,14 @@ export interface ExtensionSettings {
   httpClient: {
     enabled: boolean
     request: HttpScratchRequest
-    // The history list collapses to a narrow rail so the form gets the whole
-    // tab. Persisted rather than per-mount, the way sidebarVisible is: the
-    // list is opened to pick an old request, not to keep it on screen.
-    historyCollapsed: boolean
+    // The panel beside the form - the project's saved requests, and what has
+    // been sent - is hidden by default so the form gets the whole tab.
+    // Persisted rather than per-mount, the way sidebarVisible is: it is
+    // opened to pick a request out of, not to keep on screen.
+    sidePanelCollapsed: boolean
+    // Which of its two lists it shows: what the project has written down (the
+    // ### blocks of its .http files) or what was sent from here.
+    sidePanel: 'saved' | 'history'
     // Selected environment for .http files (http-client.env.json). One name
     // for the whole app, not per file: "I am working against staging" is a
     // property of the session, and a file that doesn't define it just runs
@@ -251,7 +255,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // listed under Extensions in the sidebar is the only way anyone finds it.
     httpClient: {
       enabled: true,
-      historyCollapsed: true,
+      sidePanelCollapsed: true,
+      // Saved first: "what do we have for this API" is the question someone
+      // opens the panel with; the history is for the last few minutes.
+      sidePanel: 'saved',
       environment: '',
       environments: [],
       selectedEnvironment: '',

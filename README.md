@@ -169,12 +169,17 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   as it was actually sent, and one click to copy any of it — or to copy the request back out
   as a `curl` command. Beside the editor it is headed by the request line, since nothing
   else on screen says which request answered; in the tab the form above says it already.
-- **History** of the last 50 requests, whichever way they were sent. Click one to load the
-  whole request — method, URL, headers, body, redirect and TLS options — back into the form
-  and re-run it. The list is hidden until you ask for it (the clock icon in the tab's
-  options row); the choice sticks. It is stored locally in the app's data directory and
-  keeps the headers you sent (so re-running works) — clear it from the tab when that
-  matters.
+- **The requests panel** in that tab (the panel icon in its options row, hidden until you
+  ask for it — the choice sticks) holds two lists:
+  - **Saved** — every `###` block of every `.http`/`.rest` file in the open folders, with a
+    search box. Click one to put the whole request back in the form, ▶ to run it there and
+    then, or ↗ to open the file it lives in at that block. A `{{placeholder}}` the file
+    leaves to an environment stays a placeholder, so a request saved against staging runs
+    against dev by picking dev.
+  - **History** of the last 50 requests, whichever way they were sent. Click one to load the
+    whole request — method, URL, headers, body, redirect and TLS options — back into the
+    form and re-run it. It is stored locally in the app's data directory and keeps the
+    headers you sent (so re-running works) — clear it from the panel when that matters.
 - Requests are parsed, never handed to a shell, so opening someone else's `.http`/`.rest`
   file and pressing Run can't execute anything but an HTTP request.
 - No ambient state: the client sends exactly what the request says. It keeps no cookie jar

@@ -1124,6 +1124,8 @@ function App(): React.JSX.Element {
                     onSend={(spec) => tabs.selectedPath && http.send(tabs.selectedPath, spec)}
                     onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
                     onSaveToFile={startHttpSave}
+                    rootNodes={tree.rootNodes}
+                    onOpenRequest={(filePath, line) => tabs.openTab(filePath, line)}
                   />
                 ) : (
                   <div className="h-full flex items-center justify-center text-gray-500 text-sm">

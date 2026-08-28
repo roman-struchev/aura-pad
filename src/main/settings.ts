@@ -38,6 +38,19 @@ export function loadSettings(): AppSettings {
       ports: { ...DEFAULT_SETTINGS.extensions.ports, ...saved.extensions?.ports }
     }
   }
+  // Renamed when the panel stopped being only the history (it lists the
+  // project's saved requests too), so someone who had opened it keeps it
+  // open. Only consulted while the new key has never been written.
+  const legacyHistoryCollapsed = (
+    saved.extensions?.httpClient as { historyCollapsed?: boolean } | undefined
+  )?.historyCollapsed
+  if (
+    saved.extensions?.httpClient?.sidePanelCollapsed === undefined &&
+    typeof legacyHistoryCollapsed === 'boolean'
+  ) {
+    settings.extensions.httpClient.sidePanelCollapsed = legacyHistoryCollapsed
+  }
+
   // Legacy flat key from before extension settings were namespaced. Only
   // consulted while the namespaced value has never been written.
   if (saved.extensions?.git?.enabled === undefined && typeof saved.gitEnabled === 'boolean') {

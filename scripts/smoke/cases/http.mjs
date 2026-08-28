@@ -277,22 +277,30 @@ export default {
         JSON.stringify(requests.at(-1)?.headers ?? {})
       )
 
-      // The history starts collapsed to a rail - the form is what the tab is
-      // for - and the History icon opens it.
+      // The panel beside the form starts closed - the form is what the tab is
+      // for - and opens on whichever of its two lists was last up (saved, to
+      // begin with).
       check(
-        'the history list starts collapsed',
-        await cdp.evaluate(`!document.querySelector('[data-testid="http-history"]')`)
+        'the requests panel starts closed',
+        await cdp.evaluate(
+          `!document.querySelector('[data-testid="http-saved"], [data-testid="http-history"]')`
+        )
       )
-      await ui.clickButton('Show history')
+      await ui.clickButton('Show the requests panel')
       check(
-        'the History icon opens it',
-        await cdp.evaluate(`!!document.querySelector('[data-testid="http-history"]')`)
+        'the toolbar button opens it on the saved requests',
+        await cdp.evaluate(`!!document.querySelector('[data-testid="http-saved"]')`)
       )
       check(
         'the choice is remembered, not per-mount',
         await cdp.evaluate(
-          `window.api.getSettings().then((s) => s.extensions.httpClient.historyCollapsed === false)`
+          `window.api.getSettings().then((s) => s.extensions.httpClient.sidePanelCollapsed === false)`
         )
+      )
+      await ui.clickButton('history')
+      check(
+        'and its History view is one click away',
+        await cdp.evaluate(`!!document.querySelector('[data-testid="http-history"]')`)
       )
 
       // History is recorded in main, so it holds everything sent in this
@@ -475,7 +483,7 @@ export default {
       await ui.clickButton('Run Request')
       check('the request runs against the selected environment', await waitForStatus('200'))
       check(
-        'the environment beat the file\'s own @host, and the private file filled in the token',
+        "the environment beat the file's own @host, and the private file filled in the token",
         requests.at(-1)?.url === '/ping' && requests.at(-1)?.headers['x-token'] === 's3cret',
         JSON.stringify(requests.at(-1)?.headers ?? {})
       )
@@ -544,9 +552,11 @@ export default {
       await ui.clickButton('Headers')
       check(
         'and so do the headers',
-        (await cdp.evaluate(
-          `[...document.querySelectorAll('[aria-label$="name"]')].map((i) => i.value).join(',')`
-        )).includes('X-Pasted'),
+        (
+          await cdp.evaluate(
+            `[...document.querySelectorAll('[aria-label$="name"]')].map((i) => i.value).join(',')`
+          )
+        ).includes('X-Pasted'),
         'headers'
       )
       await ui.clickButton('Send')
@@ -583,9 +593,7 @@ export default {
       await sleep(200)
       check(
         'pasting something that is not a curl leaves the form alone',
-        await cdp.evaluate(
-          `document.querySelector('[aria-label="Method"]')?.value === 'POST'`
-        )
+        await cdp.evaluate(`document.querySelector('[aria-label="Method"]')?.value === 'POST'`)
       )
 
       // ---- the tab's own environments ----
@@ -608,9 +616,9 @@ export default {
       await ui.clickButton('Edit environments')
       check(
         'the tab has an environments editor',
-        await waitFor(`!!document.querySelector('[aria-label="Environment name"], button')`, {
+        (await waitFor(`!!document.querySelector('[aria-label="Environment name"], button')`, {
           timeoutMs: 4000
-        }) && (await ui.buttonExists('Add environment'))
+        })) && (await ui.buttonExists('Add environment'))
       )
       await ui.clickButton('Add environment')
       await fill('[aria-label="Environment name"]', 'local')
@@ -679,6 +687,91 @@ export default {
         'a name with a folder in it makes the folder on the way',
         nestedLanded.startsWith('###'),
         JSON.stringify(nestedLanded.slice(0, 80))
+      )
+
+      // ---- the saved requests panel ----
+      // The other half of saving: finding it again. The panel's second view
+      // lists the ### blocks of every .http file in the workspace.
+      // Saving opens the file it went into - wait for that to have happened
+      // before going back, or the switch races with it and lands nowhere.
+      await waitFor(
+        `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(nested)})`,
+        { timeoutMs: 8000 }
+      )
+      await ui.click('[title="HTTP Client"]')
+      await waitFor(`!!document.querySelector('[data-testid="http-client-tab"]')`, {
+        timeoutMs: 8000
+      })
+      await ui.clickButton('saved')
+      const listed = await waitFor(
+        `!!document.querySelector('[data-saved-request="ping the smoke server"]')`,
+        { timeoutMs: 8000 }
+      )
+      check('the saved requests panel lists the blocks of the .http files', listed)
+      const savedPanelText = await cdp.evaluate(
+        `document.querySelector('[data-testid="http-saved"]')?.innerText || ''`
+      )
+      check(
+        'including the one just written into a folder of its own',
+        savedPanelText.includes('api/orders.http'),
+        JSON.stringify(savedPanelText.slice(0, 200))
+      )
+
+      // Search, then put it back in the form.
+      await fill('[aria-label="Search saved requests"]', 'ping the smoke')
+      await sleep(200)
+      const onlyMatch = await cdp.evaluate(
+        `[...document.querySelectorAll('[data-saved-request]')].map((e) => e.dataset.savedRequest)`
+      )
+      check(
+        'searching narrows the list to what matches',
+        Array.isArray(onlyMatch) &&
+          onlyMatch.length === 1 &&
+          onlyMatch[0] === 'ping the smoke server',
+        JSON.stringify(onlyMatch)
+      )
+
+      await fill('[aria-label="URL"]', 'http://127.0.0.1:1/stale')
+      await setSelect('[aria-label="Method"]', 'DELETE')
+      await cdp.evaluate(`(() => {
+        document.querySelector('[data-saved-request="ping the smoke server"] button')?.click()
+        return true
+      })()`)
+      await sleep(250)
+      const fromSaved = await cdp.evaluate(`({
+        url: document.querySelector('[aria-label="URL"]')?.value || '',
+        method: document.querySelector('[aria-label="Method"]')?.value || ''
+      })`)
+      check(
+        'clicking one puts the whole request back in the form',
+        fromSaved.url.endsWith('/ping') && fromSaved.method === 'GET',
+        JSON.stringify(fromSaved)
+      )
+
+      const beforeSavedRun = requests.length
+      await ui.clickButton('Run ping the smoke server')
+      const ranFromPanel = await (async () => {
+        for (let i = 0; i < 40; i++) {
+          if (requests.length > beforeSavedRun) return true
+          await sleep(200)
+        }
+        return false
+      })()
+      check(
+        'the Run button on the row sends it without a trip through Send',
+        ranFromPanel && requests.at(-1)?.url === '/ping',
+        JSON.stringify(requests.at(-1)?.url ?? null)
+      )
+
+      // And the third thing anyone wants from a list of saved requests: the
+      // file it is actually written in.
+      await ui.clickButton('Open ping the smoke server')
+      check(
+        'opening one goes to the file it lives in',
+        await waitFor(
+          `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(savedFile)})`,
+          { timeoutMs: 8000 }
+        )
       )
     } finally {
       server.close()

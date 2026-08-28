@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   ClipboardPaste,
+  ExternalLink,
   FilePlus2,
-  History,
   Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Play,
   Plus,
+  RefreshCw,
   Send,
   Settings2,
   Terminal,
@@ -23,6 +27,9 @@ import { HttpEnvironmentsModal } from './HttpEnvironmentsModal'
 import { ToolbarButton } from './ToolbarButton'
 import { looksLikeCurl, parseCurl, toCurl } from '../lib/http/curl'
 import { substitute } from '../lib/http/httpFile'
+import { loadSavedRequests, type SavedRequest } from '../lib/http/savedRequests'
+import { relativeToRoot } from '../lib/path'
+import type { FileNode } from '../../../shared/fileNode'
 import { useStableCallback } from '../lib/useStableCallback'
 import type { HttpExchange } from '../hooks/useHttpClient'
 
@@ -35,6 +42,11 @@ interface HttpClientTabProps {
   // Hand the request to App, which asks where to put it and appends it to
   // that .http file - the point where a one-off becomes part of the repo.
   onSaveToFile: (spec: HttpRequestSpec) => void
+  // The workspace trees: where the saved requests are read from, and what
+  // their paths are shown relative to.
+  rootNodes: FileNode[]
+  // Open a saved request where it lives, at its request line.
+  onOpenRequest: (filePath: string, line: number) => void
 }
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
@@ -79,7 +91,9 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   exchange,
   onSend,
   onCancel,
-  onSaveToFile
+  onSaveToFile,
+  rootNodes,
+  onOpenRequest
 }) => {
   const saved = settings.extensions.httpClient.request
   const [method, setMethod] = useState(saved.method)
@@ -92,6 +106,9 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   const [importError, setImportError] = useState<string | null>(null)
   const [history, setHistory] = useState<HttpHistoryEntry[]>([])
   const [showEnvironments, setShowEnvironments] = useState(false)
+  const [savedAll, setSavedAll] = useState<SavedRequest[] | null>(null)
+  const [savedFilter, setSavedFilter] = useState('')
+  const [savedReloads, setSavedReloads] = useState(0)
 
   const running = !!exchange?.running
   const environments = settings.extensions.httpClient.environments
@@ -101,12 +118,40 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
       .filter((v) => v.name.trim() !== '')
       .map((v) => [v.name.trim(), v.value])
   )
-  const historyCollapsed = settings.extensions.httpClient.historyCollapsed
-  const setHistoryCollapsed = (collapsed: boolean): void =>
+  const panelCollapsed = settings.extensions.httpClient.sidePanelCollapsed
+  const panelView = settings.extensions.httpClient.sidePanel
+  const setPanelCollapsed = (collapsed: boolean): void =>
     updateSetting('extensions', {
       ...settings.extensions,
-      httpClient: { ...settings.extensions.httpClient, historyCollapsed: collapsed }
+      httpClient: { ...settings.extensions.httpClient, sidePanelCollapsed: collapsed }
     })
+
+  const setPanelView = (view: 'history' | 'saved'): void =>
+    updateSetting('extensions', {
+      ...settings.extensions,
+      httpClient: { ...settings.extensions.httpClient, sidePanel: view }
+    })
+
+  // The trees change identity on every tree refresh, so the load reads them
+  // through a ref: the list is re-read when the panel is opened on Saved and
+  // when asked, not every time a watcher rebuilds the tree under it.
+  const rootNodesRef = useRef(rootNodes)
+  useEffect(() => {
+    rootNodesRef.current = rootNodes
+  })
+
+  useEffect(() => {
+    if (panelCollapsed || panelView !== 'saved') return
+    let alive = true
+    void loadSavedRequests(rootNodesRef.current, (path) => window.api.readFile(path)).then(
+      (list) => {
+        if (alive) setSavedAll(list)
+      }
+    )
+    return () => {
+      alive = false
+    }
+  }, [panelCollapsed, panelView, savedReloads])
 
   // Reloaded when the tab mounts and after each request settles - main
   // records the history for *both* routes into the client, so a request run
@@ -176,8 +221,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   // form has no field for (`-d @file` and multipart parts) are called out
   // instead of being dropped in silence - they are the difference between a
   // request that repeats and one that only looks like it.
-  const loadFromHistory = (entry: HttpHistoryEntry): void => {
-    const { spec } = entry
+  const loadSpecIntoForm = (spec: HttpRequestSpec): void => {
     setMethod(spec.method)
     setUrl(spec.url)
     setHeaders(spec.headers)
@@ -194,6 +238,48 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
     // as "the body was lost".
     if (spec.body || spec.bodyFilePath || spec.form) setTab('body')
   }
+
+  const loadFromHistory = (entry: HttpHistoryEntry): void => loadSpecIntoForm(entry.spec)
+
+  // Same landing as a history entry: everything the request holds goes back
+  // into the form, so Send re-runs that request and not a version of it with
+  // the headers missing.
+  const loadSaved = (entry: SavedRequest): boolean => {
+    if (!entry.spec) {
+      setImportError(entry.error ?? 'That request could not be read.')
+      return false
+    }
+    loadSpecIntoForm(entry.spec)
+    return true
+  }
+
+  // Run it where it is, without the trip through the form: the form still
+  // gets filled in, so what was sent is on screen and can be edited and sent
+  // again. A {{placeholder}} the file leaves to an environment is resolved
+  // here, the same way Send does it.
+  const runSaved = (entry: SavedRequest): void => {
+    if (!loadSaved(entry) || !entry.spec) return
+    const resolved = resolveSpec(entry.spec)
+    if (resolved.missing.length > 0) {
+      setImportError(
+        `Undefined variable: ${resolved.missing.join(', ')}${
+          environmentName ? '' : ' - no environment is selected'
+        }`
+      )
+      return
+    }
+    onSend(resolved.spec)
+  }
+
+  const rootPaths = rootNodes.map((r) => r.path)
+  const savedQuery = savedFilter.trim().toLowerCase()
+  const savedRequests = (savedAll ?? []).filter((entry) =>
+    savedQuery === ''
+      ? true
+      : `${entry.name} ${entry.method} ${entry.url} ${entry.file}`
+          .toLowerCase()
+          .includes(savedQuery)
+  )
 
   const send = (): void => {
     if (!canSend) return
@@ -277,14 +363,29 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
       {/* Collapsed, the list is gone entirely rather than reduced to a rail:
           a strip holding one icon costs the form a column of width and buys
           nothing the toolbar's own toggle doesn't already say. */}
-      {!historyCollapsed && (
+      {!panelCollapsed && (
         <div className="w-56 shrink-0 border-r border-fleet-border flex flex-col min-h-0">
-          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-fleet-border">
-            <History size={13} className="text-gray-500" />
-            <span className="text-[11px] uppercase tracking-wider text-gray-500 flex-1">
-              History
-            </span>
-            {history.length > 0 && (
+          {/* Two lists, one panel: what was sent, and what the project has
+              written down. They answer different questions ("what did I just
+              run" vs "what do we have for this API") and neither is worth a
+              column of its own next to the form. */}
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-fleet-border">
+            {(['history', 'saved'] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setPanelView(view)}
+                className={clsx(
+                  'px-1.5 py-0.5 rounded text-[11px] uppercase tracking-wider',
+                  panelView === view
+                    ? 'bg-fleet-active text-fleet-textHover'
+                    : 'text-gray-500 hover:text-fleet-textHover'
+                )}
+              >
+                {view}
+              </button>
+            ))}
+            <div className="flex-1" />
+            {panelView === 'history' && history.length > 0 && (
               <ToolbarButton
                 dense
                 title="Clear history"
@@ -295,40 +396,129 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                 <Trash2 size={13} />
               </ToolbarButton>
             )}
-          </div>
-          <div className="flex-1 overflow-y-auto py-1" data-testid="http-history">
-            {history.length === 0 ? (
-              <div className="px-2 py-2 text-[11px] text-gray-500">
-                Requests you send show up here
-              </div>
-            ) : (
-              // No dividers between entries: at two lines each they read as
-              // rows on their own, and a rule under every one turned the list
-              // into a grid of lines with text in it.
-              history.map((entry) => (
-                <button
-                  key={entry.id}
-                  onClick={() => loadFromHistory(entry)}
-                  title={`${entry.spec.method} ${entry.spec.url}`}
-                  className="w-full text-left px-2 py-1 rounded-sm hover:bg-fleet-active"
-                >
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <span className="font-medium text-gray-400 shrink-0">{entry.spec.method}</span>
-                    <span className="truncate flex-1 font-mono text-fleet-text">
-                      {shortUrl(entry.spec.url)}
-                    </span>
-                    <span className={clsx('shrink-0', historyStatusClass(entry))}>
-                      {entry.error ? '!' : (entry.status ?? '')}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-gray-500 truncate">
-                    {ago(entry.sentAt)}
-                    {entry.durationMs !== undefined ? ` · ${entry.durationMs} ms` : ''}
-                  </div>
-                </button>
-              ))
+            {panelView === 'saved' && (
+              <ToolbarButton
+                dense
+                title="Re-read the request files"
+                tooltipAlign="right"
+                colorClassName="text-gray-500 hover:text-fleet-textHover"
+                onClick={() => setSavedReloads((n) => n + 1)}
+              >
+                <RefreshCw size={13} />
+              </ToolbarButton>
             )}
           </div>
+          {panelView === 'history' && (
+            <div className="flex-1 overflow-y-auto py-1" data-testid="http-history">
+              {history.length === 0 ? (
+                <div className="px-2 py-2 text-[11px] text-gray-500">
+                  Requests you send show up here
+                </div>
+              ) : (
+                // No dividers between entries: at two lines each they read as
+                // rows on their own, and a rule under every one turned the list
+                // into a grid of lines with text in it.
+                history.map((entry) => (
+                  <button
+                    key={entry.id}
+                    onClick={() => loadFromHistory(entry)}
+                    title={`${entry.spec.method} ${entry.spec.url}`}
+                    className="w-full text-left px-2 py-1 rounded-sm hover:bg-fleet-active"
+                  >
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <span className="font-medium text-gray-400 shrink-0">
+                        {entry.spec.method}
+                      </span>
+                      <span className="truncate flex-1 font-mono text-fleet-text">
+                        {shortUrl(entry.spec.url)}
+                      </span>
+                      <span className={clsx('shrink-0', historyStatusClass(entry))}>
+                        {entry.error ? '!' : (entry.status ?? '')}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 truncate">
+                      {ago(entry.sentAt)}
+                      {entry.durationMs !== undefined ? ` · ${entry.durationMs} ms` : ''}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {panelView === 'saved' && (
+            <div className="flex-1 flex flex-col min-h-0" data-testid="http-saved">
+              <div className="px-2 py-1.5">
+                <input
+                  value={savedFilter}
+                  onChange={(e) => setSavedFilter(e.target.value)}
+                  placeholder="Search saved"
+                  aria-label="Search saved requests"
+                  spellCheck={false}
+                  className="w-full bg-fleet-sidebar border border-fleet-border rounded px-2 py-1 text-[11px] text-fleet-text outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto pb-1">
+                {savedAll === null ? (
+                  <div className="px-2 py-2 text-[11px] text-gray-500">Reading request files…</div>
+                ) : savedRequests.length === 0 ? (
+                  <div className="px-2 py-2 text-[11px] text-gray-500">
+                    {savedAll.length === 0
+                      ? 'Requests you save into .http files show up here'
+                      : 'Nothing matches.'}
+                  </div>
+                ) : (
+                  savedRequests.map((entry) => (
+                    <div
+                      key={entry.id}
+                      data-saved-request={entry.name}
+                      className="group flex items-center gap-0.5 px-1 rounded-sm hover:bg-fleet-active"
+                    >
+                      <button
+                        onClick={() => loadSaved(entry)}
+                        title={`${entry.method} ${entry.url}\n${entry.file}`}
+                        className="flex-1 min-w-0 text-left px-1 py-1"
+                      >
+                        <div className="flex items-center gap-1.5 text-[11px]">
+                          <span className="font-medium text-gray-400 shrink-0">{entry.method}</span>
+                          <span className="truncate flex-1 text-fleet-text">{entry.name}</span>
+                          {!entry.spec && <span className="text-amber-300 shrink-0">!</span>}
+                        </div>
+                        <div className="text-[10px] text-gray-500 truncate">
+                          {relativeToRoot(entry.file, rootPaths)}
+                        </div>
+                      </button>
+                      {/* Both actions on the row, revealed on hover: the panel
+                          is narrow, and two permanent icons per line would
+                          leave the names no width at all. */}
+                      <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                        <ToolbarButton
+                          dense
+                          title="Run this request"
+                          ariaLabel={`Run ${entry.name}`}
+                          tooltipAlign="right"
+                          colorClassName="text-gray-500 hover:text-fleet-textHover"
+                          onClick={() => runSaved(entry)}
+                        >
+                          <Play size={12} />
+                        </ToolbarButton>
+                        <ToolbarButton
+                          dense
+                          title="Open where it is saved"
+                          ariaLabel={`Open ${entry.name}`}
+                          tooltipAlign="right"
+                          colorClassName="text-gray-500 hover:text-fleet-textHover"
+                          onClick={() => onOpenRequest(entry.file, entry.line)}
+                        >
+                          <ExternalLink size={12} />
+                        </ToolbarButton>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -478,17 +668,20 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               <Terminal size={14} />
             </ToolbarButton>
             {/* Separated from the two beside it: those act on the request in
-                the form, this one only decides what is on screen. */}
+                the form, this one only decides what is on screen. It stopped
+                being a clock when the panel stopped being only the history -
+                it now opens a list of requests (the project's, or the ones
+                just sent), so it is named and drawn as the panel it opens. */}
             <div className="w-px h-4 bg-fleet-border mx-1" />
             <ToolbarButton
               dense
-              active={!historyCollapsed}
-              title={historyCollapsed ? 'Show history' : 'Hide history'}
+              active={!panelCollapsed}
+              title={panelCollapsed ? 'Show the requests panel' : 'Hide the requests panel'}
               tooltipAlign="right"
               colorClassName="text-gray-500 hover:text-fleet-textHover"
-              onClick={() => setHistoryCollapsed(!historyCollapsed)}
+              onClick={() => setPanelCollapsed(!panelCollapsed)}
             >
-              <History size={14} />
+              {panelCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
             </ToolbarButton>
           </div>
 
