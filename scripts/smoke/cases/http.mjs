@@ -581,6 +581,67 @@ export default {
           `document.querySelector('[aria-label="Method"]')?.value === 'POST'`
         )
       )
+
+      // ---- the tab's own environments ----
+      // The form has no file to sit next to, so its constants come from
+      // settings. A {{placeholder}} with nothing behind it is refused rather
+      // than sent as a URL with a hole in it.
+      const beforeUnresolved = requests.length
+      await fill('[aria-label="URL"]', '{{host}}/echo')
+      await ui.clickButton('Send')
+      await sleep(600)
+      check(
+        'sending an unresolved {{placeholder}} is refused, not sent',
+        requests.length === beforeUnresolved &&
+          (await cdp.evaluate(
+            `document.querySelector('[data-testid="http-client-tab"]')?.innerText.includes('Undefined variable: host')`
+          )),
+        String(requests.length - beforeUnresolved)
+      )
+
+      await ui.clickButton('Edit environments')
+      check(
+        'the tab has an environments editor',
+        await waitFor(`!!document.querySelector('[aria-label="Environment name"], button')`, {
+          timeoutMs: 4000
+        }) && (await ui.buttonExists('Add environment'))
+      )
+      await ui.clickButton('Add environment')
+      await fill('[aria-label="Environment name"]', 'local')
+      await fill('[aria-label="Constant 1 name"]', 'host')
+      await fill('[aria-label="Constant 1 value"]', `http://127.0.0.1:${fixture.httpPort}`)
+      await ui.key('Escape', 'Escape', 27)
+      await sleep(200)
+
+      check(
+        'the environment is stored in settings',
+        await waitFor(
+          `window.api.getSettings().then((s) => {
+             const e = s.extensions.httpClient.environments
+             return e.length === 1 && e[0].name === 'local' && e[0].variables[0].name === 'host'
+           })`,
+          { timeoutMs: 5000 }
+        )
+      )
+
+      await setSelect('[aria-label="Environment"]', 'local')
+      await ui.clickButton('Send')
+      const envSent = await waitFor(
+        `(document.querySelector('[data-testid="http-response-view"]')?.innerText || '')
+           .includes('clipboard')`,
+        { timeoutMs: 15_000 }
+      )
+      check(
+        'picking an environment fills the constants in and sends it',
+        envSent && requests.at(-1)?.url === '/echo',
+        JSON.stringify(requests.at(-1)?.url ?? null)
+      )
+      check(
+        'and the choice is remembered',
+        await cdp.evaluate(
+          `window.api.getSettings().then((s) => s.extensions.httpClient.selectedEnvironment === 'local')`
+        )
+      )
     } finally {
       server.close()
     }

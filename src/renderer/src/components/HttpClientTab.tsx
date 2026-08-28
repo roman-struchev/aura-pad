@@ -6,6 +6,7 @@ import {
   Loader2,
   Plus,
   Send,
+  Settings2,
   Terminal,
   Trash2,
   X
@@ -18,8 +19,10 @@ import {
 } from '../../../shared/http'
 import type { AppSettings, HttpScratchRequest } from '../../../shared/settings'
 import { HttpResponseView } from './HttpResponseView'
+import { HttpEnvironmentsModal } from './HttpEnvironmentsModal'
 import { ToolbarButton } from './ToolbarButton'
 import { looksLikeCurl, parseCurl, toCurl } from '../lib/http/curl'
+import { substitute } from '../lib/http/httpFile'
 import { useStableCallback } from '../lib/useStableCallback'
 import type { HttpExchange } from '../hooks/useHttpClient'
 
@@ -88,8 +91,16 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   const [tab, setTab] = useState<'headers' | 'body'>('headers')
   const [importError, setImportError] = useState<string | null>(null)
   const [history, setHistory] = useState<HttpHistoryEntry[]>([])
+  const [showEnvironments, setShowEnvironments] = useState(false)
 
   const running = !!exchange?.running
+  const environments = settings.extensions.httpClient.environments
+  const environmentName = settings.extensions.httpClient.selectedEnvironment
+  const environmentVariables = Object.fromEntries(
+    (environments.find((e) => e.name === environmentName)?.variables ?? [])
+      .filter((v) => v.name.trim() !== '')
+      .map((v) => [v.name.trim(), v.value])
+  )
   const historyCollapsed = settings.extensions.httpClient.historyCollapsed
   const setHistoryCollapsed = (collapsed: boolean): void =>
     updateSetting('extensions', {
@@ -117,6 +128,35 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
     insecure,
     timeoutMs: DEFAULT_TIMEOUT_MS
   })
+
+  const selectEnvironment = (name: string): void =>
+    updateSetting('extensions', {
+      ...settings.extensions,
+      httpClient: { ...settings.extensions.httpClient, selectedEnvironment: name }
+    })
+
+  // {{name}} filled in from the selected environment - the same substitution
+  // a .http file gets (and the same generated {{$uuid}}/{{$timestamp}}
+  // values, which need no environment at all). The form keeps the
+  // placeholders: they are what the user typed, and what a saved request
+  // should still say tomorrow when it runs against another environment.
+  const resolveSpec = (spec: HttpRequestSpec): { spec: HttpRequestSpec; missing: string[] } => {
+    const missing: string[] = []
+    const fill = (text: string): string => {
+      const result = substitute(text, environmentVariables)
+      missing.push(...result.missing)
+      return result.text
+    }
+    return {
+      spec: {
+        ...spec,
+        url: fill(spec.url),
+        headers: spec.headers.map((h) => ({ name: fill(h.name), value: fill(h.value) })),
+        body: spec.body === undefined ? undefined : fill(spec.body)
+      },
+      missing: [...new Set(missing)]
+    }
+  }
 
   const persist = (): void => {
     const request: HttpScratchRequest = { method, url, headers, body, followRedirects, insecure }
@@ -157,10 +197,23 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
 
   const send = (): void => {
     if (!canSend) return
+    const resolved = resolveSpec(buildSpec())
+    // A request with an unfilled {{placeholder}} in it would go somewhere
+    // nobody meant - to a URL with a hole in it, or with an empty token.
+    // Naming what is missing beats sending it and showing a 401.
+    if (resolved.missing.length > 0) {
+      setImportError(
+        `Undefined variable: ${resolved.missing.join(', ')}${
+          environmentName ? '' : ' - no environment is selected'
+        }`
+      )
+      return
+    }
+    setImportError(null)
     // Saved on send rather than on every keystroke: the form lives in
     // settings.json, and persisting each character would write it constantly.
     persist()
-    onSend(buildSpec())
+    onSend(resolved.spec)
   }
 
   // A curl command from anywhere (a terminal, a colleague, browser devtools)
@@ -279,6 +332,14 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
         </div>
       )}
 
+      {showEnvironments && (
+        <HttpEnvironmentsModal
+          settings={settings}
+          updateSetting={updateSetting}
+          onClose={() => setShowEnvironments(false)}
+        />
+      )}
+
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
         <div className="shrink-0 border-b border-fleet-border p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2">
@@ -348,6 +409,37 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               </button>
             ))}
             <div className="flex-1" />
+            {/* Environments sit with the other things that change what Send
+                does, not with the icons that act on the form. */}
+            <select
+              value={environmentName}
+              onChange={(e) => selectEnvironment(e.target.value)}
+              aria-label="Environment"
+              title="Fill {{placeholders}} from an environment"
+              className="bg-fleet-sidebar border border-fleet-border rounded px-1.5 py-1 text-[11px] text-fleet-text outline-none focus:border-blue-500 max-w-[10rem]"
+            >
+              <option value="">No environment</option>
+              {environments.map((env) => (
+                <option key={env.name} value={env.name}>
+                  {env.name}
+                </option>
+              ))}
+              {/* A name the list no longer has (renamed or deleted in another
+                  window) would otherwise show as blank while requests still
+                  resolve against nothing. */}
+              {environmentName && !environments.some((e) => e.name === environmentName) && (
+                <option value={environmentName}>{environmentName} (missing)</option>
+              )}
+            </select>
+            <ToolbarButton
+              dense
+              title="Edit environments"
+              tooltipAlign="right"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
+              onClick={() => setShowEnvironments(true)}
+            >
+              <Settings2 size={14} />
+            </ToolbarButton>
             {checkbox('Follow redirects', followRedirects, setFollowRedirects)}
             {checkbox('Ignore TLS errors', insecure, setInsecure)}
             <ToolbarButton
@@ -373,7 +465,15 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               title="Copy as cURL"
               tooltipAlign="right"
               colorClassName="text-gray-500 hover:text-fleet-textHover"
-              onClick={() => navigator.clipboard.writeText(toCurl(buildSpec()))}
+              // Resolved, so what lands in a terminal actually runs - unless
+              // something is missing, in which case the placeholders are more
+              // honest than blanks where the values should be.
+              onClick={() => {
+                const resolved = resolveSpec(buildSpec())
+                navigator.clipboard.writeText(
+                  toCurl(resolved.missing.length ? buildSpec() : resolved.spec)
+                )
+              }}
             >
               <Terminal size={14} />
             </ToolbarButton>

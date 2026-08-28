@@ -116,6 +116,16 @@ export interface HttpScratchRequest {
   insecure: boolean
 }
 
+// A named set of constants the HTTP Client tab substitutes into {{name}}
+// placeholders - the form's answer to a .http file's environments, which come
+// from http-client.env.json files next to the requests (src/main/httpEnv.ts).
+// The tab has no file and therefore no directory to look beside, so its
+// environments live in settings with the rest of its state.
+export interface HttpClientEnvironment {
+  name: string
+  variables: { name: string; value: string }[]
+}
+
 // Per-extension settings, one namespace per built-in extension (see
 // renderer/lib/extensions.ts). Every extension owns an `enabled` flag plus
 // whatever configuration it needs; adding an extension means adding a block
@@ -156,6 +166,13 @@ export interface ExtensionSettings {
     // property of the session, and a file that doesn't define it just runs
     // with its own variables.
     environment: string
+    // The tab's own environments, and which of them the form is filling in.
+    // Kept apart from `environment` above deliberately: those names come from
+    // a file in someone's repository and these from this list, and quietly
+    // treating a "dev" in one as the "dev" in the other would send a request
+    // somewhere nobody chose.
+    environments: HttpClientEnvironment[]
+    selectedEnvironment: string
   }
 }
 
@@ -231,6 +248,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
       enabled: true,
       historyCollapsed: true,
       environment: '',
+      environments: [],
+      selectedEnvironment: '',
       request: {
         method: 'GET',
         url: '',

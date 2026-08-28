@@ -153,7 +153,13 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   type the URL, add headers and a body, hit Send. Paste a `curl` command into the URL
   field — or use the clipboard button — and the whole form fills itself in: the line
   breaks, the padding and the stray trailing backslash a terminal adds when you copy a
-  wrapped command are all ignored. It hands one back too — or **save the request into a `.http` file**
+  wrapped command are all ignored. The tab has **environments** of its own (the gear beside
+  the picker): named sets of constants — hosts, tokens, ids — that fill in `{{placeholders}}`
+  in the URL, the headers and the body, so one form serves dev, stage and prod. A
+  placeholder with nothing behind it stops the send and says which one it was, rather than
+  quietly requesting a URL with a hole in it. (These live in the app's settings; for a
+  secret that shouldn't, keep the request in a `.http` file with a private env file beside
+  it.) It hands one back too — or **save the request into a `.http` file**
   (the page-plus icon), which appends it as a `###` block and opens the file, so an
   experiment turns into something that lives in the repository.
 - The response opens beside the editor (or below the form): status, time and size, the body
