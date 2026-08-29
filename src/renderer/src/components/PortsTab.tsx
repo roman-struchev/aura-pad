@@ -14,6 +14,11 @@ const FILTER_PLACEHOLDER = '3000, or node'
 // trust. Slow enough that the lsof it costs is nothing.
 const REFRESH_MS = 5000
 
+// How long the refresh icon keeps turning at minimum. Reading the ports takes
+// about as long as it takes to blink, so without a floor the icon flickers
+// once and the click looks like it did nothing.
+const MIN_SPIN_MS = 500
+
 // "Address already in use" - what has it, and stop it. The list is every TCP
 // port this machine is listening on; the filter takes a port number or part
 // of a process name, so the usual question ("who has 8080?") is one field
@@ -31,12 +36,29 @@ export const PortsTab: React.FC = () => {
   // read nobody is waiting for any more is dropped instead of setting state
   // on a gone component.
   const [reloads, setReloads] = useState(0)
+  const [spinning, setSpinning] = useState(false)
+  const spinStartedRef = useRef(0)
   const reload = (): void => setReloads((n) => n + 1)
+
+  // Only the button spins. The timer below reloads on its own every few
+  // seconds, and an icon blinking on its own schedule is noise, not feedback.
+  const refreshNow = (): void => {
+    spinStartedRef.current = Date.now()
+    setSpinning(true)
+    reload()
+  }
 
   useEffect(() => {
     let alive = true
     void window.api.listListeningPorts().then((list) => {
-      if (alive) setRows(list)
+      if (!alive) return
+      setRows(list)
+      const left = MIN_SPIN_MS - (Date.now() - spinStartedRef.current)
+      if (left <= 0) setSpinning(false)
+      else
+        window.setTimeout(() => {
+          if (alive) setSpinning(false)
+        }, left)
     })
     return () => {
       alive = false
@@ -132,9 +154,9 @@ export const PortsTab: React.FC = () => {
           title="Refresh"
           tooltipAlign="right"
           colorClassName="text-gray-500 hover:text-fleet-textHover"
-          onClick={reload}
+          onClick={refreshNow}
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={clsx(spinning && 'animate-spin')} />
         </ToolbarButton>
       </div>
 

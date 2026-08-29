@@ -48,6 +48,23 @@ export default {
         await waitFor(`!!document.querySelector('[data-testid="ports-tab"]')`, { timeoutMs: 8000 })
       )
 
+      // Pressing Refresh has to look like it did something: reading the ports
+      // is quicker than the eye, so the icon turns for a moment either way.
+      await ui.clickButton('Refresh')
+      check(
+        'the refresh button turns while it re-reads',
+        await cdp.evaluate(
+          `!!document.querySelector('[data-testid="ports-tab"] [aria-label="Refresh"] .animate-spin')`
+        )
+      )
+      check(
+        'and stops turning once it has',
+        await waitFor(
+          `!document.querySelector('[data-testid="ports-tab"] [aria-label="Refresh"] .animate-spin')`,
+          { timeoutMs: 5000 }
+        )
+      )
+
       // The filter is how the question is actually asked: "who has 9354?"
       await cdp.evaluate(`(() => {
         const el = document.querySelector('[aria-label="Port or process"]')
