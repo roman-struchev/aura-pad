@@ -172,7 +172,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </span>
             ) : (
               <button
-                className="text-[11px] text-blue-400 hover:text-blue-300 underline text-left"
+                className="text-[11px] text-blue-400 hover:text-accent-info underline text-left"
                 onClick={onUpdateAction}
               >
                 {updateNotification.mode === 'install'

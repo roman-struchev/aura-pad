@@ -309,7 +309,7 @@ const HistoryList: React.FC<HistoryListProps> = ({ repo, onLog }) => {
       ))}
       {hasMore && (
         <button
-          className="w-full mt-1 py-1 text-[10px] text-gray-400 hover:text-gray-200 hover:bg-fleet-active rounded disabled:opacity-40"
+          className="w-full mt-1 py-1 text-[10px] text-gray-400 hover:text-fleet-textHover hover:bg-fleet-active rounded disabled:opacity-40"
           disabled={loadingMore}
           onClick={loadMore}
         >
@@ -447,7 +447,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                 'px-2 py-1 rounded text-xs truncate max-w-[110px]',
                 r.root === activeRoot
                   ? 'bg-fleet-active text-fleet-textHover'
-                  : 'text-gray-400 hover:bg-fleet-active hover:text-gray-200'
+                  : 'text-gray-400 hover:bg-fleet-active hover:text-fleet-textHover'
               )}
               onClick={() => onSelectRoot(r.root)}
             >
@@ -493,7 +493,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
               'flex-1 py-1 rounded transition-colors capitalize',
               view === v
                 ? 'bg-fleet-active text-fleet-textHover'
-                : 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-400 hover:text-fleet-textHover'
             )}
             onClick={() => setView(v)}
           >

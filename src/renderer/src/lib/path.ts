@@ -2,6 +2,11 @@ export function dirname(path: string): string {
   return path.substring(0, path.lastIndexOf('/'))
 }
 
+// The file's own name, with no directory in front of it.
+export function basename(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1)
+}
+
 export function isUnderAnyRoot(filePath: string, rootPaths: string[]): boolean {
   return rootPaths.some((root) => filePath === root || filePath.startsWith(root + '/'))
 }

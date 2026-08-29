@@ -193,6 +193,30 @@ export function makeUi(cdp) {
 
   const bodyText = () => cdp.evaluate('document.body.innerText')
 
+  // WCAG contrast of an element's text against whatever it is actually
+  // painted on, computed in the page so it measures the theme's resolved CSS
+  // variables rather than what the source says. Null when the element isn't
+  // there. Used by the cases that guard "readable in the light themes too" -
+  // fixed greys are legible on exactly one side of the theme list.
+  const contrastOf = (selector) =>
+    cdp.evaluate(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)})
+      if (!el) return null
+      const rgb = (c) => (c.match(/[\\d.]+/g) || []).slice(0, 3).map(Number)
+      const chan = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+      const lum = ([r, g, b]) => 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+      const backdrop = (node) => {
+        for (let n = node; n; n = n.parentElement) {
+          const c = getComputedStyle(n).backgroundColor
+          if (c && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(c)) return c
+        }
+        return 'rgb(255, 255, 255)'
+      }
+      const a = lum(rgb(getComputedStyle(el).color))
+      const b = lum(rgb(backdrop(el)))
+      return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100
+    })()`)
+
   // Tab-strip entries. Tree rows are draggable too, so the tab bar can only be
   // addressed by excluding them.
   const TAB_SELECTOR = '[draggable="true"]:not([data-tree-row])'
@@ -270,6 +294,7 @@ export function makeUi(cdp) {
     closeTab,
     togglePreview,
     openTabs,
-    bodyText
+    bodyText,
+    contrastOf
   }
 }

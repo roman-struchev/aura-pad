@@ -107,7 +107,7 @@ export const SpellcheckConfigModal: React.FC<SpellcheckConfigModalProps> = ({
                     className={clsx(
                       'flex items-center gap-1 rounded px-2 py-1 text-[11px] border',
                       active
-                        ? 'border-blue-500 text-blue-300'
+                        ? 'border-blue-500 text-accent-info'
                         : 'border-fleet-border text-gray-400 hover:text-fleet-text'
                     )}
                   >

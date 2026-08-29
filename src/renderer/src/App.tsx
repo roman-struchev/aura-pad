@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import type { FileNode } from './components/FileTree'
 import { GlobalSearch } from './components/GlobalSearch'
 import { FileSearch } from './components/FileSearch'
+import { CommandPalette } from './components/CommandPalette'
 import { MarkdownPreview } from './components/MarkdownPreview'
 import { HtmlPreview } from './components/HtmlPreview'
 import { SettingsModal } from './components/SettingsModal'
@@ -43,7 +44,9 @@ import { useReadAloud } from './hooks/useReadAloud'
 import { useTranslate } from './hooks/useTranslate'
 import { useWorkTogether } from './hooks/useWorkTogether'
 import { useSpellcheck } from './hooks/useSpellcheck'
+import type { MenuAction } from '../../shared/menuAction'
 import { useMenuActions } from './hooks/useMenuActions'
+import { buildCommands, type Command } from './lib/commands'
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
 import type { UpdateNotification, UpdateProgress } from '../../shared/updateNotification'
 import type { HttpEnvironments, HttpRequestSpec } from '../../shared/http'
@@ -446,6 +449,7 @@ function App(): React.JSX.Element {
   // "Replace in Files" is the same overlay, opened with its replace row out.
   const [searchStartsInReplace, setSearchStartsInReplace] = useState(false)
   const [showFileSearch, setShowFileSearch] = useState(false)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [showSpellcheckConfig, setShowSpellcheckConfig] = useState(false)
   // The tab whose local history is open (null = closed).
   const [historyPath, setHistoryPath] = useState<string | null>(null)
@@ -460,6 +464,11 @@ function App(): React.JSX.Element {
   // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
   const fileSearchQueryRef = useRef('')
   const [fileSearchInitialQuery, setFileSearchInitialQuery] = useState('')
+  // Bumped whenever a command re-seeds Quick Open's query while the dialog is
+  // already up: it keys the component, so "Go to Line…" pressed over an open
+  // Quick Open really resets it to ":" instead of leaving the old query in
+  // place (initialQuery is only read when it mounts).
+  const [fileSearchSeed, setFileSearchSeed] = useState(0)
   // IDEA-style: opening search with text selected in the editor prefills the
   // query with that selection; otherwise the previous query is shown again.
   // Either way the overlay pre-selects it, so typing starts a fresh query.
@@ -469,6 +478,7 @@ function App(): React.JSX.Element {
   // one dialog over, query and all, instead of stacking a second one behind
   // it (and vice versa, below).
   const openGlobalSearch = (openWithReplace = false): void => {
+    setShowCommandPalette(false)
     setSearchStartsInReplace(openWithReplace)
     if (showFileSearch) {
       lastSearchQueryRef.current = fileSearchQueryRef.current
@@ -483,6 +493,7 @@ function App(): React.JSX.Element {
   // Double-Shift / "Go to File…": a toggle, except while search-in-files is
   // up - then it's the same switch in the other direction.
   const toggleFileSearch = (): void => {
+    setShowCommandPalette(false)
     if (showSearch) {
       setShowSearch(false)
       setFileSearchInitialQuery(lastSearchQueryRef.current)
@@ -496,6 +507,24 @@ function App(): React.JSX.Element {
       fileSearchQueryRef.current = ''
     }
     setShowFileSearch(!showFileSearch)
+  }
+  // Quick Open, opened straight into one of its locator modes: ":" for a line
+  // number, "#" for the open file's structure (see lib/quickOpenQuery.ts).
+  // The same dialog, so the two never stack with it or with each other.
+  const openFileSearchWith = (prefix: ':' | '#'): void => {
+    setShowCommandPalette(false)
+    setShowSearch(false)
+    setFileSearchInitialQuery(prefix)
+    fileSearchQueryRef.current = prefix
+    setFileSearchSeed((n) => n + 1)
+    setShowFileSearch(true)
+  }
+  // Find Action toggles like Quick Open does, and takes over from whichever
+  // other overlay is up rather than covering it.
+  const toggleCommandPalette = (): void => {
+    setShowSearch(false)
+    setShowFileSearch(false)
+    setShowCommandPalette((prev) => !prev)
   }
   const [showSettings, setShowSettings] = useState(false)
   // The dictation/read-aloud dialogs double as their Settings pages -
@@ -655,6 +684,9 @@ function App(): React.JSX.Element {
       return false
     },
     onToggleQuickOpen: toggleFileSearch,
+    onCommandPalette: toggleCommandPalette,
+    onGoToLine: () => openFileSearchWith(':'),
+    onGoToSymbol: () => openFileSearchWith('#'),
     hasTreeSelection: tree.selectedPaths.length > 0,
     onCopySelection: tree.copySelection,
     onPasteIntoSelection: tree.pasteIntoSelection,
@@ -677,7 +709,7 @@ function App(): React.JSX.Element {
     return unsubscribe
   }, [])
 
-  useMenuActions({
+  const menuActions: Record<MenuAction, () => void> = {
     'open-folder': () => treeRef.current.handleAddFolder(),
     save: () => tabsRef.current.handleSave(),
     // Context-sensitive: with focus inside the terminal panel (xterm keeps it
@@ -692,6 +724,9 @@ function App(): React.JSX.Element {
     },
     'reopen-tab': () => tabsRef.current.reopenClosedTab(),
     'go-to-file': toggleFileSearch,
+    'go-to-line': () => openFileSearchWith(':'),
+    'go-to-symbol': () => openFileSearchWith('#'),
+    'command-palette': toggleCommandPalette,
     'find-in-files': () => openGlobalSearch(),
     'replace-in-files': () => openGlobalSearch(true),
     'detach-tab': () => {
@@ -723,7 +758,8 @@ function App(): React.JSX.Element {
     'toggle-terminal': toggleTerminal,
     'run-http-request': () => runHttpRequest(),
     preferences: () => setShowSettings(true)
-  })
+  }
+  useMenuActions(menuActions)
 
   // Tells main it's now safe to deliver a file-open request directly instead
   // of queuing it - must run only once, after the subscription above is in
@@ -945,6 +981,15 @@ function App(): React.JSX.Element {
     .filter(([, enabled]) => enabled)
     .map(([id]) => ({ id, icon: EXTENSIONS[id].icon, label: EXTENSIONS[id].title(null) }))
 
+  // Show the active file where it lives in the tree (toolbar button and the
+  // palette's "Reveal Active File"): un-hide the sidebar, leave the git panel,
+  // scroll the row into view.
+  const revealActiveFile = (): void => {
+    if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
+    setSidebarView('files')
+    if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
+  }
+
   // Entry point from the file tree's per-root branch badge: focus that
   // root's repo in the git panel and reveal the panel. Also un-hides the
   // sidebar, since the git panel lives inside it.
@@ -953,6 +998,72 @@ function App(): React.JSX.Element {
     setSidebarView('git')
     if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
   })
+
+  // Everything the command palette offers, assembled only while it is open:
+  // the native menu's own actions (lib/commands.ts turns them into entries)
+  // plus what has no menu entry at all - the extension tabs, the terminal,
+  // and the per-file actions that otherwise live in the floating toolbar.
+  const paletteCommands = (): Command[] => {
+    const filePath = hasFileActions ? tabs.selectedPath : null
+    const extras: Command[] = []
+    if (filePath) {
+      extras.push({
+        id: 'reveal-active-file',
+        label: 'Reveal Active File in Tree',
+        group: 'Go',
+        run: revealActiveFile
+      })
+      extras.push({
+        id: 'local-history',
+        label: 'Local History…',
+        group: 'File',
+        run: () => setHistoryPath(filePath)
+      })
+      if (filePath.endsWith('.py')) {
+        extras.push({
+          id: 'run-python',
+          label: 'Run Python File',
+          group: 'Run',
+          run: () => runPythonFile(filePath)
+        })
+      }
+      if (settings.readAloudEnabled && isProsePath(filePath)) {
+        extras.push({ id: 'read-aloud', label: 'Read Aloud', group: 'Edit', run: startReadAloud })
+      }
+    }
+    extras.push({
+      id: 'new-terminal',
+      label: 'New Terminal',
+      group: 'View',
+      run: openDefaultTerminal
+    })
+    if (tabs.tabs.length > 0) {
+      extras.push({
+        id: 'close-all-tabs',
+        label: 'Close All Tabs',
+        group: 'File',
+        run: () => tabs.closeAllTabs()
+      })
+    }
+    for (const ext of enabledExtensions) {
+      extras.push({
+        id: `open-${ext.id}`,
+        label: `Open ${ext.label}`,
+        group: 'View',
+        run: () => tabs.openTab(makeExtensionPath(ext.id))
+      })
+    }
+    return buildCommands(
+      menuActions,
+      {
+        activePath: filePath,
+        canDictate,
+        canReadAloud: settings.readAloudEnabled && isProsePath(filePath),
+        translateEnabled: settings.translateEnabled
+      },
+      extras
+    )
+  }
 
   // Identity-stable wrappers for everything the memoized FileTree rows (via
   // Sidebar) receive - the hooks recreate their functions every render, and
@@ -1091,11 +1202,7 @@ function App(): React.JSX.Element {
                     onSelectHttpEnvironment={selectHttpEnvironment}
                     voice={voice}
                     readAloud={readAloud}
-                    onRevealActiveFile={() => {
-                      if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
-                      setSidebarView('files')
-                      if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
-                    }}
+                    onRevealActiveFile={revealActiveFile}
                     onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
                     onRunHttp={() => runHttpRequest()}
                     onFormatDocument={formatActiveDocument}
@@ -1274,18 +1381,25 @@ function App(): React.JSX.Element {
 
       {showFileSearch && (
         <FileSearch
+          key={fileSearchSeed}
           onClose={() => setShowFileSearch(false)}
           initialQuery={fileSearchInitialQuery}
+          activePath={hasFileActions ? tabs.selectedPath : null}
+          activeContent={tabs.fileContent}
           onQueryChange={(q) => {
             fileSearchQueryRef.current = q
           }}
-          onSelect={(path, type) => {
+          onSelect={(path, type, line) => {
             if (type === 'directory') tree.setRevealPath(path)
-            else tabs.openTab(path)
+            else tabs.openTab(path, line)
             setShowFileSearch(false)
           }}
           rootNodes={tree.rootNodes}
         />
+      )}
+
+      {showCommandPalette && (
+        <CommandPalette commands={paletteCommands()} onClose={() => setShowCommandPalette(false)} />
       )}
 
       {httpSaveSpec && (

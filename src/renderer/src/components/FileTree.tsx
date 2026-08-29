@@ -217,7 +217,7 @@ export const FileTree: React.FC<FileTreeProps> = React.memo(function FileTree({
         <span className="truncate flex-1">{node.name}</span>
         {node.isRoot && rootBranch && (
           <button
-            className="ml-1 shrink-0 flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-200 px-1 py-px rounded hover:bg-fleet-border max-w-[45%]"
+            className="ml-1 shrink-0 flex items-center gap-1 text-[10px] text-gray-500 hover:text-fleet-textHover px-1 py-px rounded hover:bg-fleet-border max-w-[45%]"
             title={`Open Git — ${rootBranch}`}
             onClick={(e) => {
               e.stopPropagation()

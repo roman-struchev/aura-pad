@@ -57,7 +57,7 @@ export const UpdateToast: React.FC<UpdateToastProps> = ({
                 ? `AuraPad ${notification.version} is ready to install.`
                 : `AuraPad ${notification.version} is available.`}
           </span>
-          <button className="underline text-blue-400 hover:text-blue-300" onClick={onApply}>
+          <button className="underline text-blue-400 hover:text-accent-info" onClick={onApply}>
             {notification.failed
               ? 'Retry'
               : notification.mode === 'install'

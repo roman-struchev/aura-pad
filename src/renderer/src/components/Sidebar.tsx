@@ -87,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 'flex-1 flex items-center justify-center gap-1.5 py-1 rounded transition-colors',
                 sidebarView === 'files'
                   ? 'bg-fleet-active text-fleet-textHover'
-                  : 'text-gray-400 hover:text-gray-200'
+                  : 'text-gray-400 hover:text-fleet-textHover'
               )}
               onClick={() => setSidebarView('files')}
             >
@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 'flex-1 flex items-center justify-center gap-1.5 py-1 rounded transition-colors',
                 sidebarView === 'git'
                   ? 'bg-fleet-active text-fleet-textHover'
-                  : 'text-gray-400 hover:text-gray-200'
+                  : 'text-gray-400 hover:text-fleet-textHover'
               )}
               onClick={() => setSidebarView('git')}
             >

@@ -4,14 +4,14 @@ Two parts:
 
 - **Part A — baseline.** Does the app still do the things it exists for? These
   are automated: `npm run smoke` runs all of them against a throwaway profile in
-  about 20 seconds. Run it before every release and after any change you can't
+  about two minutes. Run it before every release and after any change you can't
   fully reason about.
 - **Part B — regressions.** One section per bug already fixed, naming the files
   it guards. Run the sections whose `Guards:` match your diff. Most are manual;
   the ones Part A already covers say so.
 
 ```bash
-npm run smoke              # everything, ~20s
+npm run smoke              # everything, ~2 min
 npm run smoke -- A5 A10    # only these ids (prefix match)
 npm run smoke -- --keep    # leave the app up afterwards to poke at it
 ```
@@ -76,6 +76,7 @@ And two helpers worth reaching for instead of a `sleep`:
 | A4 | File operations | Create (through the tree's own dialog), duplicate-name refusal, rename, move, move-onto-existing refusal, Cmd+C/Cmd+V copy, Cmd-click multi-select, ⌫ delete with confirmation, the context menu's Copy Path / Copy Relative Path (and Open in Default App being offered, and refused for a path outside the workspaces), the right-click menu staying inside the window with the sidebar docked right (§15), and its text keeping a WCAG-AA contrast ratio in the light theme, at rest and under the mouse |
 | A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |
 | A6 | Search, options and replace | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape; switching between quick open and search-in-files swaps the one dialog and carries the query both ways; match case / whole word / regex / file filter each narrow as advertised and an unfinished regex is reported not thrown; replace-in-files rewrites what it says it did, refuses paths outside the allowed folders, and one Undo puts it back — driven through the API and through the overlay (preview, Replace All, Undo) |
+| A20 | Go to line, structure, palette | `Cmd+L` opens quick open in line mode and offers the line; `Cmd+F12` opens it on the file's structure (classes/functions/constants of a .ts, headings of a .md with fenced blocks skipped) and a fuzzy query narrows it to one symbol; picking one keeps the file active; `name#symbol` opens another file at its symbol; `Shift+Cmd+A` opens the command palette, lists menu-backed and extra actions, filters fuzzily, closes on Escape, and Enter really runs the action (the sidebar toggle, checked in settings); a mode key pressed over an already-open quick open re-seeds it; both dialogs keep a WCAG-AA contrast in the light theme |
 | A16 | Markdown image paste | An image on the clipboard pasted into a `.md` file lands in `assets/` next to it, the document gets a relative link, the preview renders it as a data: URL, the same paste in a non-Markdown file writes nothing, and a document path outside the allowed folders is refused |
 | A17 | Local history | A save stores the state it replaced, a second save moments later is coalesced into it, replace-across-files always stores one, versions read back byte-for-byte, an unknown id and a file outside the allowed folders are refused, and the tab menu's Local History restores a picked version into the tab |
 | A18 | Spell checking | An installed dictionary is listed and an unknown language refused; Settings → Spelling turns it on and remembers it; a prose file's unknown words are counted in the toolbar (affixed forms counting as known), typing another one is picked up, a clean file reports none, and a non-prose file is not checked at all |
@@ -479,6 +480,30 @@ lightbulb opens through the editor's context menu.
 | 20.5 | Download Russian too, then write a Russian sentence with an English term in it | Neither the Russian words nor the English term are flagged - every loaded dictionary gets a say |
 | 20.6 | Paste a fenced code block, a URL and a file name into the same document | None of them are underlined |
 | 20.7 | Remove the dictionary from the Spelling dialog | The squiggles disappear and `userData/dictionaries/<lang>` is gone |
+
+---
+
+## 21. Find Action, Go to Line and File Structure keys
+
+**Guards:** `src/main/menu.ts`, `src/renderer/src/hooks/useGlobalHotkeys.ts`,
+`src/renderer/src/monaco-setup.ts`
+
+These three commands are the exception to "the native menu owns every
+accelerator": the menu items carry `registerAccelerator: false` and only
+*display* the key, while the renderer's own keydown handler acts on it. A20
+covers the keys themselves (that is why they are injectable at all); what stays
+manual is everything around them.
+
+1. View → **Find Action…** with the mouse opens the palette. Same for **Go to
+   Line…** and **File Structure…** — clicking the item must do what the key
+   does, and the items must show `⇧⌘A`, `⌘L`, `⌘F12` next to them.
+2. Click into the editor, then press `Cmd+L`. It must open Go to Line rather
+   than selecting the line (Monaco's own `Cmd+L`, unbound in `monaco-setup.ts`).
+3. Open the terminal panel (`Ctrl+\``), click into it, press `Ctrl+L`. The
+   shell must clear its screen — the palette shortcuts deliberately stand down
+   while the terminal has focus.
+4. With no file open, `Cmd+F12` opens the dialog and it says so instead of
+   listing nothing.
 
 ---
 

@@ -76,9 +76,9 @@ function shortUrl(url: string): string {
 }
 
 function historyStatusClass(entry: HttpHistoryEntry): string {
-  if (entry.error) return 'text-red-300'
-  if (entry.status && entry.status >= 400) return 'text-amber-300'
-  return 'text-emerald-300'
+  if (entry.error) return 'text-accent-error'
+  if (entry.status && entry.status >= 400) return 'text-accent-warn'
+  return 'text-accent-ok'
 }
 
 // A one-off request that isn't worth a file: method, URL, headers and body in
@@ -489,7 +489,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                         <div className="flex items-center gap-1.5 text-[11px]">
                           <span className="font-medium text-gray-400 shrink-0">{entry.method}</span>
                           <span className="truncate flex-1 text-fleet-text">{entry.name}</span>
-                          {!entry.spec && <span className="text-amber-300 shrink-0">!</span>}
+                          {!entry.spec && <span className="text-accent-warn shrink-0">!</span>}
                         </div>
                         <div className="text-[10px] text-gray-500 truncate">
                           {relativeToRoot(entry.file, rootPaths)}
@@ -693,7 +693,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
             </ToolbarButton>
           </div>
 
-          {importError && <div className="text-[11px] text-red-300">{importError}</div>}
+          {importError && <div className="text-[11px] text-accent-error">{importError}</div>}
 
           {tab === 'headers' ? (
             <div className="flex flex-col gap-1">

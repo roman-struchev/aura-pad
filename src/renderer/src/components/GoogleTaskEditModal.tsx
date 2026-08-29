@@ -189,7 +189,7 @@ export const GoogleTaskEditModal: React.FC<GoogleTaskEditModalProps> = ({
                 <button
                   key={label}
                   type="button"
-                  className="px-2 py-0.5 text-[10px] rounded border border-fleet-border hover:bg-fleet-active text-gray-400 hover:text-gray-200"
+                  className="px-2 py-0.5 text-[10px] rounded border border-fleet-border hover:bg-fleet-active text-gray-400 hover:text-fleet-textHover"
                   onClick={() => {
                     const d = new Date()
                     d.setDate(d.getDate() + days)

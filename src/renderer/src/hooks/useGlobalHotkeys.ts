@@ -8,6 +8,12 @@ interface UseGlobalHotkeysOptions {
   onEscape: () => boolean
   // Double-Shift quick open (JetBrains-style toggle).
   onToggleQuickOpen: () => void
+  // The three keys the native menu only displays (registerAccelerator:false
+  // in src/main/menu.ts) and this handles instead: Find Action, Go to Line,
+  // File Structure.
+  onCommandPalette: () => void
+  onGoToLine: () => void
+  onGoToSymbol: () => void
   // Whether the file tree currently has a selection to act on. Live value -
   // the keydown effect re-subscribes when it changes.
   hasTreeSelection: boolean
@@ -27,8 +33,16 @@ function isTextEntry(el: Element | null): boolean {
   )
 }
 
+// Whether this key press is the platform's "command" chord. On macOS that is
+// Cmd only: Ctrl+L there (and on Linux/Windows) is the shell's clear-screen,
+// which the terminal panel must keep receiving.
+function isCommandChord(e: KeyboardEvent): boolean {
+  return window.api.platform === 'darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+}
+
 // The window-level keydown handling that isn't owned by the native menu:
-// Escape priority chain, double-Shift quick open, and tree copy/paste/delete.
+// Escape priority chain, double-Shift quick open, the navigation keys the
+// menu only displays, and tree copy/paste/delete.
 export function useGlobalHotkeys(options: UseGlobalHotkeysOptions): void {
   const { hasTreeSelection } = options
 
@@ -83,6 +97,29 @@ export function useGlobalHotkeys(options: UseGlobalHotkeysOptions): void {
         keyPressedSinceShift.current = true
       }
 
+      const active = document.activeElement
+
+      // Find Action / Go to Line / File Structure. Not taken while the
+      // terminal has focus: Ctrl+L belongs to the shell running in it.
+      if (isCommandChord(e) && !active?.closest?.('.xterm')) {
+        const key = e.key.toLowerCase()
+        if (e.shiftKey && key === 'a') {
+          e.preventDefault()
+          optionsRef.current.onCommandPalette()
+          return
+        }
+        if (!e.shiftKey && !e.altKey && key === 'l') {
+          e.preventDefault()
+          optionsRef.current.onGoToLine()
+          return
+        }
+        if (e.key === 'F12') {
+          e.preventDefault()
+          optionsRef.current.onGoToSymbol()
+          return
+        }
+      }
+
       // Copy/paste/delete for the file tree. Scoped to "the tree is the
       // surface the user is working in": something is selected there, the
       // last click was inside it, and focus isn't in a text field (Monaco and
@@ -91,7 +128,6 @@ export function useGlobalHotkeys(options: UseGlobalHotkeysOptions): void {
       // The remembered surface must also still be on screen: hiding the
       // sidebar (Cmd+B) right after clicking a row would otherwise leave the
       // shortcuts armed over a tree nobody can see.
-      const active = document.activeElement
       const treeIsActive =
         hasTreeSelection &&
         !isTextEntry(active) &&

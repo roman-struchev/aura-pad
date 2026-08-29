@@ -103,7 +103,7 @@ export const HttpEnvironmentsModal: React.FC<HttpEnvironmentsModalProps> = ({
                 onClick={() => removeEnvironment(env.name)}
                 aria-label={`Delete ${env.name}`}
                 title={`Delete ${env.name}`}
-                className="p-1 text-gray-500 hover:text-red-300"
+                className="p-1 text-gray-500 hover:text-accent-error"
               >
                 <Trash2 size={13} />
               </button>

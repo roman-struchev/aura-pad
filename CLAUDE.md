@@ -13,7 +13,7 @@ change.**
 ## After you change anything
 
 ```bash
-npm run smoke      # ~35s, 111 checks, throwaway profile — the actual gate
+npm run smoke      # ~2 min, 316 checks, throwaway profile — the actual gate
 npm run typecheck
 npm run lint       # pre-existing errors are noisy; compare, don't chase zero
 ```
@@ -42,6 +42,12 @@ Option+Cmd+L…), native dialogs, OAuth, the updater — add a Part B case to
   be tested that way; drive the equivalent toolbar button instead.
 - **Toolbar buttons sit in the title bar's drag region** and ignore synthetic
   mouse clicks — dispatch a DOM `.click()` for those.
+- **Fixed colours are legible in exactly one theme.** There are four
+  (`dark`, `light`, `monokai`, `solarized`), so `text-gray-200` or
+  `text-emerald-300` reads on one side of that list and vanishes on the other.
+  Use the tokens in `src/renderer/src/assets/main.css`: `fleet-text` /
+  `fleet-textHover` for text, `accent-ok|warn|error|info` for status colours.
+  `ui.contrastOf()` in the smoke suite measures a real WCAG ratio.
 - **Single-instance lock**: a running AuraPad makes a second one exit silently
   with code 0. Always launch with `AURAPAD_USER_DATA_DIR` pointed somewhere
   disposable (the smoke runner does this for you).

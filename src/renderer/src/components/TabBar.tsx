@@ -237,7 +237,7 @@ export const TabBar: React.FC<TabBarProps> = ({
                       // still leaves a name recognisable (squeezing further
                       // buys no extra tabs - past this point the strip
                       // scrolls anyway, and every label would be unreadable).
-                      'text-gray-500 hover:bg-fleet-active/50 hover:text-gray-200 rounded-t-lg ring-1 ring-transparent hover:ring-white/10 min-w-[120px] max-w-[200px]',
+                      'text-gray-500 hover:bg-fleet-active/50 hover:text-fleet-textHover rounded-t-lg ring-1 ring-transparent hover:ring-white/10 min-w-[120px] max-w-[200px]',
                   dragOverTab === tab.path && !isActive && 'bg-blue-500/20',
                   draggedTab === tab.path && 'opacity-40'
                 )}

@@ -31,11 +31,11 @@ function formatBytes(bytes: number): string {
 // Status colors follow the class, not the exact code: green 2xx, blue 3xx,
 // amber 4xx (your fault), red 5xx (theirs).
 function statusClass(status: number): string {
-  if (status >= 500) return 'bg-red-500/15 text-red-300'
-  if (status >= 400) return 'bg-amber-500/15 text-amber-300'
-  if (status >= 300) return 'bg-blue-500/15 text-blue-300'
-  if (status >= 200) return 'bg-emerald-500/15 text-emerald-300'
-  return 'bg-gray-500/15 text-gray-300'
+  if (status >= 500) return 'bg-red-500/15 text-accent-error'
+  if (status >= 400) return 'bg-amber-500/15 text-accent-warn'
+  if (status >= 300) return 'bg-blue-500/15 text-accent-info'
+  if (status >= 200) return 'bg-emerald-500/15 text-accent-ok'
+  return 'bg-gray-500/15 text-fleet-text'
 }
 
 // Pretty-printing is best-effort by content type: JSON re-serialized with
@@ -163,14 +163,14 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
             )}
           </>
         ) : (
-          <span className="px-1.5 py-0.5 rounded font-medium bg-red-500/15 text-red-300">
+          <span className="px-1.5 py-0.5 rounded font-medium bg-red-500/15 text-accent-error">
             {exchange.cancelled ? 'Cancelled' : 'Failed'}
           </span>
         )}
       </div>
 
       {exchange.error && (
-        <div className="px-3 py-2 text-[12px] text-red-300 whitespace-pre-wrap break-words">
+        <div className="px-3 py-2 text-[12px] text-accent-error whitespace-pre-wrap break-words">
           {exchange.error}
         </div>
       )}
@@ -241,7 +241,7 @@ export const HttpResponseView: React.FC<HttpResponseViewProps> = ({
             {tab === 'body' && (
               <>
                 {response.truncated && (
-                  <div className="mb-2 text-amber-300/80 text-[11px] font-sans">
+                  <div className="mb-2 text-accent-warn/80 text-[11px] font-sans">
                     Response truncated at {formatBytes(response.bodyBytes)}.
                   </div>
                 )}

@@ -50,6 +50,15 @@ monaco.editor.addKeybindingRule({
   command: null
 })
 
+// Cmd+L belongs to "Go to Line…" (a renderer shortcut, see
+// hooks/useGlobalHotkeys.ts). Monaco binds it to "expand line selection" and
+// preventDefaults it, which with the editor focused - the one place the
+// shortcut is actually needed - would swallow the key.
+monaco.editor.addKeybindingRule({
+  keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL,
+  command: null
+})
+
 // A couple of well-known color schemes on top of Monaco's own built-in
 // vs/vs-dark, selectable via the "Editor Theme" setting (see lib/editorTheme.ts
 // for how a setting value maps to one of these names). Defined with Monaco's

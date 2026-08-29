@@ -194,7 +194,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
         {session && (
           <div className="flex items-center border-t border-fleet-border pt-3">
             <button
-              className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40 flex items-center gap-1.5"
+              className="text-xs text-red-400 hover:text-accent-error disabled:opacity-40 flex items-center gap-1.5"
               disabled={stopping}
               onClick={handleStop}
             >

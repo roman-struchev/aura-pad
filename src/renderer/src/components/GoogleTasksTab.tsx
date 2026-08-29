@@ -486,7 +486,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                 'group flex items-center gap-1 px-2 py-0.5 rounded cursor-pointer shrink-0',
                 email === activeEmail
                   ? 'bg-fleet-active text-fleet-textHover'
-                  : 'text-gray-400 hover:text-gray-200'
+                  : 'text-gray-400 hover:text-fleet-textHover'
               )}
               onClick={() => setSelectedEmail(email)}
             >

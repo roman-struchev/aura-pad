@@ -294,7 +294,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
               onClick={() => setShowReplace((open) => !open)}
               aria-label={showReplace ? 'Hide Replace' : 'Show Replace'}
               title={showReplace ? 'Hide replace' : 'Replace in files'}
-              className="p-1 rounded text-gray-500 hover:bg-fleet-active hover:text-gray-200"
+              className="p-1 rounded text-gray-500 hover:bg-fleet-active hover:text-fleet-textHover"
             >
               {showReplace ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
@@ -330,7 +330,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                   'p-1 rounded shrink-0',
                   active
                     ? 'bg-fleet-active text-blue-400'
-                    : 'text-gray-500 hover:bg-fleet-active hover:text-gray-200'
+                    : 'text-gray-500 hover:bg-fleet-active hover:text-fleet-textHover'
                 )}
               >
                 <Icon size={16} />

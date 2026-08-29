@@ -164,7 +164,7 @@ export const PortsTab: React.FC = () => {
         <div
           className={clsx(
             'shrink-0 px-3 py-1.5 text-[11px]',
-            error ? 'text-red-300' : 'text-gray-400'
+            error ? 'text-accent-error' : 'text-gray-400'
           )}
         >
           {error ?? note}
@@ -229,7 +229,7 @@ export const PortsTab: React.FC = () => {
                             title={`Stop ${row.command} (SIGTERM)`}
                             ariaLabel={`Stop port ${row.port}`}
                             tooltipAlign="right"
-                            colorClassName="text-gray-500 hover:text-red-300"
+                            colorClassName="text-gray-500 hover:text-accent-error"
                             onClick={() => void kill(row, false)}
                           >
                             <Zap size={13} />
@@ -242,7 +242,7 @@ export const PortsTab: React.FC = () => {
                             title={`Force stop ${row.command} (SIGKILL)`}
                             ariaLabel={`Force stop port ${row.port}`}
                             tooltipAlign="right"
-                            colorClassName="text-gray-500 hover:text-red-300"
+                            colorClassName="text-gray-500 hover:text-accent-error"
                             onClick={() => void kill(row, true)}
                           >
                             <Skull size={13} />

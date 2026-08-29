@@ -12,6 +12,13 @@ module.exports = {
           textHover: 'var(--fleet-textHover)',
           active: 'var(--fleet-active)',
           header: 'var(--fleet-header)'
+        },
+        // Status colours that follow the theme - see main.css.
+        accent: {
+          ok: 'var(--accent-ok)',
+          warn: 'var(--accent-warn)',
+          error: 'var(--accent-error)',
+          info: 'var(--accent-info)'
         }
       }
     }

@@ -37,6 +37,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   response lands beside the editor, and every call is kept in a local history.
 - **Work Together** — share a live link to any open tab; others edit or view it in a
   plain browser, no install needed.
+- **Find Action** — `Shift+Cmd+A` lists every command with its shortcut; `Cmd+L` /
+  `#symbol` in quick open jump to a line or into the open file's structure.
 - **Instant startup, small footprint** — opens folders and megabyte-sized files without
   ceremony.
 
@@ -105,6 +107,16 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   (`Shift+Cmd+F`), with match case, whole word, regular expressions and a file filter
   (`*.ts, src/**`). Only one search dialog is ever open: switching between quick open and
   search-in-files carries the typed query across.
+- **Go to line and to a symbol** from that same dialog: `:42` jumps to the line, `#name`
+  lists what the open file is made of — Markdown headings, or the classes, functions and
+  constants of a TypeScript/JavaScript/Python file (no language server involved, so it is
+  a best-effort list, not a compiler's). `Cmd+L` and `Cmd+F12` open it straight in those
+  modes. Both suffixes also work after a filename — `App.tsx:120`, `git.ts#getBranches` —
+  which opens that file at that place.
+- **Find Action** (`Shift+Cmd+A`) — one list of everything the app can do, filtered as you
+  type: dictation, translation, git panel, terminal, preview, the HTTP client, formatting,
+  local history. Only what applies to the file in front of you is offered, and each entry
+  shows its shortcut, so it doubles as the way to learn them.
 - Replace across files (`Shift+Cmd+R`, or the arrow next to the search field): every match
   previews the line as it will be written, files are unchecked one by one, and one Undo
   puts the whole batch back (every rewritten file also gets a local-history version, which

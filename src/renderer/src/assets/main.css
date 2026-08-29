@@ -46,6 +46,28 @@
   --fleet-header: #eee8d5;
 }
 
+/* Status colours (ok / warning / error / info) as tokens rather than fixed
+   Tailwind shades. The pale 300-level greens and ambers that read well on
+   the near-black themes disappear on the light ones - the same trap the
+   context menu hit with a hardcoded grey. Dark themes keep the light shades,
+   light themes take the dark ones. */
+:root,
+[data-theme='dark'],
+[data-theme='monokai'] {
+  --accent-ok: #6ee7b7;
+  --accent-warn: #fcd34d;
+  --accent-error: #fca5a5;
+  --accent-info: #93c5fd;
+}
+
+[data-theme='light'],
+[data-theme='solarized'] {
+  --accent-ok: #047857;
+  --accent-warn: #b45309;
+  --accent-error: #b91c1c;
+  --accent-info: #1d4ed8;
+}
+
 /* The terminal panel is always dark, independent of the app's light/dark
    theme (a light terminal would clash with most shell color schemes). */
 :root {

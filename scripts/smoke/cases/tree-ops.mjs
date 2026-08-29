@@ -203,26 +203,9 @@ export default {
       return ok
     }
 
-    // Relative luminance and the WCAG contrast ratio, computed in the page
-    // against whatever the theme actually resolved the CSS variables to.
-    const menuContrast = () =>
-      cdp.evaluate(`(() => {
-        const item = document.querySelector('div.fixed[data-surface="tree"] button')
-        if (!item) return null
-        const rgb = (c) => (c.match(/[\\d.]+/g) || []).slice(0, 3).map(Number)
-        const chan = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
-        const lum = ([r, g, b]) => 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
-        const backdrop = (el) => {
-          for (let n = el; n; n = n.parentElement) {
-            const c = getComputedStyle(n).backgroundColor
-            if (c && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(c)) return c
-          }
-          return 'rgb(255, 255, 255)'
-        }
-        const a = lum(rgb(getComputedStyle(item).color))
-        const b = lum(rgb(backdrop(item)))
-        return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100
-      })()`)
+    // The ratio itself is computed in the page (ui.contrastOf), against the
+    // colours the theme actually resolved to.
+    const menuContrast = () => ui.contrastOf('div.fixed[data-surface="tree"] button')
 
     if (await setTheme('light')) {
       const row = await ui.rectOf(ui.treeRow(nested))

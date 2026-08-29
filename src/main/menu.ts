@@ -6,7 +6,9 @@ const APP_NAME = 'AuraPad'
 // Custom menu without a "Close Window" accelerator, so Cmd/Ctrl+W is free
 // for the renderer to use for closing the active file instead of the window.
 // Every command below owns its accelerator here (not in the renderer's own
-// keydown handler) so a key press only ever triggers one handler.
+// keydown handler) so a key press only ever triggers one handler - except the
+// three marked `registerAccelerator: false`, which only *display* their key
+// here and let the renderer handle it (see the note on Find Action…).
 export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
   const isMac = process.platform === 'darwin'
 
@@ -107,7 +109,32 @@ export function buildAppMenu(sendAction: (action: MenuAction) => void): Menu {
     {
       label: 'View',
       submenu: [
+        {
+          // The three below carry `registerAccelerator: false`: the key is
+          // shown here for discoverability but handled in the renderer
+          // (useGlobalHotkeys), like double-Shift quick open. Cmd+L in
+          // particular has to be a renderer key - the terminal panel needs
+          // Ctrl+L to keep reaching the shell.
+          label: 'Find Action…',
+          accelerator: 'CmdOrCtrl+Shift+A',
+          registerAccelerator: false,
+          click: () => sendAction('command-palette')
+        },
+        { type: 'separator' },
         { label: 'Go to File…', click: () => sendAction('go-to-file') },
+        {
+          label: 'Go to Line…',
+          accelerator: 'CmdOrCtrl+L',
+          registerAccelerator: false,
+          click: () => sendAction('go-to-line')
+        },
+        {
+          // IDEA's File Structure key.
+          label: 'File Structure…',
+          accelerator: 'CmdOrCtrl+F12',
+          registerAccelerator: false,
+          click: () => sendAction('go-to-symbol')
+        },
         {
           label: 'Find in Files',
           accelerator: 'CmdOrCtrl+Shift+F',

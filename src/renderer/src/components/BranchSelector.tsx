@@ -43,7 +43,7 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
     <div className="relative min-w-0">
       <button
         className={clsx(
-          'flex items-center gap-1.5 min-w-0 px-1 py-0.5 rounded hover:bg-fleet-active hover:text-gray-200',
+          'flex items-center gap-1.5 min-w-0 px-1 py-0.5 rounded hover:bg-fleet-active hover:text-fleet-textHover',
           triggerClassName
         )}
         title="Switch branch"
@@ -67,7 +67,7 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
                     'w-full text-left px-2 py-1 text-xs truncate hover:bg-fleet-active',
                     name === branch
                       ? 'text-fleet-textHover font-medium'
-                      : 'text-gray-400 hover:text-gray-200'
+                      : 'text-gray-400 hover:text-fleet-textHover'
                   )}
                   title={name}
                   onClick={() => select(name)}

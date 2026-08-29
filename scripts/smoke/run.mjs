@@ -37,6 +37,7 @@ const CASE_FILES = [
   'tree-ops.mjs',
   'encoding.mjs',
   'search.mjs',
+  'navigate.mjs',
   'preview.mjs',
   'markdown-images.mjs',
   'local-history.mjs',
