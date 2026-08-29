@@ -622,6 +622,22 @@ export default {
         await cdp.evaluate(`document.querySelector('[aria-label="Method"]')?.value === 'POST'`)
       )
 
+      // The options row holds a lot; nothing in it may wrap. The Headers tab
+      // is the widest label and the first thing to break onto two lines.
+      const rowFit = await cdp.evaluate(`(() => {
+        const buttons = [...document.querySelectorAll('[data-testid="http-client-tab"] button')]
+        const headers = buttons.find((b) => /^Headers \\(/.test(b.innerText.trim()))
+        if (!headers) return null
+        const box = headers.getBoundingClientRect()
+        const line = parseFloat(getComputedStyle(headers).lineHeight) || 16
+        return { height: Math.round(box.height), line: Math.round(line), text: headers.innerText.trim() }
+      })()`)
+      check(
+        'the Headers tab fits on one line',
+        rowFit && rowFit.height <= rowFit.line + 12,
+        JSON.stringify(rowFit)
+      )
+
       // ---- the tab's own environments ----
       // The form has no file to sit next to, so its constants come from
       // settings. A {{placeholder}} with nothing behind it is refused rather

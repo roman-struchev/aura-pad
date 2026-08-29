@@ -347,7 +347,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
     checked: boolean,
     onChange: (value: boolean) => void
   ): React.ReactElement => (
-    <label className="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer">
+    <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-gray-400 cursor-pointer">
       <input
         type="checkbox"
         checked={checked}
@@ -537,7 +537,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               value={method}
               onChange={(e) => setMethod(e.target.value)}
               aria-label="Method"
-              className="bg-fleet-sidebar border border-fleet-border rounded px-2 py-1.5 text-xs text-fleet-text outline-none focus:border-blue-500"
+              className="shrink-0 bg-fleet-sidebar border border-fleet-border rounded px-2 py-1.5 text-xs text-fleet-text outline-none focus:border-blue-500"
             >
               {METHODS.map((m) => (
                 <option key={m} value={m}>
@@ -566,6 +566,34 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               spellCheck={false}
               className="flex-1 min-w-0 bg-fleet-sidebar border border-fleet-border rounded px-2 py-1.5 text-xs font-mono text-fleet-text outline-none focus:border-blue-500"
             />
+            <select
+              value={environmentName}
+              onChange={(e) => selectEnvironment(e.target.value)}
+              aria-label="Environment"
+              title="Fill {{placeholders}} from an environment"
+              className="shrink-0 max-w-[9rem] bg-fleet-sidebar border border-fleet-border rounded px-1.5 py-1.5 text-[11px] text-fleet-text outline-none focus:border-blue-500"
+            >
+              <option value="">No environment</option>
+              {environments.map((env) => (
+                <option key={env.name} value={env.name}>
+                  {env.name}
+                </option>
+              ))}
+              {/* A name the list no longer has (renamed or deleted in another
+                  window) would otherwise show as blank while requests still
+                  resolve against nothing. */}
+              {environmentName && !environments.some((e) => e.name === environmentName) && (
+                <option value={environmentName}>{environmentName} (missing)</option>
+              )}
+            </select>
+            <ToolbarButton
+              dense
+              title="Edit environments"
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
+              onClick={() => setShowEnvironments(true)}
+            >
+              <Settings2 size={14} />
+            </ToolbarButton>
             <button
               onClick={running ? onCancel : send}
               disabled={!canSend && !running}
@@ -583,7 +611,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-1 text-[11px]">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-[11px]">
             {/* First in the row because the panel it opens is immediately to
                 its left: a control for something on one edge of the window
                 does not belong on the other. It stopped being a clock when
@@ -605,7 +633,7 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                 key={id}
                 onClick={() => setTab(id)}
                 className={clsx(
-                  'px-2 py-1 rounded capitalize',
+                  'shrink-0 whitespace-nowrap px-2 py-1 rounded capitalize',
                   tab === id
                     ? 'bg-fleet-active text-fleet-textHover'
                     : 'text-gray-400 hover:text-fleet-textHover'
@@ -614,40 +642,10 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
                 {id === 'headers' ? `Headers (${headers.filter((h) => h.name.trim()).length})` : id}
               </button>
             ))}
-            <div className="flex-1" />
-            {/* Environments sit with the other things that change what Send
-                does, not with the icons that act on the form. */}
-            <select
-              value={environmentName}
-              onChange={(e) => selectEnvironment(e.target.value)}
-              aria-label="Environment"
-              title="Fill {{placeholders}} from an environment"
-              className="bg-fleet-sidebar border border-fleet-border rounded px-1.5 py-1 text-[11px] text-fleet-text outline-none focus:border-blue-500 max-w-[10rem]"
-            >
-              <option value="">No environment</option>
-              {environments.map((env) => (
-                <option key={env.name} value={env.name}>
-                  {env.name}
-                </option>
-              ))}
-              {/* A name the list no longer has (renamed or deleted in another
-                  window) would otherwise show as blank while requests still
-                  resolve against nothing. */}
-              {environmentName && !environments.some((e) => e.name === environmentName) && (
-                <option value={environmentName}>{environmentName} (missing)</option>
-              )}
-            </select>
-            <ToolbarButton
-              dense
-              title="Edit environments"
-              tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-fleet-textHover"
-              onClick={() => setShowEnvironments(true)}
-            >
-              <Settings2 size={14} />
-            </ToolbarButton>
+            <div className="flex-1 min-w-0" />
             {checkbox('Follow redirects', followRedirects, setFollowRedirects)}
             {checkbox('Ignore TLS errors', insecure, setInsecure)}
+            <div className="w-px h-4 bg-fleet-border mx-1" />
             <ToolbarButton
               dense
               title="Fill from a cURL command on the clipboard"
