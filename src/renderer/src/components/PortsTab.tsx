@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Loader2, RefreshCw, Skull, Zap } from 'lucide-react'
 import clsx from 'clsx'
 import { ToolbarButton } from './ToolbarButton'
@@ -8,14 +8,16 @@ import type { ListeningPort } from '../../../shared/ports'
 // placeholder is an example of what to type rather than an instruction.
 const FILTER_PLACEHOLDER = '3000, or node'
 
+// How often the list re-reads itself while the tab is up. Ports appear and
+// disappear on their own - a dev server restarts, a container stops - and a
+// list that is only right at the moment it was opened is a list nobody can
+// trust. Slow enough that the lsof it costs is nothing.
+const REFRESH_MS = 5000
+
 // "Address already in use" - what has it, and stop it. The list is every TCP
 // port this machine is listening on; the filter takes a port number or part
 // of a process name, so the usual question ("who has 8080?") is one field
 // away.
-//
-// Nothing here polls: a list that refreshes itself under the cursor is how
-// you kill the wrong row. It reloads when the tab mounts, after a kill, and
-// when asked.
 export const PortsTab: React.FC = () => {
   const [rows, setRows] = useState<ListeningPort[] | null>(null)
   const [filter, setFilter] = useState('')
@@ -40,6 +42,39 @@ export const PortsTab: React.FC = () => {
       alive = false
     }
   }, [reloads])
+
+  // Read by the timer below, which is set up once and would otherwise close
+  // over the first render's values.
+  const hoveringRef = useRef(false)
+  const busyRef = useRef<number | null>(null)
+  useEffect(() => {
+    busyRef.current = busy
+  })
+
+  // The tab is mounted only while it is the one on screen (App renders one
+  // extension body at a time), so this polls exactly while someone is
+  // looking at it and stops the moment they switch away.
+  useEffect(() => {
+    const tick = (): void => {
+      // Not while the pointer is over the table: rows are ordered by port, so
+      // a server coming up moves everything below it - under a click that
+      // was aimed at stopping something else. Not while a stop is in flight
+      // either, and not while the window is hidden, where the only thing a
+      // refresh costs is the process it spawns.
+      if (hoveringRef.current || busyRef.current !== null || document.hidden) return
+      setReloads((n) => n + 1)
+    }
+    const timer = window.setInterval(tick, REFRESH_MS)
+    // Coming back to the app is the moment the list is most likely to be
+    // stale: what happens in between happens in a terminal.
+    window.addEventListener('focus', tick)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [])
 
   const query = filter.trim().toLowerCase()
   const shown = (rows ?? []).filter((row) =>
@@ -114,7 +149,15 @@ export const PortsTab: React.FC = () => {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">
+      <div
+        className="flex-1 overflow-auto"
+        onMouseEnter={() => {
+          hoveringRef.current = true
+        }}
+        onMouseLeave={() => {
+          hoveringRef.current = false
+        }}
+      >
         {rows !== null && rows.length === 0 && (
           <div className="px-3 py-3 text-xs text-gray-500">
             Nothing is listening (or lsof is not available on this system).

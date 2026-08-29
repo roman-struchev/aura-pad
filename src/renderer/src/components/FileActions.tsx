@@ -121,7 +121,10 @@ export const FileActions: React.FC<FileActionsProps> = ({
           title="Environment (http-client.env.json)"
           className="bg-transparent border border-fleet-border rounded px-1 py-0.5 mx-0.5 text-[11px] text-gray-400 hover:text-fleet-textHover outline-none focus:border-blue-500"
         >
-          <option value="">No environment</option>
+          {/* Short on purpose: this is the widest thing in a toolbar
+              that has none to spare, and it is read next to a picker
+              whose label already says what it picks. */}
+          <option value="">No env</option>
           {httpEnvironmentNames.map((name) => (
             <option key={name} value={name}>
               {name}

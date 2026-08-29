@@ -342,12 +342,19 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
   const setHeaderAt = (index: number, patch: Partial<{ name: string; value: string }>): void =>
     setHeaders((prev) => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)))
 
+  // Short labels with the full sentence on hover: these sit in a row that
+  // already holds everything else the request needs, and "Follow redirects"
+  // spelled out was two of the widest words in it.
   const checkbox = (
     label: string,
+    title: string,
     checked: boolean,
     onChange: (value: boolean) => void
   ): React.ReactElement => (
-    <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-gray-400 cursor-pointer">
+    <label
+      title={title}
+      className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-gray-400 cursor-pointer"
+    >
       <input
         type="checkbox"
         checked={checked}
@@ -573,7 +580,10 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               title="Fill {{placeholders}} from an environment"
               className="shrink-0 max-w-[9rem] bg-fleet-sidebar border border-fleet-border rounded px-1.5 py-1.5 text-[11px] text-fleet-text outline-none focus:border-blue-500"
             >
-              <option value="">No environment</option>
+              {/* Short on purpose: it is the resting state of a picker
+                  sitting between the URL and Send, where every pixel is
+                  the URL's. */}
+              <option value="">No env</option>
               {environments.map((env) => (
                 <option key={env.name} value={env.name}>
                   {env.name}
@@ -643,8 +653,8 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               </button>
             ))}
             <div className="flex-1 min-w-0" />
-            {checkbox('Follow redirects', followRedirects, setFollowRedirects)}
-            {checkbox('Ignore TLS errors', insecure, setInsecure)}
+            {checkbox('Redirects', 'Follow redirects', followRedirects, setFollowRedirects)}
+            {checkbox('Ignore TLS', 'Ignore TLS certificate errors', insecure, setInsecure)}
             <div className="w-px h-4 bg-fleet-border mx-1" />
             <ToolbarButton
               dense

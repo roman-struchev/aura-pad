@@ -94,6 +94,35 @@ export default {
         )
       )
 
+      // A port that comes up while the tab is open shows up on its own: the
+      // list re-reads itself every few seconds rather than only when it was
+      // opened. (The filter still holds the first port, so this looks for
+      // the new one through it.)
+      const second = spawn(
+        process.execPath,
+        ['-e', `require('net').createServer().listen(${port + 1}, '127.0.0.1', () => {})`],
+        { stdio: 'ignore' }
+      )
+      try {
+        await cdp.evaluate(`(() => {
+          const el = document.querySelector('[aria-label="Port or process"]')
+          el.focus()
+          el.select()
+          return true
+        })()`)
+        await cdp.send('Input.insertText', { text: String(port + 1) })
+        check(
+          'a port that appears while the tab is open shows up by itself',
+          await waitFor(
+            `!!document.querySelector('[data-port-row="${port + 1}"]')`,
+            // Two refresh intervals plus the time the server takes to bind.
+            { timeoutMs: 15_000 }
+          )
+        )
+      } finally {
+        second.kill('SIGKILL')
+      }
+
       // The pid is not a free-form argument: only something currently
       // listening can be signalled, so a pid that isn't gets nothing.
       const stray = await cdp.evaluate(`window.api.killListeningProcess(${victim.pid}, false)`)
