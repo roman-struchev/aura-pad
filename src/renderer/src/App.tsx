@@ -1029,66 +1029,6 @@ function App(): React.JSX.Element {
             settings.sidebarPosition === 'left' && 'order-2'
           )}
         >
-          {/* The active file's actions float over the editor's top-right
-              corner, Obsidian-style, rather than living in the title bar.
-              The external-change banner is in-flow above the editor, so the
-              actions drop below it instead of overlapping its buttons. */}
-          {hasFileActions && (
-            <div
-              className={clsx(
-                'absolute right-2 z-20',
-                tabs.externalChangeAvailable ? 'top-9' : 'top-1'
-              )}
-            >
-              <FileActions
-                selectedPath={tabs.selectedPath}
-                isFileInWorkspace={
-                  !!tabs.selectedPath &&
-                  isUnderAnyRoot(
-                    tabs.selectedPath,
-                    tree.rootNodes.map((r) => r.path)
-                  )
-                }
-                showPreview={tabs.showMarkdownPreview}
-                isPreviewable={isPreviewablePath(tabs.selectedPath)}
-                canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
-                foldedAll={foldedAll}
-                canDictate={canDictate}
-                isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
-                workTogetherEnabled={settings.extensions.workTogether.enabled}
-                workTogetherSharing={
-                  !!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)
-                }
-                workTogetherParticipantCount={
-                  (tabs.selectedPath &&
-                    workTogether.sessions[tabs.selectedPath]?.participants.length) ||
-                  0
-                }
-                spellcheckOn={settings.spellcheckEnabled && settings.spellLanguages.length > 0}
-                spellIssueCount={spell.issues.length}
-                onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
-                httpEnvironmentNames={httpEnv?.names ?? []}
-                httpEnvironment={httpEnvironmentName}
-                onSelectHttpEnvironment={selectHttpEnvironment}
-                voice={voice}
-                readAloud={readAloud}
-                onRevealActiveFile={() => {
-                  if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
-                  setSidebarView('files')
-                  if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
-                }}
-                onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
-                onRunHttp={() => runHttpRequest()}
-                onFormatDocument={formatActiveDocument}
-                onToggleFold={toggleFold}
-                onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
-                onToggleDictation={toggleDictation}
-                onStartReadAloud={startReadAloud}
-                onOpenShare={() => setShowShareDialog(true)}
-              />
-            </div>
-          )}
-
           {tabs.externalChangeAvailable && (
             <div className="flex items-center justify-between gap-2 bg-yellow-900/90 text-yellow-100 text-xs px-3 py-1.5 shrink-0">
               <span>This file changed on disk.</span>
@@ -1110,7 +1050,65 @@ function App(): React.JSX.Element {
           )}
 
           <div className="flex-1 overflow-hidden flex">
-            <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex-1 min-w-0 overflow-hidden relative">
+              {/* The active file's actions float over the editor's top-right
+                  corner, Obsidian-style, rather than living in the title bar.
+                  Anchored to the editor itself, not to the column around it:
+                  the response pane is docked in that column too, and an
+                  overlay spanning the whole width sat on top of the pane's
+                  header - including the button that closes it. */}
+              {hasFileActions && (
+                <div className="absolute right-2 top-1 z-20">
+                  <FileActions
+                    selectedPath={tabs.selectedPath}
+                    isFileInWorkspace={
+                      !!tabs.selectedPath &&
+                      isUnderAnyRoot(
+                        tabs.selectedPath,
+                        tree.rootNodes.map((r) => r.path)
+                      )
+                    }
+                    showPreview={tabs.showMarkdownPreview}
+                    isPreviewable={isPreviewablePath(tabs.selectedPath)}
+                    canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
+                    foldedAll={foldedAll}
+                    canDictate={canDictate}
+                    isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
+                    workTogetherEnabled={settings.extensions.workTogether.enabled}
+                    workTogetherSharing={
+                      !!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)
+                    }
+                    workTogetherParticipantCount={
+                      (tabs.selectedPath &&
+                        workTogether.sessions[tabs.selectedPath]?.participants.length) ||
+                      0
+                    }
+                    spellcheckOn={settings.spellcheckEnabled && settings.spellLanguages.length > 0}
+                    spellIssueCount={spell.issues.length}
+                    onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
+                    httpEnvironmentNames={httpEnv?.names ?? []}
+                    httpEnvironment={httpEnvironmentName}
+                    onSelectHttpEnvironment={selectHttpEnvironment}
+                    voice={voice}
+                    readAloud={readAloud}
+                    onRevealActiveFile={() => {
+                      if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
+                      setSidebarView('files')
+                      if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
+                    }}
+                    onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+                    onRunHttp={() => runHttpRequest()}
+                    onFormatDocument={formatActiveDocument}
+                    onToggleFold={toggleFold}
+                    onTogglePreview={() =>
+                      tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)
+                    }
+                    onToggleDictation={toggleDictation}
+                    onStartReadAloud={startReadAloud}
+                    onOpenShare={() => setShowShareDialog(true)}
+                  />
+                </div>
+              )}
               {activeExt ? (
                 activeExt.id === 'google-tasks' ? (
                   <GoogleTasksTab settings={settings} updateSetting={updateSetting} />

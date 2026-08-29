@@ -584,6 +584,22 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
           </div>
 
           <div className="flex items-center gap-1 text-[11px]">
+            {/* First in the row because the panel it opens is immediately to
+                its left: a control for something on one edge of the window
+                does not belong on the other. It stopped being a clock when
+                the panel stopped being only the history - it lists the
+                project's saved requests too - so it is named and drawn as
+                the panel it opens. */}
+            <ToolbarButton
+              dense
+              active={!panelCollapsed}
+              title={panelCollapsed ? 'Show the requests panel' : 'Hide the requests panel'}
+              colorClassName="text-gray-500 hover:text-fleet-textHover"
+              onClick={() => setPanelCollapsed(!panelCollapsed)}
+            >
+              {panelCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+            </ToolbarButton>
+            <div className="w-px h-4 bg-fleet-border mx-1" />
             {(['headers', 'body'] as const).map((id) => (
               <button
                 key={id}
@@ -666,22 +682,6 @@ export const HttpClientTab: React.FC<HttpClientTabProps> = ({
               }}
             >
               <Terminal size={14} />
-            </ToolbarButton>
-            {/* Separated from the two beside it: those act on the request in
-                the form, this one only decides what is on screen. It stopped
-                being a clock when the panel stopped being only the history -
-                it now opens a list of requests (the project's, or the ones
-                just sent), so it is named and drawn as the panel it opens. */}
-            <div className="w-px h-4 bg-fleet-border mx-1" />
-            <ToolbarButton
-              dense
-              active={!panelCollapsed}
-              title={panelCollapsed ? 'Show the requests panel' : 'Hide the requests panel'}
-              tooltipAlign="right"
-              colorClassName="text-gray-500 hover:text-fleet-textHover"
-              onClick={() => setPanelCollapsed(!panelCollapsed)}
-            >
-              {panelCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
             </ToolbarButton>
           </div>
 

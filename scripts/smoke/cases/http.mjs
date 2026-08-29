@@ -101,6 +101,32 @@ export default {
         JSON.stringify(requests.at(-1)?.headers ?? {})
       )
 
+      // The pane's own buttons have to be *reachable*, not merely present:
+      // the editor's floating actions used to be anchored to the whole
+      // column, which put them on top of the pane's header, and the response
+      // could be opened and not shut again. A DOM click (which is how the
+      // close below is driven) goes through anything covering the button, so
+      // only a hit test catches this.
+      //
+      const closeHit = await cdp.evaluate(`(() => {
+        const pane = document.querySelector('[data-testid="http-response-pane"]')
+        const close = [...(pane?.querySelectorAll('button') || [])].find(
+          (b) => (b.getAttribute('aria-label') || '') === 'Close'
+        )
+        if (!close) return { found: false }
+        const r = close.getBoundingClientRect()
+        const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+        return {
+          found: true,
+          onTop: at ? close.contains(at) : false,
+          covering: at ? at.closest('button')?.getAttribute('aria-label') ?? at.tagName : null
+        }
+      })()`)
+      check(
+        "nothing covers the response pane's Close button",
+        closeHit.found && closeHit.onTop,
+        JSON.stringify(closeHit)
+      )
       await ui.clickButton('Headers (')
       const headersText = await paneText()
       check(
