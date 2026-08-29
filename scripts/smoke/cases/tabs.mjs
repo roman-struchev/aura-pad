@@ -171,6 +171,42 @@ export default {
     else
       check('a tab copies its path relative to the project', tabPath === 'readme.md', String(tabPath))
 
+    // The title bar has to stay a title bar: the strip is as wide as the
+    // window, and marking all of it no-drag (which it was) left the window
+    // draggable only by the sliver beside the traffic lights.
+    const regions = await cdp.evaluate(`(() => {
+      const regionOf = (el) => {
+        for (let node = el; node; node = node.parentElement) {
+          const region = getComputedStyle(node).webkitAppRegion
+          if (region === 'drag' || region === 'no-drag') return region
+        }
+        return 'none'
+      }
+      const strip = document.querySelector('[data-tab-strip]')
+      const tab = document.querySelector('[data-tab-path]')
+      if (!strip || !tab) return null
+      const stripBox = strip.getBoundingClientRect()
+      const lastTab = [...document.querySelectorAll('[data-tab-path]')].at(-1)
+      const after = lastTab.getBoundingClientRect().right + 20
+      // Only meaningful while there is empty strip left of its right edge.
+      const empty = after < stripBox.right - 4 ? document.elementFromPoint(after, stripBox.top + stripBox.height / 2) : null
+      const onTab = document.elementFromPoint(
+        tab.getBoundingClientRect().x + 10,
+        tab.getBoundingClientRect().y + 10
+      )
+      return { empty: empty ? regionOf(empty) : 'no-empty-space', tab: onTab ? regionOf(onTab) : null }
+    })()`)
+    check(
+      'the empty part of the tab strip drags the window',
+      regions && (regions.empty === 'drag' || regions.empty === 'no-empty-space'),
+      JSON.stringify(regions)
+    )
+    check(
+      'and the tabs themselves still take the click',
+      regions && regions.tab === 'no-drag',
+      JSON.stringify(regions)
+    )
+
     await sleep(700)
     const persisted = JSON.parse(
       fs.readFileSync(path.join(fixture.profile, 'openTabs.json'), 'utf-8')

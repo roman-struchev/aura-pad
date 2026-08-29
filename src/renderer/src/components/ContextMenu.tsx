@@ -69,7 +69,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, surface, childre
     <div
       ref={ref}
       data-surface={surface}
-      className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-fleet-text flex flex-col min-w-[160px] overflow-y-auto no-scrollbar"
+      // no-drag-region because a menu opened from the tab strip is a child of
+      // the title bar's drag region, and a drag region swallows the clicks
+      // that would pick an item. A menu is never something to drag a window
+      // by, so it opts out wherever it is opened from.
+      className="fixed bg-fleet-sidebar border border-fleet-border shadow-lg rounded py-1 z-50 text-sm text-fleet-text flex flex-col min-w-[160px] overflow-y-auto no-scrollbar no-drag-region"
       style={{
         left: pos?.left ?? x,
         top: pos?.top ?? y,

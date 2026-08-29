@@ -149,7 +149,13 @@ export const TabBar: React.FC<TabBarProps> = ({
   const overflowing = overflow.left || overflow.right
 
   return (
-    <div className="flex items-stretch h-full min-w-0 flex-1 no-drag-region">
+    // Not `no-drag-region` as a whole: the strip is `flex-1`, so everything
+    // right of the last tab is empty title bar, and marking it no-drag left
+    // the window draggable only by the sliver beside the traffic lights. The
+    // tabs, the chevron and the menus below opt out one by one instead, so
+    // the space between and after them drags the window like a title bar
+    // should.
+    <div className="flex items-stretch h-full min-w-0 flex-1">
       <div className="relative flex items-stretch min-w-0 flex-1">
         <div
           ref={scrollerRef}
@@ -211,7 +217,10 @@ export const TabBar: React.FC<TabBarProps> = ({
                   if (draggedTab) reorderTab(draggedTab, tab.path)
                 }}
                 className={clsx(
-                  'group flex items-center gap-2 px-3 text-xs cursor-pointer min-w-0',
+                  // no-drag-region: clicks, the reorder drag and the tear-off
+                  // gesture all have to reach the tab rather than the window
+                  // manager. The empty strip around it stays draggable.
+                  'group flex items-center gap-2 px-3 text-xs cursor-pointer min-w-0 no-drag-region',
                   isActive
                     ? // The bar shares the toolbar's (lighter) background; the
                       // active tab is painted in the editor's own (darker)
@@ -288,7 +297,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         <button
           aria-label="All Open Tabs"
           title="All Open Tabs"
-          className="shrink-0 self-center px-1 py-1 rounded text-gray-400 hover:text-fleet-textHover hover:bg-fleet-active"
+          className="shrink-0 self-center px-1 py-1 rounded text-gray-400 hover:text-fleet-textHover hover:bg-fleet-active no-drag-region"
           onClick={(e) => {
             e.stopPropagation()
             const r = e.currentTarget.getBoundingClientRect()
