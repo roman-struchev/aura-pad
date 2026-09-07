@@ -143,6 +143,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   too — and drag its top edge to resize; the editor keeps the height that's left.
 - `Cmd+K` with the cursor in the terminal clears its scrollback (the same key toggles the
   Git panel everywhere else); the shell keeps running and a half-typed command survives.
+- `Cmd+F` with the cursor in the terminal opens a find box for its scrollback — Enter/Shift+Enter
+  step through matches, Escape closes it and hands focus back to the shell.
 
 **HTTP requests**
 

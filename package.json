@@ -26,6 +26,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@xterm/addon-search": "^0.16.0",
     "electron-updater": "^6.8.9",
     "iconv-lite": "^0.7.3",
     "ignore": "^7.0.5",

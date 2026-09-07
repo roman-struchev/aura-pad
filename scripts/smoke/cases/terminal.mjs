@@ -1,5 +1,10 @@
+import { MOD } from '../ui.mjs'
+
 const TERMINAL_BUTTON = 'button[aria-label="Toggle Terminal (Ctrl+`)"]'
 const COMMIT_BOX = 'textarea[placeholder="Commit message"]'
+const SEARCH_INPUT = 'input[placeholder="Find"]'
+// Cmd on macOS, Ctrl elsewhere - the same split useGlobalHotkeys makes.
+const CMD = process.platform === 'darwin' ? MOD.meta : MOD.ctrl
 
 // A8 - the built-in terminal really runs a shell in the right directory,
 // and Cmd+K clears the one the user is typing in.
@@ -82,6 +87,53 @@ export default {
     })
     check('the toolbar button opens a terminal in the panel', panelUp)
     if (!panelUp) return
+
+    // Cmd+F opens in-terminal search. It's a renderer-level key trap inside
+    // xterm's own attachCustomKeyEventHandler, not a native menu accelerator
+    // (menu.ts claims Cmd+Shift+F for Find in Files), so a plain CDP key
+    // dispatch reaches it.
+    const SEARCH_MARKER = 'SMOKE_TERM_SEARCH_MARKER'
+    await cdp.evaluate(`document.querySelector('.xterm-helper-textarea').focus()`)
+    for (const ch of SEARCH_MARKER) {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'char', text: ch, key: ch })
+    }
+    // The typed text only lands in xterm's buffer once the shell echoes it
+    // back over the pty - a real round trip, not a local echo.
+    await sleep(500)
+
+    await ui.key('f', 'KeyF', 70, CMD)
+    const searchOpened = await waitFor(`!!document.querySelector(${JSON.stringify(SEARCH_INPUT)})`, {
+      timeoutMs: 4000
+    })
+    check('Cmd+F opens the in-terminal search box', searchOpened)
+
+    if (searchOpened) {
+      await cdp.evaluate(`document.querySelector(${JSON.stringify(SEARCH_INPUT)}).focus()`)
+      for (const ch of SEARCH_MARKER) {
+        await cdp.send('Input.dispatchKeyEvent', { type: 'char', text: ch, key: ch })
+      }
+      const countText = () =>
+        `document.querySelector(${JSON.stringify(SEARCH_INPUT)})?.parentElement?.textContent ?? ''`
+      const foundMatch = await waitFor(`${countText()}.includes('1/1')`, { timeoutMs: 4000 })
+      check(
+        'it finds the marker typed into the terminal',
+        foundMatch,
+        await cdp.evaluate(countText())
+      )
+
+      await ui.key('Escape', 'Escape', 27)
+      const searchClosed = await waitFor(`!document.querySelector(${JSON.stringify(SEARCH_INPUT)})`, {
+        timeoutMs: 2000
+      })
+      check('Escape closes the search box', searchClosed)
+
+      // Focus goes back to the shell, not lost to the document body.
+      const shellRefocused = await waitFor(
+        `document.activeElement?.classList?.contains('xterm-helper-textarea')`,
+        { timeoutMs: 2000 }
+      )
+      check('and returns focus to the shell', shellRefocused)
+    }
 
     // A file has to be open for the second half of this: the editor is what
     // the panel used to be drawn on top of.
