@@ -12,7 +12,16 @@ export type OpenTab = {
   externalChangeAvailable: boolean
   showPreview: boolean
   pinned?: boolean
+  // The last write of this tab that failed (permissions, a full disk, a path
+  // no longer allowed), and the buffer it tried to write. Autosave does not
+  // retry that same buffer on its own - it would fail again every 1.2 s - but
+  // the next edit, Cmd+S or the banner's Retry does.
+  saveError?: { message: string; content: string }
 }
+
+// A tab autosave should leave alone for now: already failed on exactly this
+// buffer, and nothing has changed since.
+const failedOnThisBuffer = (tab: OpenTab): boolean => tab.saveError?.content === tab.content
 
 const CLOSED_STACK_LIMIT = 10
 
@@ -85,6 +94,7 @@ export function useTabs(
   const fileContent = activeTab?.content ?? ''
   const isSaved = activeTab?.isSaved ?? true
   const externalChangeAvailable = activeTab?.externalChangeAvailable ?? false
+  const saveError = activeTab?.saveError?.message ?? null
   const showMarkdownPreview = activeTab?.showPreview ?? false
 
   useEffect(() => {
@@ -313,19 +323,44 @@ export function useTabs(
     }
   }
 
+  // Writes one tab and records the outcome on it. Marked saved only if the
+  // buffer still holds exactly what was written - edits typed while the
+  // (possibly slow) write was in flight must keep the tab dirty, or closing
+  // it would skip the unsaved-changes prompt and lose them. A failure is kept
+  // on the tab (see saveError) instead of vanishing: before, a save that
+  // failed left only the dirty dot behind, and nothing said why.
+  const writeTab = async (path: string, content: string): Promise<boolean> => {
+    const result = await window.api.saveFile(path, content)
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.path !== path) return t
+        if (!result.success) {
+          return { ...t, saveError: { message: result.error || 'Could not save.', content } }
+        }
+        return {
+          ...t,
+          isSaved: t.isSaved || t.content === content,
+          saveError: undefined
+        }
+      })
+    )
+    return result.success
+  }
+
   const handleSave = async (): Promise<void> => {
     if (!activeTab || activeTab.isSaved) return
-    const { path, content } = activeTab
-    const result = await window.api.saveFile(path, content)
-    // Marked saved only if the buffer still holds exactly what was written -
-    // edits typed while the (possibly slow) write was in flight must keep the
-    // tab dirty, or closing it would skip the unsaved-changes prompt and lose
-    // them.
-    if (result.success) {
-      setTabs((prev) =>
-        prev.map((t) => (t.path === path && t.content === content ? { ...t, isSaved: true } : t))
-      )
+    await writeTab(activeTab.path, activeTab.content)
+  }
+
+  // The banner's Retry: the active tab, even when autosave has given up on
+  // its current buffer.
+  const retrySave = async (): Promise<void> => {
+    const tab = tabsRef.current.find((t) => t.path === activeTabPath)
+    if (!tab || tab.isSaved) {
+      if (tab) updateTab(tab.path, { saveError: undefined })
+      return
     }
+    await writeTab(tab.path, tab.content)
   }
 
   // Flushes every dirty file tab to disk - this is also what autosave runs
@@ -342,15 +377,8 @@ export function useTabs(
   const saveAllDirtyFileTabs = async (): Promise<void> => {
     for (const tab of tabsRef.current) {
       if (tab.isSaved || tab.externalChangeAvailable || isExtensionPath(tab.path)) continue
-      const { path, content } = tab
-      const result = await window.api.saveFile(path, content)
-      // Same guard as handleSave: only mark saved if the buffer still holds
-      // exactly what was written.
-      if (result.success) {
-        setTabs((prev) =>
-          prev.map((t) => (t.path === path && t.content === content ? { ...t, isSaved: true } : t))
-        )
-      }
+      if (failedOnThisBuffer(tab)) continue
+      await writeTab(tab.path, tab.content)
     }
   }
 
@@ -418,9 +446,7 @@ export function useTabs(
     const tab = tabsRef.current.find((t) => t.path === path)
     if (!tab) return false
     if (!tab.isSaved && !isExtensionPath(path)) {
-      const result = await window.api.saveFile(path, tab.content)
-      if (!result.success) return false
-      updateTab(path, { isSaved: true })
+      if (!(await writeTab(path, tab.content))) return false
     }
     if (back) {
       // The last tab going home takes the window with it - not from here
@@ -632,7 +658,8 @@ export function useTabs(
   // the timer was cleared by the activeTabPath dep and a dirty tab could sit
   // unsaved indefinitely, with only the on-quit prompt catching it.
   const hasDirtyFileTabs = tabs.some(
-    (t) => !t.isSaved && !t.externalChangeAvailable && !isExtensionPath(t.path)
+    (t) =>
+      !t.isSaved && !t.externalChangeAvailable && !isExtensionPath(t.path) && !failedOnThisBuffer(t)
   )
   useEffect(() => {
     if (!hasDirtyFileTabs) return
@@ -772,6 +799,8 @@ export function useTabs(
     fileContent,
     isSaved,
     externalChangeAvailable,
+    saveError,
+    retrySave,
     showMarkdownPreview,
     updateTab,
     setFileContent,

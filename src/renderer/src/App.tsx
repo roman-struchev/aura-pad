@@ -713,11 +713,11 @@ function App(): React.JSX.Element {
   const menuActions: Record<MenuAction, () => void> = {
     'open-folder': () => treeRef.current.handleAddFolder(),
     save: () => tabsRef.current.handleSave(),
-    // Context-sensitive: with focus inside the terminal panel (xterm keeps it
-    // on a textarea within .xterm) Cmd+W closes the active terminal, not the
+    // Context-sensitive: with focus anywhere inside the terminal panel (the
+    // xterm textarea, or the panel itself after a click on its tab strip) Cmd+W closes the active terminal, not the
     // file tab hidden underneath it.
     'close-tab': () => {
-      if (document.activeElement?.closest('.xterm')) {
+      if (document.activeElement?.closest('[data-terminal-panel]')) {
         terminalRef.current.closeActiveTerminal()
       } else {
         tabsRef.current.handleCloseFile()
@@ -742,7 +742,7 @@ function App(): React.JSX.Element {
     // panel Cmd+K clears that terminal (iTerm2/VS Code muscle memory) rather
     // than toggling the git panel behind it.
     'toggle-git-panel': () => {
-      if (document.activeElement?.closest('.xterm')) {
+      if (document.activeElement?.closest('[data-terminal-panel]')) {
         terminalRef.current.clearActiveTerminal()
       } else {
         setSidebarView((prev) => (prev === 'git' ? 'files' : 'git'))
@@ -1158,6 +1158,23 @@ function App(): React.JSX.Element {
                   Ignore
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* A save that failed (autosave included): says so and why, rather
+              than leaving only the dirty dot behind. Same fixed colour pair as
+              the banner above - both halves are fixed, so it reads in every
+              theme. */}
+          {tabs.saveError && !tabs.isSaved && (
+            <div
+              role="alert"
+              data-testid="save-error"
+              className="flex items-center justify-between gap-2 bg-red-900/90 text-red-100 text-xs px-3 py-1.5 shrink-0"
+            >
+              <span className="truncate">Could not save this file: {tabs.saveError}</span>
+              <button className="underline hover:text-white shrink-0" onClick={tabs.retrySave}>
+                Retry
+              </button>
             </div>
           )}
 

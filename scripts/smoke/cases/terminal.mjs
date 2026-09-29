@@ -102,9 +102,12 @@ export default {
     await sleep(500)
 
     await ui.key('f', 'KeyF', 70, CMD)
-    const searchOpened = await waitFor(`!!document.querySelector(${JSON.stringify(SEARCH_INPUT)})`, {
-      timeoutMs: 4000
-    })
+    const searchOpened = await waitFor(
+      `!!document.querySelector(${JSON.stringify(SEARCH_INPUT)})`,
+      {
+        timeoutMs: 4000
+      }
+    )
     check('Cmd+F opens the in-terminal search box', searchOpened)
 
     if (searchOpened) {
@@ -122,9 +125,12 @@ export default {
       )
 
       await ui.key('Escape', 'Escape', 27)
-      const searchClosed = await waitFor(`!document.querySelector(${JSON.stringify(SEARCH_INPUT)})`, {
-        timeoutMs: 2000
-      })
+      const searchClosed = await waitFor(
+        `!document.querySelector(${JSON.stringify(SEARCH_INPUT)})`,
+        {
+          timeoutMs: 2000
+        }
+      )
       check('Escape closes the search box', searchClosed)
 
       // Focus goes back to the shell, not lost to the document body.
@@ -207,6 +213,29 @@ export default {
     const termCount = `document.querySelectorAll('[data-terminal-panel] .xterm-helper-textarea').length`
     const two = await waitFor(`${termCount} === 2`, { timeoutMs: 10_000 })
     check('a second terminal opens', two)
+    // A click on the tab strip (not the xterm) leaves focus on the panel
+    // itself; Cmd+W there must still close a terminal, not a file tab.
+    await cdp.evaluate(`document.querySelector('[data-terminal-panel]').focus()`)
+    const focusedPanel = await cdp.evaluate(
+      `document.activeElement === document.querySelector('[data-terminal-panel]')`
+    )
+    check('the terminal panel itself can hold focus', focusedPanel)
+    const tabsPre = await cdp.evaluate(`window.api.getOpenTabs().then(t => t.length)`)
+    await sendMenu('close-tab')
+    const closedFromStrip = await waitFor(`${termCount} === 1`, { timeoutMs: 3000 })
+    const tabsPost = await cdp.evaluate(`window.api.getOpenTabs().then(t => t.length)`)
+    check(
+      'Cmd+W with focus on the tab strip closes a terminal, not a file tab',
+      closedFromStrip && tabsPost === tabsPre,
+      `closed=${closedFromStrip} tabs ${tabsPre}->${tabsPost}`
+    )
+    await cdp.evaluate(
+      `document.querySelector('[data-terminal-panel] .lucide-plus').closest('button').click()`
+    )
+    check(
+      'a terminal reopens for the next check',
+      await waitFor(`${termCount} === 2`, { timeoutMs: 10_000 })
+    )
     await cdp.evaluate(
       `document.querySelector('[data-terminal-panel] [data-active-terminal="true"] .xterm-helper-textarea').focus()`
     )

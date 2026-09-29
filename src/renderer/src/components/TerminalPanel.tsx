@@ -22,7 +22,10 @@ interface TerminalPanelProps {
 export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize, onOpenNew }) => (
   <div
     data-terminal-panel
-    className="relative shrink-0 border-t border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30"
+    // Focusable so a click on the tab strip (not just the xterm) keeps focus
+    // inside the panel and Cmd+W still targets the terminal.
+    tabIndex={-1}
+    className="outline-none relative shrink-0 border-t border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30"
     style={{ height: `${terminal.terminalHeight}px` }}
   >
     <div
