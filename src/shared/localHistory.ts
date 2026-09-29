@@ -13,6 +13,7 @@ export interface LocalHistoryEntry {
   label: LocalHistoryLabel
 }
 
-// What was about to overwrite the stored state. Kept to the two writers that
-// exist: ordinary saves (autosave included) and replace-across-files.
-export type LocalHistoryLabel = 'Save' | 'Replace in files'
+// What was about to overwrite the stored state. Kept to the writers that
+// exist: ordinary saves (autosave included), replace-across-files, and the
+// one-step undo of that replace.
+export type LocalHistoryLabel = 'Save' | 'Replace in files' | 'Undo replace in files'

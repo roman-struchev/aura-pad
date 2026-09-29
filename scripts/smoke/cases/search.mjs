@@ -159,6 +159,36 @@ export default {
     const secondUndo = await cdp.evaluate(`window.api.undoReplaceInFiles()`)
     check('undo is one step only', secondUndo.success === false, secondUndo.error)
 
+    // A file edited after the replace (an open tab picks the replacement up
+    // and autosaves the next keystroke) must not lose that edit to the undo's
+    // write of the pre-replace text.
+    const sibling = path.join(ws, 'replace-me-too.txt')
+    fs.writeFileSync(sibling, 'alpha sibling\n')
+    const twoFiles = await replace([subject, sibling], 'alpha', 'gamma', {
+      caseSensitive: true,
+      wholeWord: true
+    })
+    check('a replace over two files', twoFiles.filesChanged === 2, JSON.stringify(twoFiles))
+    fs.writeFileSync(subject, 'Alpha gamma ALPHA\nalphabet stays\nedited after the replace\n')
+    const partialUndo = await cdp.evaluate(`window.api.undoReplaceInFiles()`)
+    check(
+      'undo leaves a file edited since the replace alone',
+      fs.readFileSync(subject, 'utf-8').includes('edited after the replace'),
+      JSON.stringify(fs.readFileSync(subject, 'utf-8'))
+    )
+    check(
+      'still reverts the untouched one',
+      fs.readFileSync(sibling, 'utf-8') === 'alpha sibling\n' && partialUndo.filesChanged === 1,
+      JSON.stringify(partialUndo)
+    )
+    check(
+      'and says which file it skipped',
+      partialUndo.success === false && (partialUndo.error ?? '').includes('replace-me.txt'),
+      partialUndo.error
+    )
+    fs.writeFileSync(subject, original)
+    fs.rmSync(sibling, { force: true })
+
     // Its own temp dir, never listed or opened: the fixture's "outside" file
     // is legitimately granted by then (A3 opens it through Quick Open), and a
     // path like /etc/hosts would be wrecked by the very regression this

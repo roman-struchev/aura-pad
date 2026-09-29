@@ -1,3 +1,5 @@
+import crypto from 'crypto'
+import path from 'path'
 import { readFileContent, writeFileContent } from './workspaces'
 import { encodeFileContent } from './encoding'
 import { pathDenial } from './pathAccess'
@@ -19,8 +21,19 @@ import type { ReplaceRequest, ReplaceResult } from '../shared/searchQuery'
 // can be taken back in one gesture, for the whole batch at once. Held in
 // memory only - the version that survives a restart is the per-file snapshot
 // this also writes into local history (src/main/localHistory.ts).
+//
+// Each entry also remembers a hash of what the replace wrote. Undo only puts
+// a file back while it still holds exactly that: a file edited since (an open
+// tab reloads the replacement and autosaves whatever is typed next) would
+// otherwise lose those edits to a blind write of the pre-replace text.
 const REPLACE_UNDO_LIMIT_BYTES = 32 * 1024 * 1024
-let undoSnapshot: Map<string, string> | null = null
+interface UndoEntry {
+  original: string
+  writtenHash: string
+}
+let undoSnapshot: Map<string, UndoEntry> | null = null
+
+const textHash = (text: string): string => crypto.createHash('sha1').update(text).digest('hex')
 
 function emptyResult(error?: string): ReplaceResult {
   return { success: !error, error, filesChanged: 0, replacements: 0, canUndo: false }
@@ -37,7 +50,7 @@ export function replaceInFiles(request: ReplaceRequest): ReplaceResult {
   if (!matcher) return emptyResult('That search pattern is not valid.')
   const replaceWith = replacementFor(replacement, options)
 
-  const snapshot = new Map<string, string>()
+  const snapshot = new Map<string, UndoEntry>()
   let snapshotBytes = 0
   const failures: string[] = []
   let filesChanged = 0
@@ -72,7 +85,9 @@ export function replaceInFiles(request: ReplaceRequest): ReplaceResult {
     }
 
     snapshotBytes += Buffer.byteLength(read.content)
-    if (snapshotBytes <= REPLACE_UNDO_LIMIT_BYTES) snapshot.set(filePath, read.content)
+    if (snapshotBytes <= REPLACE_UNDO_LIMIT_BYTES) {
+      snapshot.set(filePath, { original: read.content, writtenHash: textHash(updated) })
+    }
     filesChanged++
     replacements += hits
   }
@@ -96,16 +111,40 @@ export function undoReplaceInFiles(): ReplaceResult {
   if (!undoSnapshot) return emptyResult('There is nothing to undo.')
 
   const failures: string[] = []
+  const changedSince: string[] = []
   let filesChanged = 0
-  for (const [filePath, original] of undoSnapshot) {
+  for (const [filePath, { original, writtenHash }] of undoSnapshot) {
     const denial = pathDenial(filePath)
     if (denial) {
       failures.push(`${filePath}: ${denial}`)
       continue
     }
+    const current = readFileContent(filePath)
+    if (!current.success || current.content === undefined) {
+      failures.push(`${filePath}: ${current.error ?? 'could not be read'}`)
+      continue
+    }
+    if (textHash(current.content) !== writtenHash) {
+      changedSince.push(filePath)
+      continue
+    }
+    // The replaced state goes into local history too, so taking the undo back
+    // is possible as well - it is a bulk write like the replace itself.
+    recordSnapshot(filePath, current.content, 'Undo replace in files', true)
     const written = writeFileContent(filePath, encodeFileContent(filePath, original))
     if (written.success) filesChanged++
     else failures.push(`${filePath}: ${written.error ?? 'could not be written'}`)
+  }
+
+  // Said first, since it is the part the user has to act on: those files
+  // still hold the replacement (plus their later edits), and their
+  // pre-replace text is in local history.
+  if (changedSince.length > 0) {
+    const names = changedSince.map((p) => path.basename(p)).join(', ')
+    failures.unshift(
+      `Reverted ${filesChanged}; left ${changedSince.length} edited since the replace as they are ` +
+        `(${names}) - their earlier text is in Local History.`
+    )
   }
 
   // One step only: after taking it, there is nothing further back to go.
