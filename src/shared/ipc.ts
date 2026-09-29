@@ -2,7 +2,7 @@ import type { AppSettings } from './settings'
 import type { OpenTabsState } from './openTabsState'
 import type { FileNode } from './fileNode'
 import type { ListeningPort } from './ports'
-import type { SearchResult } from './searchResult'
+import type { SearchResponse } from './searchResult'
 import type { ReplaceRequest, ReplaceResult, SearchOptions } from './searchQuery'
 import type { GitCommit, GitRepoStatus } from './gitStatus'
 import type { GTask, GTaskInput, GTaskList } from './googleTasks'
@@ -110,7 +110,7 @@ export interface InvokeContracts {
   // null when the user cancels the folder picker.
   'add-workspace': { args: []; result: FileNode[] | null }
   'remove-workspace': { args: [path: string]; result: FileNode[] }
-  'search-projects': { args: [query: string, options?: SearchOptions]; result: SearchResult[] }
+  'search-projects': { args: [query: string, options?: SearchOptions]; result: SearchResponse }
   // Replace across files, and the single step back out of it. Both act on the
   // renderer's explicit selection - see src/main/replaceInFiles.ts.
   'replace-in-files': { args: [request: ReplaceRequest]; result: ReplaceResult }

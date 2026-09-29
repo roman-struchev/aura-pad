@@ -128,7 +128,9 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Files opened from outside the workspaces (Finder, "Open With…") stay in a "Recently
   Opened" list in the sidebar.
 - Respects `.gitignore`. Files up to 10 MB open in the editor; full-text search scans
-  files up to 2 MB.
+  every text file up to 2 MB, whatever its extension (binaries are skipped). The result
+  list stops at 500 matches (50 per file) and says so when it does; the match counts —
+  and what Replace All changes — still cover every match in the listed files.
 
 **Git**
 

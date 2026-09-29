@@ -11,14 +11,14 @@ export default {
   id: 'A6',
   title: 'Search and quick open',
   async run({ cdp, ui, ws, check, waitFor, sleep }) {
-    const hits = await cdp.evaluate(`window.api.searchProjects('findmeplease')`)
+    const hits = (await cdp.evaluate(`window.api.searchProjects('findmeplease')`)).results
     check(
       'full-text search finds a match',
       hits.some((h) => h.path === `${ws}/haystack.txt`),
       JSON.stringify(hits.slice(0, 2))
     )
 
-    const ignoredHits = await cdp.evaluate(`window.api.searchProjects('needle-in')`)
+    const ignoredHits = (await cdp.evaluate(`window.api.searchProjects('needle-in')`)).results
     check(
       'search skips node_modules and .gitignore entries',
       ignoredHits.length === 0,
@@ -85,10 +85,11 @@ export default {
     // but the file has to be on disk first.
     await sleep(600)
 
-    const search = (query, options) =>
+    const searchFull = (query, options) =>
       cdp.evaluate(
         `window.api.searchProjects(${JSON.stringify(query)}, ${JSON.stringify(options ?? {})})`
       )
+    const search = async (query, options) => (await searchFull(query, options)).results
     const inSubject = (hits) => hits.filter((h) => h.path === subject)
 
     check(
@@ -124,6 +125,41 @@ export default {
       'and excludes what it does not name',
       inSubject(await search('alpha', { include: '*.md' })).length === 0
     )
+
+    // Any text file is searched, not a fixed list of extensions (.java used
+    // to be invisible to search); something with NUL bytes in it is not.
+    fs.writeFileSync(path.join(ws, 'Service.java'), 'class Service { // javaneedle\n}\n')
+    fs.writeFileSync(path.join(ws, 'blob.dat'), Buffer.from('javaneedle\0\0\0binary'))
+    const javaHits = await search('javaneedle')
+    check(
+      'a .java file is searched',
+      javaHits.some((h) => h.path.endsWith('Service.java')),
+      JSON.stringify(javaHits.map((h) => h.file))
+    )
+    check('a binary file is not', !javaHits.some((h) => h.file === 'blob.dat'))
+    fs.rmSync(path.join(ws, 'Service.java'), { force: true })
+    fs.rmSync(path.join(ws, 'blob.dat'), { force: true })
+
+    // The list is capped at 50 matches per file; the count of what a Replace
+    // All would change is not, and the response says the list is short.
+    const crowded = path.join(ws, 'crowded.txt')
+    fs.writeFileSync(crowded, 'crowdneedle\n'.repeat(60))
+    const crowdedResponse = await searchFull('crowdneedle')
+    check(
+      'a file with more matches than the list shows is listed up to the cap',
+      crowdedResponse.results.filter((h) => h.path === crowded).length === 50
+    )
+    check(
+      'but all of its matches are counted',
+      crowdedResponse.matchCounts[crowded] === 60,
+      JSON.stringify(crowdedResponse.matchCounts)
+    )
+    check('and the response says the list is incomplete', crowdedResponse.truncated === true)
+    check(
+      'an ordinary search is not marked incomplete',
+      (await searchFull('findmeplease')).truncated === false
+    )
+    fs.rmSync(crowded, { force: true })
 
     const replace = (paths, query, replacement, options) =>
       cdp.evaluate(
@@ -252,6 +288,22 @@ export default {
     check(
       'the preview shows the line as it will be written',
       await cdp.evaluate(`document.body.innerText.includes('omega stays')`)
+    )
+
+    // The status colours come from the theme tokens: a fixed green is legible
+    // on one side of the theme list and not the other.
+    const previewContrast = () => ui.contrastOf('[data-testid="replace-preview"]')
+    const darkContrast = await previewContrast()
+    const themed = await cdp.evaluate('window.api.getSettings()')
+    await cdp.evaluate(`window.api.saveSettings(${JSON.stringify({ ...themed, theme: 'light' })})`)
+    await sleep(600)
+    const lightContrast = await previewContrast()
+    await cdp.evaluate(`window.api.saveSettings(${JSON.stringify(themed)})`)
+    await sleep(400)
+    check(
+      'the replacement preview reads in the dark and the light theme',
+      darkContrast >= 4.5 && lightContrast >= 4.5,
+      `dark=${darkContrast} light=${lightContrast}`
     )
 
     await ui.clickButton('Replace All')

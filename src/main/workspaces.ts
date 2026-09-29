@@ -5,7 +5,7 @@ import ignore, { type Ignore } from 'ignore'
 import { readConfigFile, writeConfigFile } from './configFile'
 import { decodeFileBuffer, remapEncodingPaths } from './encoding'
 import type { FileNode } from '../shared/fileNode'
-import type { SearchResult } from '../shared/searchResult'
+import type { SearchResponse, SearchResult } from '../shared/searchResult'
 import { buildIncludeMatcher, buildSearchRegex, type SearchOptions } from '../shared/searchQuery'
 
 const workspacesConfigPath = path.join(app.getPath('userData'), 'workspaces.json')
@@ -150,11 +150,68 @@ export async function getWorkspaceTrees(): Promise<FileNode[]> {
   return trees
 }
 
-const SEARCHABLE_EXTENSION_RE = /\.(py|json|md|txt|ts|tsx|js|jsx|css|html|yml|yaml|xml)$/i
+// Every text file is searched, whatever its extension - a fixed list of
+// extensions used to leave out .java, .go, .rs, .sh, .sql, .http and most of
+// what the editor itself opens. What is skipped instead is what can't be
+// text: these extensions are never read at all, and anything else with a NUL
+// byte near the start is taken for binary once read (the same sniff the
+// editor's open path uses).
+const BINARY_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.ico',
+  '.icns',
+  '.tiff',
+  '.psd',
+  '.pdf',
+  '.zip',
+  '.gz',
+  '.tgz',
+  '.bz2',
+  '.xz',
+  '.7z',
+  '.rar',
+  '.jar',
+  '.war',
+  '.class',
+  '.dmg',
+  '.iso',
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.o',
+  '.a',
+  '.bin',
+  '.wasm',
+  '.node',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.eot',
+  '.mp3',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.wav',
+  '.flac',
+  '.ogg',
+  '.webm',
+  '.sqlite',
+  '.db',
+  '.pyc',
+  '.onnx'
+])
 const MAX_TOTAL_SEARCH_RESULTS = 500
-// Bounds how much a single file (e.g. a huge generated/minified one that
-// slipped past the extension filter) can contribute, so it can't alone
-// dominate the result cap above at the expense of every other match.
+// Bounds how much a single file (e.g. a huge generated/minified one) can
+// contribute to the list, so it can't alone dominate the result cap above at
+// the expense of every other match. Its matches are still all counted - see
+// SearchResponse.matchCounts.
 const MAX_RESULTS_PER_FILE = 50
 // Skip absurdly large text-like files rather than reading them fully into
 // memory - a search result from a multi-megabyte log isn't very actionable
@@ -175,20 +232,22 @@ let searchGeneration = 0
 export async function searchInWorkspaces(
   query: string,
   options: SearchOptions = {}
-): Promise<SearchResult[]> {
+): Promise<SearchResponse> {
   const generation = ++searchGeneration
   const workspacePaths = loadWorkspaces()
   const results: SearchResult[] = []
-  if (!query || query.length < 2) return results
+  const matchCounts: Record<string, number> = {}
+  let truncated = false
+  const response = (): SearchResponse => ({ results, matchCounts, truncated })
+  if (!query || query.length < 2) return response()
 
   // An unfinished regex ("foo(") is a normal keystroke, not an error: no
   // matcher, no results, and the field says so on the renderer's side.
   const built = buildSearchRegex(query, options)
-  if (!built) return results
+  if (!built) return response()
   const matcher = built
-  // A file filter, when given, replaces the built-in extension list rather
-  // than narrowing it - asking for "*.log" should search .log files, which
-  // the default list deliberately leaves out.
+  // A file filter, when given, narrows the search to what it names ("*.log",
+  // "src/**").
   const includes = buildIncludeMatcher(options.include)
 
   // Walks with fs.promises (not the *Sync variants the rest of this module
@@ -236,45 +295,56 @@ export async function searchInWorkspaces(
         if (ancestors.has(real)) continue
         await searchDir(rootPath, ig, fullPath, new Set(ancestors).add(real))
       } else if (
-        (includes ? includes(relPath) : SEARCHABLE_EXTENSION_RE.test(file)) &&
+        (!includes || includes(relPath)) &&
+        !BINARY_EXTENSIONS.has(path.extname(file).toLowerCase()) &&
         stat.size <= MAX_SEARCHABLE_FILE_BYTES
       ) {
-        let content: string
+        let buffer: Buffer
         try {
-          content = await fs.promises.readFile(fullPath, 'utf-8')
+          buffer = await fs.promises.readFile(fullPath)
         } catch (e) {
           continue
         }
+        if (buffer.subarray(0, 8000).includes(0)) continue
+        const content = buffer.toString('utf-8')
 
         const lines = content.split('\n')
         let matchesInFile = 0
         for (let index = 0; index < lines.length; index++) {
           // Every occurrence on the line, not just the first: replace acts on
           // all of them, so a count that stopped at one per line would
-          // under-report what the button is about to do.
+          // under-report what the button is about to do. Past the caps they
+          // are still counted, just not listed.
           matcher.lastIndex = 0
           let match: RegExpExecArray | null
           while ((match = matcher.exec(lines[index])) !== null) {
-            results.push({
-              file,
-              path: fullPath,
-              line: index + 1,
-              col: match.index + 1,
-              matchLen: match[0].length,
-              content: lines[index].trim()
-            })
+            if (matchesInFile < MAX_RESULTS_PER_FILE && results.length < MAX_TOTAL_SEARCH_RESULTS) {
+              results.push({
+                file,
+                path: fullPath,
+                line: index + 1,
+                col: match.index + 1,
+                matchLen: match[0].length,
+                content: lines[index].trim()
+              })
+            } else {
+              truncated = true
+            }
             matchesInFile++
-            if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
-            if (matchesInFile >= MAX_RESULTS_PER_FILE) break
             // A pattern that can match nothing ("x*") would otherwise spin
             // forever on the same index.
             if (match[0].length === 0) matcher.lastIndex++
           }
-          if (matchesInFile >= MAX_RESULTS_PER_FILE) break
         }
+        if (matchesInFile > 0) matchCounts[fullPath] = matchesInFile
       }
 
-      if (results.length >= MAX_TOTAL_SEARCH_RESULTS) throw new SearchCapReached()
+      // The list is full: files further on are not looked at at all, so the
+      // response says it is incomplete rather than looking like everything.
+      if (results.length >= MAX_TOTAL_SEARCH_RESULTS) {
+        truncated = true
+        throw new SearchCapReached()
+      }
     }
   }
 
@@ -289,12 +359,12 @@ export async function searchInWorkspaces(
     try {
       await searchDir(rootPath, loadGitignore(rootPath), rootPath, new Set([rootReal]))
     } catch (e) {
-      if (e instanceof SearchSuperseded) return []
+      if (e instanceof SearchSuperseded) return { results: [], matchCounts: {}, truncated: false }
       if (e instanceof SearchCapReached) break
     }
   }
 
-  return results
+  return response()
 }
 
 interface PathOpResult {

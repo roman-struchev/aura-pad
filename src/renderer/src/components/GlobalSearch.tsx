@@ -12,7 +12,7 @@ import {
   Replace as ReplaceIcon,
   Undo2
 } from 'lucide-react'
-import type { SearchResult } from '../../../shared/searchResult'
+import type { SearchResponse, SearchResult } from '../../../shared/searchResult'
 import {
   buildSearchRegex,
   replacementFor,
@@ -57,6 +57,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
 }) => {
   const [query, setQuery] = useState(initialQuery ?? '')
   const [results, setResults] = useState<SearchResult[]>([])
+  // Every match in each listed file (the list itself stops at 50 per file),
+  // and whether the list is incomplete - see SearchResponse.
+  const [matchCounts, setMatchCounts] = useState<Record<string, number>>({})
+  const [truncated, setTruncated] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
@@ -186,15 +190,21 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onClose, visibleItems, selIndex, hasQuery, activateResult, toggleCollapsed, collapsedPaths])
 
+  const applyResponse = useCallback((response: SearchResponse): void => {
+    setResults(response.results)
+    setMatchCounts(response.matchCounts)
+    setTruncated(response.truncated)
+  }, [])
+
   useEffect(() => {
     if (!hasQuery) return undefined
 
     let cancelled = false
     const timer = setTimeout(async () => {
       setIsSearching(true)
-      const searchResults = await window.api.searchProjects(query, options)
+      const response = await window.api.searchProjects(query, options)
       if (cancelled) return
-      setResults(searchResults)
+      applyResponse(response)
       setSelectedIndex(0)
       setCollapsedPaths(new Set())
       setExcludedPaths(new Set())
@@ -205,7 +215,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [query, hasQuery, options])
+  }, [query, hasQuery, options, applyResponse])
 
   // The files Replace All would rewrite: everything found, minus what the
   // user unchecked, minus anything with unsaved edits in a tab.
@@ -213,9 +223,20 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     () => groups.map((g) => g.path).filter((p) => !excludedPaths.has(p) && !unsaved.has(p)),
     [groups, excludedPaths, unsaved]
   )
+  // What Replace All will actually change: every match in those files, not
+  // just the ones the capped list shows.
+  const countIn = useCallback(
+    (group: FileGroup): number => matchCounts[group.path] ?? group.matches.length,
+    [matchCounts]
+  )
   const targetMatches = useMemo(
-    () => results.filter((r) => targetPaths.includes(r.path)).length,
-    [results, targetPaths]
+    () =>
+      groups.filter((g) => targetPaths.includes(g.path)).reduce((sum, g) => sum + countIn(g), 0),
+    [groups, targetPaths, countIn]
+  )
+  const totalMatches = useMemo(
+    () => groups.reduce((sum, g) => sum + countIn(g), 0),
+    [groups, countIn]
   )
   const blockedByUnsaved = useMemo(
     () => groups.filter((g) => unsaved.has(g.path)).length,
@@ -235,10 +256,9 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
   )
 
   const refreshResults = useCallback(async (): Promise<void> => {
-    const searchResults = await window.api.searchProjects(query, options)
-    setResults(searchResults)
+    applyResponse(await window.api.searchProjects(query, options))
     setSelectedIndex(0)
-  }, [query, options])
+  }, [query, options, applyResponse])
 
   const runReplace = useCallback(async (): Promise<void> => {
     if (targetPaths.length === 0 || isReplacing) return
@@ -329,7 +349,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                 className={clsx(
                   'p-1 rounded shrink-0',
                   active
-                    ? 'bg-fleet-active text-blue-400'
+                    ? 'bg-fleet-active text-accent-info'
                     : 'text-gray-500 hover:bg-fleet-active hover:text-fleet-textHover'
                 )}
               >
@@ -365,12 +385,14 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
             <input
               type="text"
               placeholder="Files to include: *.ts, src/**"
-              className="flex-1 min-w-0 bg-fleet-header/60 rounded px-2 py-1 border border-transparent focus:border-fleet-border outline-none text-xs text-fleet-text placeholder:text-gray-600"
+              className="flex-1 min-w-0 bg-fleet-header/60 rounded px-2 py-1 border border-transparent focus:border-fleet-border outline-none text-xs text-fleet-text placeholder:text-gray-500"
               value={include}
               onChange={(e) => setInclude(e.target.value)}
             />
             {patternInvalid && (
-              <span className="text-[10px] text-red-400 shrink-0">Invalid regular expression</span>
+              <span className="text-[10px] text-accent-error shrink-0">
+                Invalid regular expression
+              </span>
             )}
           </div>
         </div>
@@ -418,18 +440,25 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                       ) : (
                         <ChevronDown size={14} className="text-gray-500 shrink-0" />
                       )}
-                      <FileText size={14} className="text-blue-400 shrink-0" />
-                      <span className="text-blue-400 text-sm font-medium truncate">
+                      <FileText size={14} className="text-accent-info shrink-0" />
+                      <span className="text-accent-info text-sm font-medium truncate">
                         {item.group.file}
                       </span>
-                      <span className="text-[10px] text-gray-600 truncate flex-1">
+                      <span className="text-[10px] text-gray-500 truncate flex-1">
                         {item.group.path}
                       </span>
                       {showReplace && isUnsaved && (
-                        <span className="text-[10px] text-amber-400 shrink-0">unsaved</span>
+                        <span className="text-[10px] text-accent-warn shrink-0">unsaved</span>
                       )}
-                      <span className="text-[10px] text-gray-500 bg-fleet-header rounded-full px-2 py-0.5 shrink-0">
-                        {item.group.matches.length}
+                      <span
+                        className="text-[10px] text-gray-500 bg-fleet-header rounded-full px-2 py-0.5 shrink-0"
+                        title={
+                          countIn(item.group) > item.group.matches.length
+                            ? `${countIn(item.group)} matches, the first ${item.group.matches.length} listed`
+                            : undefined
+                        }
+                      >
+                        {countIn(item.group)}
                       </span>
                     </div>
                   )
@@ -447,7 +476,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     className={`pl-12 pr-4 py-1 cursor-pointer flex items-baseline gap-3 ${rowBg}`}
                     onClick={() => activateResult(item.result)}
                   >
-                    <span className="text-[10px] text-gray-600 shrink-0 w-8 text-right">
+                    <span className="text-[10px] text-gray-500 shrink-0 w-8 text-right">
                       {item.result.line}
                     </span>
                     <span className="min-w-0 flex flex-col">
@@ -455,14 +484,17 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                         className={clsx(
                           'text-xs font-mono truncate',
                           willChange
-                            ? 'text-gray-500 line-through decoration-gray-700'
-                            : 'text-gray-400'
+                            ? 'text-gray-500 line-through decoration-gray-500'
+                            : 'text-fleet-text'
                         )}
                       >
                         {item.result.content}
                       </span>
                       {willChange && (
-                        <span className="text-xs text-emerald-400 font-mono truncate">
+                        <span
+                          data-testid="replace-preview"
+                          className="text-xs text-accent-ok font-mono truncate"
+                        >
                           {preview}
                         </span>
                       )}
@@ -480,7 +512,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
           )}
 
           {!hasQuery && (
-            <div className="p-8 text-center text-gray-600 text-sm italic">
+            <div className="p-8 text-center text-gray-500 text-sm italic">
               Type at least 2 characters to search...
             </div>
           )}
@@ -491,7 +523,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
           <div
             className={clsx(
               'px-4 py-2 border-t border-fleet-border text-xs flex items-center justify-between gap-3',
-              replaceStatus.failed ? 'text-red-400' : 'text-emerald-400'
+              replaceStatus.failed ? 'text-accent-error' : 'text-accent-ok'
             )}
           >
             <span className="truncate">{replaceStatus.text}</span>
@@ -507,11 +539,20 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
             )}
           </div>
         )}
-        <div className="px-4 py-2 bg-fleet-header border-t border-fleet-border text-[10px] text-gray-600 flex justify-between">
+        <div className="px-4 py-2 bg-fleet-header border-t border-fleet-border text-[10px] text-gray-500 flex justify-between">
           <span>
-            {hasQuery ? `${results.length} matches in ${groups.length} files` : '0 matches found'}
+            {hasQuery ? `${totalMatches} matches in ${groups.length} files` : '0 matches found'}
+            {hasQuery && truncated && (
+              <span
+                className="text-accent-warn"
+                data-testid="search-truncated"
+                title="The list stops at 500 matches (50 per file). Files past that point were not searched, and Replace All only touches the files listed."
+              >
+                {' • list truncated — narrow the query'}
+              </span>
+            )}
             {showReplace && blockedByUnsaved > 0 && (
-              <span className="text-amber-500">
+              <span className="text-accent-warn">
                 {` • ${blockedByUnsaved} skipped (unsaved edits)`}
               </span>
             )}
