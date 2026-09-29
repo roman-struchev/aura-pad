@@ -27,6 +27,29 @@ function sendToOwner(ownerId: number, channel: string, ...args: unknown[]): void
   if (win) win.webContents.send(channel, ...args)
 }
 
+// What the shell is told about the terminal it runs in. xterm.js renders 256
+// colours and 24-bit colour, but TERM=xterm-color claimed 8 - so vim, less,
+// git's pager and every CLI with a colour scheme fell back to the basic
+// palette. COLORTERM is how programs learn truecolor is there.
+//
+// A GUI launch (Dock, Finder, Launchpad) inherits no locale at all - LANG is
+// something a terminal emulator sets, and there is none above us - so the
+// shell ran in the C locale: non-ASCII file names and output (Cyrillic, for
+// one) came out as `?` or octal escapes. A UTF-8 locale is supplied only when
+// none of the locale variables is set, so a user's own choice always wins.
+function ptyEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value
+  }
+  env.TERM = 'xterm-256color'
+  env.COLORTERM = 'truecolor'
+  if (process.platform !== 'win32' && !env.LANG && !env.LC_ALL && !env.LC_CTYPE) {
+    env.LANG = 'en_US.UTF-8'
+  }
+  return env
+}
+
 export function registerCreatePtyHandler(): void {
   handleInvokeWithEvent('create-pty', (event, cwd) => {
     // A login shell in an arbitrary directory is the most valuable thing the
@@ -42,11 +65,11 @@ export function registerCreatePtyHandler(): void {
 
     const shellArgs = process.platform === 'win32' ? [] : ['-l']
     const ptyProcess = pty.spawn(shellExec, shellArgs, {
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: 80,
       rows: 30,
       cwd: cwd || os.homedir(),
-      env: process.env as Record<string, string>
+      env: ptyEnv()
     })
 
     ptyProcess.onData((data) => sendToOwner(ownerId, `pty-data-${termId}`, data))

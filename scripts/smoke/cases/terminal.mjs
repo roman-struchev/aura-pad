@@ -58,6 +58,19 @@ export default {
       JSON.stringify((await cdp.evaluate('window.__ptyOut')).slice(-160))
     )
 
+    // The shell is told the terminal does 256 colours and truecolor (xterm.js
+    // does both); TERM=xterm-color used to hold every program to 8.
+    await cdp.evaluate(
+      `window.api.ptyWrite(${JSON.stringify(termId)}, 'echo "TERMCHK=$TERM/$COLORTERM"\\r')`
+    )
+    check(
+      'the shell sees a 256-colour, truecolor terminal',
+      await waitFor(`window.__ptyOut.includes('TERMCHK=xterm-256color/truecolor')`, {
+        timeoutMs: 8000
+      }),
+      JSON.stringify((await cdp.evaluate('window.__ptyOut')).slice(-160))
+    )
+
     await cdp.evaluate(`window.api.destroyPty(${JSON.stringify(termId)})`)
     const secondId = await cdp.evaluate(`window.api.createPty(${JSON.stringify(ws)})`)
     check('another session can be opened after closing one', secondId !== termId)
