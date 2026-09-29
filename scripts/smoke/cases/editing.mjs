@@ -80,5 +80,34 @@ export default {
       await cdp.evaluate(`document.querySelector('.markdown-body')?.innerText || ''`)
     )
     await ui.togglePreview()
+
+    // Two names that read as the same URI: "a%20b" is what "a b" looks like
+    // once percent-encoded. Monaco models used to be keyed by Uri.parse(path),
+    // which gave both files one model - the second tab showed the first
+    // file's text and autosaved it over its own.
+    const spaced = path.join(ws, 'uri a b.txt')
+    const encoded = path.join(ws, 'uri a%20b.txt')
+    fs.writeFileSync(spaced, 'first-file-body\n')
+    fs.writeFileSync(encoded, 'second-file-body\n')
+    check('a file with a space in its name opens', await ui.openFile(spaced))
+    check('and one with %20 in its name opens too', await ui.openFile(encoded))
+    await ui.focusEditor()
+    await cdp.send('Input.insertText', { text: 'typed-into-encoded ' })
+    const encodedSaved = await waitFor(
+      `window.api.readFile(${JSON.stringify(encoded)}).then((r) => (r.content || '').includes('typed-into-encoded'))`,
+      { timeoutMs: 10_000 }
+    )
+    check('typing into the %20 file autosaves it', encodedSaved)
+    check(
+      'it keeps its own text, not the look-alike file',
+      fs.readFileSync(encoded, 'utf-8').includes('second-file-body') &&
+        !fs.readFileSync(encoded, 'utf-8').includes('first-file-body'),
+      JSON.stringify(fs.readFileSync(encoded, 'utf-8'))
+    )
+    check(
+      'and the look-alike file is untouched',
+      fs.readFileSync(spaced, 'utf-8') === 'first-file-body\n',
+      JSON.stringify(fs.readFileSync(spaced, 'utf-8'))
+    )
   }
 }

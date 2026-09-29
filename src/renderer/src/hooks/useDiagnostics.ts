@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as monaco from 'monaco-editor'
 import type { FileNode } from '../../../shared/fileNode'
 import { isEslintablePath, isPythonPath } from '../lib/fileType'
+import { modelUri } from '../lib/modelUri'
 
 // TS/JS diagnostics are Monaco's own bundled worker - free once each file has
 // a stable path-based model (see the Editor's `path` prop in App.tsx). Python
@@ -32,7 +33,7 @@ export function useDiagnostics(
     if (needsCheckRef.current.get(path) === false) return
     needsCheckRef.current.set(path, false)
 
-    const model = monaco.editor.getModel(monaco.Uri.parse(path))
+    const model = monaco.editor.getModel(modelUri(path))
     if (!model) return
 
     const run = async (): Promise<void> => {

@@ -75,6 +75,7 @@ import {
 } from './lib/http/httpFile'
 import { setHttpBlockHandlers } from './lib/http/monacoHttp'
 import { getLanguage } from './lib/language'
+import { modelPath } from './lib/modelUri'
 import { getMonacoTheme } from './lib/editorTheme'
 import { dirname, isUnderAnyRoot } from './lib/path'
 import { prettyPrintMarkup } from './lib/formatMarkup'
@@ -1245,7 +1246,7 @@ function App(): React.JSX.Element {
                 ) : (
                   <Editor
                     height="100%"
-                    path={tabs.selectedPath}
+                    path={modelPath(tabs.selectedPath)}
                     language={getLanguage(tabs.selectedPath)}
                     theme={monacoTheme}
                     // Uncontrolled: the model owns the text and only tab-state

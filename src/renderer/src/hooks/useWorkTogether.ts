@@ -5,6 +5,7 @@ import { Awareness } from 'y-protocols/awareness'
 import { MonacoBinding } from 'y-monaco'
 import { WorkTogetherProvider, type WorkTogetherProviderStatus } from '../lib/workTogether/provider'
 import { alertDialog } from '../lib/dialogs'
+import { modelUri } from '../lib/modelUri'
 import type {
   WorkTogetherLink,
   WorkTogetherLinkRole,
@@ -75,7 +76,7 @@ function bindEntryModel(
   editors: Set<monaco.editor.IStandaloneCodeEditor>
 ): void {
   if (entry.binding || entry.cancelPendingBind) return
-  const model = monaco.editor.getModel(monaco.Uri.parse(path))
+  const model = monaco.editor.getModel(modelUri(path))
   if (!model) return
 
   // Doc already has content (ensureSession seeded it, or a snapshot/sync has
@@ -100,7 +101,7 @@ function bindEntryModel(
   const onFirstUpdate = (): void => {
     entry.cancelPendingBind?.()
     if (entry.binding) return
-    const liveModel = monaco.editor.getModel(monaco.Uri.parse(path))
+    const liveModel = monaco.editor.getModel(modelUri(path))
     if (!liveModel) return
     entry.binding = new MonacoBinding(
       entry.doc.getText('monaco'),
@@ -275,7 +276,7 @@ export function useWorkTogether({
       // below finds them equal and leaves the model (and its undo stack)
       // alone. A joining guest starts from an empty doc and gets the real
       // content via the ordinary sync-step handshake once connected.
-      const model = monaco.editor.getModel(monaco.Uri.parse(path))
+      const model = monaco.editor.getModel(modelUri(path))
       // Use the model's actual value, which has already been through Monaco's
       // internal line-ending normalization. `content` from the arg might have
       // \r\n while the model normalized to \n, which would make `yText` and

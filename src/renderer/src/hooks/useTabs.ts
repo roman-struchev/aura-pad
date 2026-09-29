@@ -3,6 +3,7 @@ import * as monaco from 'monaco-editor'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 import { isExtensionPath } from '../../../shared/extensionTab'
 import { isMarkdownPath } from '../lib/fileType'
+import { modelUri } from '../lib/modelUri'
 
 export type OpenTab = {
   path: string
@@ -116,7 +117,7 @@ export function useTabs(
   // model explicitly. A full-range edit (not setValue) so the change lands
   // on the undo stack: Cmd+Z after a reload brings the previous buffer back.
   const applyContentToModel = (path: string, content: string): void => {
-    const model = monaco.editor.getModel(monaco.Uri.parse(path))
+    const model = monaco.editor.getModel(modelUri(path))
     if (!model || model.getValue() === content) return
     model.pushEditOperations([], [{ range: model.getFullModelRange(), text: content }], () => null)
   }
@@ -156,7 +157,7 @@ export function useTabs(
         // If the editor is already showing this very file, `fileContent`
         // won't change and the pending-jump effect above would never fire -
         // jump right away instead.
-        if (editorRef.current?.getModel()?.uri.toString() === monaco.Uri.parse(filePath).toString())
+        if (editorRef.current?.getModel()?.uri.toString() === modelUri(filePath).toString())
           scrollToTarget(target)
         else pendingJump.current = target
       }
@@ -374,16 +375,15 @@ export function useTabs(
     // switching back to a still-open tab preserves its undo history) - once
     // a tab is actually closed there's no way back to it except reopening
     // fresh from disk, so free the model rather than leaking its full text
-    // and edit history for the rest of the session. `Uri.parse` (not
-    // `Uri.file`) to match the URI @monaco-editor/react itself builds from
-    // the `path` prop internally.
+    // and edit history for the rest of the session. modelUri matches the URI
+    // the <Editor> was given (see lib/modelUri).
     //
     // Unless the path is still shared: a live Work Together session's
     // MonacoBinding is wired to this exact model object, not to whatever
     // `getModel(uri)` returns later. Disposing it here would silently
     // detach the session from the tab a reopen would spin up next - the
     // model has to keep living for as long as the session does.
-    if (!isPathShared?.(path)) monaco.editor.getModel(monaco.Uri.parse(path))?.dispose()
+    if (!isPathShared?.(path)) monaco.editor.getModel(modelUri(path))?.dispose()
   }
 
   // The part of closing that isn't the question: drop the tab and move the
@@ -587,7 +587,7 @@ export function useTabs(
       // is keyed to that path on the backend), so end it before freeing the
       // model its binding holds.
       if (isPathShared?.(oldTabPath)) stopSharing?.(oldTabPath)
-      monaco.editor.getModel(monaco.Uri.parse(oldTabPath))?.dispose()
+      monaco.editor.getModel(modelUri(oldTabPath))?.dispose()
     }
     setActiveTabPath((prev) => {
       if (!prev) return prev
@@ -614,7 +614,7 @@ export function useTabs(
       // The file is gone from disk, so a share under it can't continue - end
       // the session before disposing the model its binding holds.
       if (isPathShared?.(tab.path)) stopSharing?.(tab.path)
-      monaco.editor.getModel(monaco.Uri.parse(tab.path))?.dispose()
+      monaco.editor.getModel(modelUri(tab.path))?.dispose()
     }
     closedStackRef.current = closedStackRef.current.filter((p) => !isAffected(p))
     setActiveTabPath((prev) => {

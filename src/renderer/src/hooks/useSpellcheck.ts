@@ -5,6 +5,7 @@ import type { SpellIssue, SpellWorkerResponse } from '../lib/spell/spellWorker'
 import { useModelWorker } from './useModelWorker'
 import { useStableCallback } from '../lib/useStableCallback'
 import { isProsePath } from '../lib/fileType'
+import { modelUri } from '../lib/modelUri'
 import type { SpellLanguage } from '../../../shared/spellcheck'
 
 // Spell checking for prose files: unknown words become Monaco markers, which
@@ -128,7 +129,7 @@ export function useSpellcheck({
   }, [userWords])
 
   const applyMarkers = (targetPath: string, issues: SpellIssue[]): void => {
-    const model = monaco.editor.getModel(monaco.Uri.parse(targetPath))
+    const model = monaco.editor.getModel(modelUri(targetPath))
     if (!model) return
     monaco.editor.setModelMarkers(
       model,
