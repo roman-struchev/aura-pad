@@ -109,5 +109,50 @@ export default {
       fs.readFileSync(spaced, 'utf-8') === 'first-file-body\n',
       JSON.stringify(fs.readFileSync(spaced, 'utf-8'))
     )
+
+    // A save that fails has to say so. Saving writes a temp file beside the
+    // target, so a folder without write permission makes every save fail -
+    // which used to leave nothing but the dirty dot, with no reason given.
+    const lockedDir = path.join(ws, 'locked')
+    const lockedFile = path.join(lockedDir, 'readonly.txt')
+    fs.mkdirSync(lockedDir, { recursive: true })
+    fs.writeFileSync(lockedFile, 'locked body\n')
+    // New folders appear collapsed: open it so the file's row is there.
+    await ui.waitForRow(lockedDir)
+    await ui.clickRow(lockedDir)
+    check('a file in a folder about to lose write access opens', await ui.openFile(lockedFile))
+    fs.chmodSync(lockedDir, 0o555)
+    try {
+      await ui.focusEditor()
+      await cdp.send('Input.insertText', { text: 'cannot-land ' })
+      check(
+        'a failed autosave shows why',
+        await waitFor(
+          `(document.querySelector('[data-testid="save-error"]')?.innerText || '').includes('Could not save')`,
+          { timeoutMs: 10_000 }
+        ),
+        await cdp.evaluate(`document.querySelector('[data-testid="save-error"]')?.innerText || ''`)
+      )
+      check('and the file on disk is untouched', read('locked/readonly.txt') === 'locked body\n')
+    } finally {
+      fs.chmodSync(lockedDir, 0o755)
+    }
+    await cdp.evaluate(`(() => {
+      const b = [...document.querySelectorAll('[data-testid="save-error"] button')]
+        .find((b) => b.innerText.includes('Retry'))
+      b?.click()
+      return !!b
+    })()`)
+    check(
+      'Retry saves it once the folder is writable again',
+      await waitFor(
+        `window.api.readFile(${JSON.stringify(lockedFile)}).then((r) => (r.content || '').includes('cannot-land'))`,
+        { timeoutMs: 10_000 }
+      )
+    )
+    check(
+      'and the banner goes away',
+      await waitFor(`!document.querySelector('[data-testid="save-error"]')`, { timeoutMs: 5000 })
+    )
   }
 }

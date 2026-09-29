@@ -57,7 +57,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   With more tabs than fit, the strip scrolls (wheel included), always keeps the
   active tab in view, and the chevron at its end lists every open tab.
   Tabs can be switched off entirely for a one-file-at-a-time view.
-- Autosave a moment after you stop typing.
+- Autosave a moment after you stop typing. A save that fails (no write permission, a full
+  disk) says so above the editor, with the reason and a Retry button.
 - **Local history** — because the editor saves for you, it also keeps the way back: right-click
   a tab → *Local History* to see the states the file was in before AuraPad wrote over it,
   diffed against what you have now, and restore any of them (as an undoable edit, so `Cmd+Z`
