@@ -1,8 +1,59 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Loader2, RefreshCw, Skull, Zap } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, RefreshCw, Skull, Zap } from 'lucide-react'
 import clsx from 'clsx'
 import { ToolbarButton } from './ToolbarButton'
 import type { ListeningPort } from '../../../shared/ports'
+
+// The columns a click on the header sorts by. Address and the action column
+// are left out: an address list is almost always '*' and '127.0.0.1', so
+// ordering by it groups nothing anyone asks about.
+type SortKey = 'port' | 'command' | 'pid' | 'user'
+type SortDir = 'asc' | 'desc'
+
+const compareBy: Record<SortKey, (a: ListeningPort, b: ListeningPort) => number> = {
+  port: (a, b) => a.port - b.port,
+  pid: (a, b) => a.pid - b.pid,
+  command: (a, b) => a.command.localeCompare(b.command, undefined, { sensitivity: 'base' }),
+  user: (a, b) => a.user.localeCompare(b.user, undefined, { sensitivity: 'base' })
+}
+
+// Ties fall back to port, then pid, so rows with the same process or user
+// keep a stable order between refreshes instead of shuffling every 5 s.
+function sortRows(rows: ListeningPort[], key: SortKey, dir: SortDir): ListeningPort[] {
+  const sign = dir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => sign * compareBy[key](a, b) || a.port - b.port || a.pid - b.pid)
+}
+
+const SortableHeader: React.FC<{
+  label: string
+  column: SortKey
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (column: SortKey) => void
+  className?: string
+}> = ({ label, column, sortKey, sortDir, onSort, className }) => {
+  const active = sortKey === column
+  const Arrow = sortDir === 'asc' ? ChevronUp : ChevronDown
+  return (
+    <th
+      className={clsx('text-left font-normal px-3 py-1.5', className)}
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        data-sort-column={column}
+        onClick={() => onSort(column)}
+        className={clsx(
+          'inline-flex items-center gap-0.5 hover:text-fleet-textHover',
+          active && 'text-fleet-text'
+        )}
+      >
+        {label}
+        {active && <Arrow size={11} />}
+      </button>
+    </th>
+  )
+}
 
 // The port a development machine is always fighting over, so the filter's
 // placeholder is an example of what to type rather than an instruction.
@@ -78,8 +129,8 @@ export const PortsTab: React.FC = () => {
   // looking at it and stops the moment they switch away.
   useEffect(() => {
     const tick = (): void => {
-      // Not while the pointer is over the table: rows are ordered by port, so
-      // a server coming up moves everything below it - under a click that
+      // Not while the pointer is over the table: rows are kept sorted, so a
+      // server coming up moves everything below it - under a click that
       // was aimed at stopping something else. Not while a stop is in flight
       // either, and not while the window is hidden, where the only thing a
       // refresh costs is the process it spawns.
@@ -98,14 +149,33 @@ export const PortsTab: React.FC = () => {
     }
   }, [])
 
+  // Port ascending is the order main already returns, so the default changes
+  // nothing. A click on the active column flips it; a click on another one
+  // starts that column ascending.
+  const [sortKey, setSortKey] = useState<SortKey>('port')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const onSort = (column: SortKey): void => {
+    if (column === sortKey) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(column)
+      setSortDir('asc')
+    }
+  }
+
   const query = filter.trim().toLowerCase()
-  const shown = (rows ?? []).filter((row) =>
-    query === ''
-      ? true
-      : String(row.port).startsWith(query) ||
-        row.command.toLowerCase().includes(query) ||
-        String(row.pid) === query
+  const shown = sortRows(
+    (rows ?? []).filter((row) =>
+      query === ''
+        ? true
+        : String(row.port).startsWith(query) ||
+          row.command.toLowerCase().includes(query) ||
+          String(row.pid) === query
+    ),
+    sortKey,
+    sortDir
   )
+  const headerProps = { sortKey, sortDir, onSort }
 
   // Straight to the signal, no confirmation: the whole point of the tab is
   // "the port I need is taken, free it", and a dialog in front of that turns
@@ -194,11 +264,11 @@ export const PortsTab: React.FC = () => {
           <table className="w-full text-xs border-collapse">
             <thead className="text-[11px] text-gray-500">
               <tr className="border-b border-fleet-border">
-                <th className="text-left font-normal px-3 py-1.5 w-20">Port</th>
-                <th className="text-left font-normal px-3 py-1.5">Process</th>
-                <th className="text-left font-normal px-3 py-1.5 w-24">PID</th>
+                <SortableHeader label="Port" column="port" className="w-20" {...headerProps} />
+                <SortableHeader label="Process" column="command" {...headerProps} />
+                <SortableHeader label="PID" column="pid" className="w-24" {...headerProps} />
                 <th className="text-left font-normal px-3 py-1.5 w-32">Address</th>
-                <th className="text-left font-normal px-3 py-1.5 w-40">User</th>
+                <SortableHeader label="User" column="user" className="w-40" {...headerProps} />
                 <th className="px-3 py-1.5 w-24" />
               </tr>
             </thead>
@@ -207,6 +277,7 @@ export const PortsTab: React.FC = () => {
                 <tr
                   key={`${row.pid}:${row.port}`}
                   data-port-row={row.port}
+                  data-port-pid={row.pid}
                   // No rule under every row: at six columns a line per row
                   // turns the table into a grid of lines with text in it
                   // (the history list next door makes the same call). The

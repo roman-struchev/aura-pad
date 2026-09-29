@@ -65,6 +65,36 @@ export default {
         )
       )
 
+      // Column headers sort. Checked on whatever this machine happens to be
+      // listening on (at least the victim and the app's own CDP port), so it
+      // asserts the order, not particular rows.
+      const readOrder = (attr) =>
+        cdp.evaluate(
+          `[...document.querySelectorAll('[data-port-row]')].map((r) => Number(r.dataset.${attr}))`
+        )
+      const isSorted = (values, dir) =>
+        values.every((v, i) => i === 0 || (dir === 'asc' ? values[i - 1] <= v : values[i - 1] >= v))
+      const clickSort = (column) =>
+        cdp.evaluate(
+          `(() => { document.querySelector('[data-testid="ports-tab"] [data-sort-column="${column}"]').click(); return true })()`
+        )
+      check('rows start sorted by port', isSorted(await readOrder('portRow'), 'asc'))
+      await clickSort('pid')
+      await sleep(100)
+      check('clicking PID sorts by pid ascending', isSorted(await readOrder('portPid'), 'asc'))
+      await clickSort('pid')
+      await sleep(100)
+      check('clicking it again reverses the order', isSorted(await readOrder('portPid'), 'desc'))
+      check(
+        'and the header says which way',
+        await cdp.evaluate(
+          `document.querySelector('[data-testid="ports-tab"] th[aria-sort="descending"] [data-sort-column="pid"]') !== null`
+        )
+      )
+      await clickSort('port')
+      await sleep(100)
+      check('clicking Port goes back to port order', isSorted(await readOrder('portRow'), 'asc'))
+
       // The filter is how the question is actually asked: "who has 9354?"
       await cdp.evaluate(`(() => {
         const el = document.querySelector('[aria-label="Port or process"]')
