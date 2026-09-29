@@ -88,7 +88,7 @@ export async function listListeningPorts(): Promise<ListeningPort[]> {
 // Killing by pid is the one thing here that reaches outside the app, so the
 // pid has to be one this machine is currently listening on: the renderer can
 // only ever stop something the tab itself just listed, not name an arbitrary
-// process. (Same posture as the path allowlist - see docs/BUGS.md §2.)
+// process. (Same posture as the path allowlist - see pathAccess.ts.)
 export async function killListeningProcess(pid: number, force: boolean): Promise<OpResult> {
   if (!Number.isInteger(pid) || pid <= 1) {
     return { success: false, error: 'That is not a process this can stop.' }

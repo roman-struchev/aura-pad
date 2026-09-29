@@ -256,9 +256,9 @@ npm run lint
 npm run format
 ```
 
-`npm run smoke` is the test suite — 111 checks over the baseline behavior
+`npm run smoke` is the test suite — a few hundred checks over the baseline behavior
 (opening and editing files, tabs, tree operations, encodings, search, previews,
-terminal, settings, git, HTTP requests) in about 35 seconds. What it can't reach (native menu
+terminal, settings, git, HTTP requests, ports) in a few minutes. What it can't reach (native menu
 accelerators, native dialogs, OAuth, the updater) is a manual checklist in
 [docs/TEST_CASES.md](docs/TEST_CASES.md).
 

@@ -11,7 +11,7 @@ Two parts:
   the ones Part A already covers say so.
 
 ```bash
-npm run smoke              # everything, ~2 min
+npm run smoke              # everything, a few minutes
 npm run smoke -- A5 A10    # only these ids (prefix match)
 npm run smoke -- --keep    # leave the app up afterwards to poke at it
 ```
@@ -303,7 +303,7 @@ real report and stays manual.
 | 12.2 | Preview a report that `document.write`s into a nested iframe — the kind that broke before (any dashboard-style page whose scripts build a second iframe; keep one such file around locally, e.g. under a reports repo) | It renders fully, tables and charts included |
 | 12.3 | If you change the iframe sandbox, re-run 12.2 | Dropping `allow-same-origin` (opaque origin) makes those wrapper reports render **blank** — that's the regression to avoid |
 
-**Read `docs/BUGS.md` §1 before touching this.** The same
+**This is a known, open security hole — keep it in mind before touching this.** The same
 `allow-scripts allow-same-origin` that keeps 12.2 working also gives a previewed
 file the full privileged bridge (verified: arbitrary file read/write and command
 execution), so "make 12.2 pass" and "close that hole" are the same piece of work.

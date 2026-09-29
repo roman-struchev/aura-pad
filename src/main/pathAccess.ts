@@ -4,7 +4,7 @@ import path from 'path'
 import { loadWorkspaces } from './workspaces'
 import { loadRecentExternalFiles } from './recentExternalFiles'
 
-// Which paths main will act on for the renderer (docs/BUGS.md §2).
+// Which paths main will act on for the renderer.
 //
 // Every filesystem and pty handler used to take whatever absolute path it was
 // handed, so anything that could run script in the renderer - a preview

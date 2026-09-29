@@ -53,7 +53,7 @@ function ptyEnv(): Record<string, string> {
 export function registerCreatePtyHandler(): void {
   handleInvokeWithEvent('create-pty', (event, cwd) => {
     // A login shell in an arbitrary directory is the most valuable thing the
-    // filesystem IPC could hand out (docs/BUGS.md §2), so an unknown cwd is
+    // filesystem IPC could hand out (see pathAccess.ts), so an unknown cwd is
     // refused outright rather than quietly falling back to $HOME - a silent
     // fallback would look like the terminal opened "somewhere else" instead
     // of saying what happened.

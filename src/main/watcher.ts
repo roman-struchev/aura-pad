@@ -26,7 +26,7 @@ import type { EventContracts } from '../shared/ipc'
 //   debounced tree rebuild, since other files may be affected - and, when the
 //   path is still a file whose content isn't ours, an external-change event
 //   too: on macOS a path that we once saved keeps reporting 'rename' for
-//   everyone else's writes as well (docs/BUGS.md §8).
+//   everyone else's writes as well.
 const activeWatchers = new Map<string, fs.FSWatcher>()
 // Cached per root and rebuilt whenever setupWatchers() re-scans the
 // workspace list (add/remove/rename/delete of a root) - not on every event,
@@ -268,7 +268,7 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
 
   // Past the suppression checks, an entry that is still a file is a file whose
   // content is not what we last wrote - which is an external change, whatever
-  // the event was called (docs/BUGS.md §8).
+  // the event was called.
   //
   // macOS coalesces FSEvents flags per path: once our own atomic save has
   // marked a path as renamed, *later* outside edits to it keep arriving as

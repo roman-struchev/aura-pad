@@ -73,7 +73,7 @@ export default {
     const bogus = await read('../../../etc/passwd')
     check('an id the history does not know is refused', bogus.success === false, bogus.error)
 
-    // History is behind the same allowlist as every other path (BUGS §2).
+    // History is behind the same allowlist as every other path (src/main/pathAccess.ts).
     const lair = fs.mkdtempSync(path.join(os.tmpdir(), 'aurapad-history-'))
     const offLimits = path.join(lair, 'elsewhere.txt')
     fs.writeFileSync(offLimits, 'not yours\n')

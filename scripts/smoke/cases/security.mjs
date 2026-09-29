@@ -3,8 +3,9 @@ import os from 'os'
 import path from 'path'
 
 // A11 - the renderer's privileged surface stays exactly as designed
-// (docs/TEST_CASES.md §14, and the exposure documented in docs/BUGS.md §1),
-// plus the path allowlist main applies to every filesystem and pty call (§2).
+// (docs/TEST_CASES.md §14, and the HTML-preview exposure noted in §12), plus
+// the path allowlist main applies to every filesystem and pty call
+// (src/main/pathAccess.ts).
 export default {
   id: 'A11',
   title: 'Preload surface',
@@ -35,7 +36,7 @@ export default {
       String(surface.platform)
     )
 
-    // The path allowlist (docs/BUGS.md §2). Everything below is what injected
+    // The path allowlist (src/main/pathAccess.ts). Everything below is what injected
     // script would try if it got into the renderer: name a path nobody opened
     // and act on it. The canary lives in a temp dir of its own, so a
     // regression here shows up as a real file being read or written.

@@ -194,7 +194,7 @@ export default {
     check('the menu offers Open in Default App', await ui.buttonExists('Open in Default App'))
     await cdp.evaluate(`window.dispatchEvent(new MouseEvent('click', { bubbles: true }))`)
     await sleep(200)
-    // Handing a file to another program is behind the same allowlist (BUGS §2).
+    // Handing a file to another program is behind the same allowlist (src/main/pathAccess.ts).
     const refused = await cdp.evaluate(`window.api.openInDefaultApp('/etc/hosts')`)
     check(
       'opening a path outside the workspaces is refused',

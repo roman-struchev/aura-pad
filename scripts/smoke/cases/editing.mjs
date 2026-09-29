@@ -36,7 +36,7 @@ export default {
     const stillDirty = await cdp.evaluate(`!!document.querySelector('.bg-blue-500.rounded-full')`)
     check('the unsaved dot clears after autosave', !stillDirty)
 
-    // An outside edit to a file *the app itself last saved* (docs/BUGS.md §8).
+    // An outside edit to a file *the app itself last saved*.
     // On macOS that write comes back as a 'rename' event, because our own
     // atomic save already marked the path as renamed and FSEvents coalesces
     // those flags per path - so the tab kept its stale buffer with no banner,

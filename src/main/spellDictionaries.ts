@@ -10,9 +10,9 @@ import type { OpResult } from '../shared/ipc'
 
 // Getting the spelling dictionaries onto the machine, once.
 //
-// Pinned to a commit rather than to a branch: this is the same reasoning as
-// docs/BUGS.md §3 about the update script - "whatever that URL serves today"
-// is not something the user agreed to. A dictionary is only data, but it is
+// Pinned to a commit rather than to a branch, for the same reason the update
+// script should be: "whatever that URL serves today" is not something the
+// user agreed to. A dictionary is only data, but it is
 // data the editor then trusts about every word someone writes.
 //
 // Downloaded here rather than in the renderer because the page's CSP has no

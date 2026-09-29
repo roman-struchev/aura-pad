@@ -69,7 +69,7 @@ export default {
     }
 
     // The pane is plain React DOM (not Monaco), so reading it back is safe -
-    // see the note about occluded windows in CLAUDE.md.
+    // see the note about occluded windows in AGENTS.md.
     const paneText = () =>
       cdp.evaluate(`document.querySelector('[data-testid="http-response-pane"]')?.innerText || ''`)
     const waitForStatus = (text) =>

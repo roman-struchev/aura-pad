@@ -58,7 +58,7 @@ function readEnvFile(filePath: string): Record<string, Record<string, string>> {
 function environmentDir(filePath: string): string | null {
   let dir = path.dirname(path.resolve(filePath))
   for (let level = 0; level < MAX_LEVELS; level++) {
-    // Never walks out of what the renderer is allowed to reach (BUGS §2).
+    // Never walks out of what the renderer is allowed to reach (see pathAccess.ts).
     if (!isAllowedPath(dir)) return null
     if (fs.existsSync(path.join(dir, PUBLIC_FILE)) || fs.existsSync(path.join(dir, PRIVATE_FILE))) {
       return dir
