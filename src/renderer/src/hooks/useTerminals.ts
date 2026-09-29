@@ -116,6 +116,20 @@ export function useTerminals() {
     if (!activeTermId) return
     window.api.destroyPty(activeTermId)
     removeTerminal(activeTermId)
+    refocusTerminal()
+  }
+
+  // The closed terminal's xterm textarea held focus and unmounts with it,
+  // dropping focus to <body> - so the next Cmd+W would be routed to the file
+  // tabs. Hand focus to whichever terminal becomes active once React commits.
+  const refocusTerminal = (): void => {
+    setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(
+          '[data-terminal-panel] [data-active-terminal="true"] .xterm-helper-textarea'
+        )
+        ?.focus()
+    }, 50)
   }
 
   // The shell process behind this tab exited on its own (typed `exit`, `^D`,

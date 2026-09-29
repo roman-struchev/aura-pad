@@ -198,10 +198,46 @@ export default {
     })
     check('outside the terminal it still toggles the git panel', gitOpened)
 
+    // Cmd+W twice in a row: closing the first terminal must leave focus in
+    // the next one, so the second press closes that too instead of falling
+    // through to the file tab underneath.
+    await cdp.evaluate(
+      `document.querySelector('[data-terminal-panel] .lucide-plus').closest('button').click()`
+    )
+    const termCount = `document.querySelectorAll('[data-terminal-panel] .xterm-helper-textarea').length`
+    const two = await waitFor(`${termCount} === 2`, { timeoutMs: 10_000 })
+    check('a second terminal opens', two)
+    await cdp.evaluate(
+      `document.querySelector('[data-terminal-panel] [data-active-terminal="true"] .xterm-helper-textarea').focus()`
+    )
+    await sendMenu('close-tab')
+    // Focus is on the closing terminal until it unmounts, so wait for that
+    // first or the check passes on the terminal that's about to disappear.
+    await waitFor(`${termCount} === 1`, { timeoutMs: 3000 })
+    await sleep(300)
+    const refocused = await cdp.evaluate(
+      `!!document.activeElement?.classList?.contains('xterm-helper-textarea')`
+    )
+    check('closing a terminal with Cmd+W leaves focus in the next terminal', refocused)
+    const tabsBefore = await cdp.evaluate(`window.api.getOpenTabs().then(t => t.length)`)
+    await sendMenu('close-tab')
+    const panelGone = await waitFor(`!document.querySelector('[data-terminal-panel]')`, {
+      timeoutMs: 3000
+    })
+    const tabsAfter = await cdp.evaluate(`window.api.getOpenTabs().then(t => t.length)`)
+    check(
+      'a second Cmd+W closes that terminal, not a file tab',
+      panelGone && tabsAfter === tabsBefore,
+      `panelGone=${panelGone} tabs ${tabsBefore}->${tabsAfter}`
+    )
+
     // Leave the app as the next case expects it: files view, panel hidden.
     await sendMenu('toggle-git-panel')
     await waitFor(`!document.querySelector(${JSON.stringify(COMMIT_BOX)})`, { timeoutMs: 5000 })
-    await cdp.evaluate(`document.querySelector(${JSON.stringify(TERMINAL_BUTTON)}).click()`)
+    // Both terminals are gone by now, which already hides the panel.
+    if (await cdp.evaluate(`!!document.querySelector('[data-terminal-panel]')`)) {
+      await cdp.evaluate(`document.querySelector(${JSON.stringify(TERMINAL_BUTTON)}).click()`)
+    }
     main.close()
   }
 }

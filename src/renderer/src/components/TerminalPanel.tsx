@@ -63,6 +63,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize
         <div
           key={term.id}
           className="absolute inset-0"
+          data-active-terminal={terminal.activeTermId === term.id}
           style={{
             zIndex: terminal.activeTermId === term.id ? 10 : 1,
             visibility: terminal.activeTermId === term.id ? 'visible' : 'hidden'
