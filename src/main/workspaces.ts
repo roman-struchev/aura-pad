@@ -392,13 +392,27 @@ export function writeFileContent(
   }
 }
 
+// Whether two names reach the same entry on disk. On a case-insensitive
+// filesystem (macOS and Windows by default) "notes.md" -> "Notes.md" finds the
+// "new" name already there - it is the file being renamed - and refusing that
+// made a case-only rename impossible.
+function isSameEntry(a: string, b: string): boolean {
+  try {
+    const statA = fs.lstatSync(a)
+    const statB = fs.lstatSync(b)
+    return statA.ino === statB.ino && statA.dev === statB.dev
+  } catch {
+    return false
+  }
+}
+
 export async function renamePath(oldPath: string, newName: string): Promise<PathOpResult> {
   if (!isValidEntryName(newName)) {
     return { success: false, error: 'Invalid name.' }
   }
   try {
     const newPath = path.join(path.dirname(oldPath), newName)
-    if (fs.existsSync(newPath)) {
+    if (fs.existsSync(newPath) && !isSameEntry(oldPath, newPath)) {
       return { success: false, error: 'A file or folder with this name already exists' }
     }
     fs.renameSync(oldPath, newPath)

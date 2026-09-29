@@ -41,6 +41,20 @@ export default {
       renamed.success && fs.existsSync(`${ws}/renamed.txt`) && !fs.existsSync(`${ws}/created.txt`)
     )
 
+    // Only the letter case changes: on a case-insensitive disk the "new" name
+    // already exists - it is this very file - which used to refuse the rename.
+    const recased = await cdp.evaluate(
+      `window.api.renamePath(${JSON.stringify(`${ws}/renamed.txt`)}, 'Renamed.txt')`
+    )
+    check(
+      'a rename that only changes letter case goes through',
+      recased.success && fs.readdirSync(ws).includes('Renamed.txt'),
+      recased.error ?? ''
+    )
+    await cdp.evaluate(
+      `window.api.renamePath(${JSON.stringify(`${ws}/Renamed.txt`)}, 'renamed.txt')`
+    )
+
     const moved = await cdp.evaluate(
       `window.api.movePath(${JSON.stringify(`${ws}/renamed.txt`)}, ${JSON.stringify(`${ws}/dest`)})`
     )
@@ -166,7 +180,11 @@ export default {
     const relative = await readClipboard()
     if (relative === null) skip('and the same path relative to its project', 'clipboard denied')
     else
-      check('and the same path relative to its project', relative === 'src/main.ts', String(relative))
+      check(
+        'and the same path relative to its project',
+        relative === 'src/main.ts',
+        String(relative)
+      )
 
     // Present but never clicked: it would hand the file to a real application
     // on whoever's machine is running the suite.
@@ -178,7 +196,11 @@ export default {
     await sleep(200)
     // Handing a file to another program is behind the same allowlist (BUGS §2).
     const refused = await cdp.evaluate(`window.api.openInDefaultApp('/etc/hosts')`)
-    check('opening a path outside the workspaces is refused', refused.success === false, refused.error)
+    check(
+      'opening a path outside the workspaces is refused',
+      refused.success === false,
+      refused.error
+    )
 
     // The menu has to be readable in every theme, not just the dark one it was
     // designed in: it paints itself on the sidebar colour, so fixed greys are
