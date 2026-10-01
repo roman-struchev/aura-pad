@@ -415,6 +415,9 @@ one and is unreachable from CDP either way.
 | 17.4 | Click into the editor or the file tree and press **Cmd+K** | The git panel toggles, as before |
 | 17.5 | Open a long file, scroll to its end with the terminal open | The last line is reachable and sits just above the panel - the editor is sized to what the panel leaves, not covered by it |
 | 17.6 | Drag the panel's top edge to the top of the window, then make the window short | The editor keeps a usable strip (~120px); the panel gives way rather than squeezing it out |
+| 17.7 | In the terminal run `echo https://example.com`, then Cmd+click (or click) the printed URL | It opens in the default browser, not inside AuraPad. Manual: xterm's link layer is canvas/DOM that doesn't paint while the window is behind another app |
+| 17.8 | Drag the empty part of the terminal's tab strip to the far right of the window and release; repeat for the far left and for the middle | The panel docks right / left / bottom; a blue tint previews the target while dragging; the editor and sidebar take the rest. Buttons in the strip do the same (automated in A8); relaunch keeps the choice |
+| 17.9 | Dock left/right, drag the panel's inner edge | It resizes horizontally, the editor keeps at least ~240px |
 
 ---
 

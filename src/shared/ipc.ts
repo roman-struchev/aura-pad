@@ -227,6 +227,7 @@ export interface InvokeContracts {
   'http-save-request': { args: [filePath: string, block: string]; result: OpResult }
   'http-history': { args: []; result: HttpHistoryEntry[] }
   'http-history-clear': { args: []; result: HttpHistoryEntry[] }
+  'find-project-python': { args: [absPath: string]; result: string | null }
   'lint-python': { args: [absPath: string]; result: LintMarker | null }
   'lint-eslint': { args: [absPath: string, workspaceRoot: string]; result: LintMarker[] }
   'translate-google-web': {
@@ -352,6 +353,7 @@ export const INVOKE_CHANNELS = {
   httpSaveRequest: 'http-save-request',
   httpHistory: 'http-history',
   httpHistoryClear: 'http-history-clear',
+  findProjectPython: 'find-project-python',
   lintPython: 'lint-python',
   lintEslint: 'lint-eslint',
   translateGoogleWeb: 'translate-google-web',

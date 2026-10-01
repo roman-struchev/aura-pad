@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon, type ISearchResultChangeEvent } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
@@ -78,6 +79,10 @@ export const Terminal: React.FC<TerminalProps> = ({
 
     const searchAddon = new SearchAddon()
     term.loadAddon(searchAddon)
+
+    // Clickable URLs. The addon opens them with window.open, which the main
+    // process hands to the system browser (http/https/mailto only).
+    term.loadAddon(new WebLinksAddon())
 
     term.open(terminalRef.current)
 

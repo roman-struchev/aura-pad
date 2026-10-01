@@ -90,3 +90,21 @@ export function lintEslint(absPath: string, workspaceRoot: string): Promise<Lint
     )
   })
 }
+
+// The project's own interpreter: a `.venv` (or `venv`) in the file's folder or
+// any folder above it, nearest first - the layout every virtualenv tool makes.
+// Null when there is none, and the caller falls back to whatever `python3` is
+// on PATH.
+export function findProjectPython(absPath: string): string | null {
+  const rel = process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']
+  let dir = path.dirname(absPath)
+  for (;;) {
+    for (const venv of ['.venv', 'venv', '.env', 'env']) {
+      const candidate = path.join(dir, venv, ...rel)
+      if (fs.existsSync(candidate)) return candidate
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}

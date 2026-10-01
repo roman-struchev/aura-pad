@@ -924,9 +924,13 @@ function App(): React.JSX.Element {
     })
   }, [runHttpRequest, copyHttpBlockAsCurl])
 
-  const runPythonFile = (path: string): void => {
+  // Through the project's .venv/venv when there is one (the packages the
+  // script imports live there), else the system python3.
+  const runPythonFile = async (path: string): Promise<void> => {
     const quotedPath = quoteForShell(path, window.api.platform)
-    terminal.openNewTerminal(dirname(path), `python3 ${quotedPath}`)
+    const venvPython = await window.api.findProjectPython(path)
+    const python = venvPython ? quoteForShell(venvPython, window.api.platform) : 'python3'
+    terminal.openNewTerminal(dirname(path), `${python} ${quotedPath}`)
   }
 
   // The tree's eye icon: open the file and flip its preview. togglePreview
@@ -1134,240 +1138,251 @@ function App(): React.JSX.Element {
         }
       />
 
-      <div className="flex flex-1 overflow-hidden relative">
-        <div
-          className={clsx(
-            'flex-1 flex flex-col min-w-0 relative',
-            settings.sidebarPosition === 'left' && 'order-2'
-          )}
-        >
-          {tabs.externalChangeAvailable && (
-            <div className="flex items-center justify-between gap-2 bg-yellow-900/90 text-yellow-100 text-xs px-3 py-1.5 shrink-0">
-              <span>This file changed on disk.</span>
-              <div className="flex items-center gap-3">
-                <button className="underline hover:text-white" onClick={tabs.reloadFromDisk}>
-                  Reload
-                </button>
-                <button
-                  className="underline hover:text-white"
-                  onClick={() =>
-                    tabs.activeTabPath &&
-                    tabs.updateTab(tabs.activeTabPath, { externalChangeAvailable: false })
-                  }
-                >
-                  Ignore
-                </button>
+      {/* The terminal panel docks to the bottom, left or right of everything
+          under the header; this wrapper is what flips between column and row. */}
+      <div
+        className={clsx(
+          'flex flex-1 min-h-0 min-w-0 overflow-hidden',
+          terminal.dock === 'bottom' ? 'flex-col' : 'flex-row'
+        )}
+      >
+        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
+          <div
+            className={clsx(
+              'flex-1 flex flex-col min-w-0 relative',
+              settings.sidebarPosition === 'left' && 'order-2'
+            )}
+          >
+            {tabs.externalChangeAvailable && (
+              <div className="flex items-center justify-between gap-2 bg-yellow-900/90 text-yellow-100 text-xs px-3 py-1.5 shrink-0">
+                <span>This file changed on disk.</span>
+                <div className="flex items-center gap-3">
+                  <button className="underline hover:text-white" onClick={tabs.reloadFromDisk}>
+                    Reload
+                  </button>
+                  <button
+                    className="underline hover:text-white"
+                    onClick={() =>
+                      tabs.activeTabPath &&
+                      tabs.updateTab(tabs.activeTabPath, { externalChangeAvailable: false })
+                    }
+                  >
+                    Ignore
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* A save that failed (autosave included): says so and why, rather
+            {/* A save that failed (autosave included): says so and why, rather
               than leaving only the dirty dot behind. Same fixed colour pair as
               the banner above - both halves are fixed, so it reads in every
               theme. */}
-          {tabs.saveError && !tabs.isSaved && (
-            <div
-              role="alert"
-              data-testid="save-error"
-              className="flex items-center justify-between gap-2 bg-red-900/90 text-red-100 text-xs px-3 py-1.5 shrink-0"
-            >
-              <span className="truncate">Could not save this file: {tabs.saveError}</span>
-              <button className="underline hover:text-white shrink-0" onClick={tabs.retrySave}>
-                Retry
-              </button>
-            </div>
-          )}
+            {tabs.saveError && !tabs.isSaved && (
+              <div
+                role="alert"
+                data-testid="save-error"
+                className="flex items-center justify-between gap-2 bg-red-900/90 text-red-100 text-xs px-3 py-1.5 shrink-0"
+              >
+                <span className="truncate">Could not save this file: {tabs.saveError}</span>
+                <button className="underline hover:text-white shrink-0" onClick={tabs.retrySave}>
+                  Retry
+                </button>
+              </div>
+            )}
 
-          <div className="flex-1 overflow-hidden flex">
-            <div className="flex-1 min-w-0 overflow-hidden relative">
-              {/* The active file's actions float over the editor's top-right
+            <div className="flex-1 overflow-hidden flex">
+              <div className="flex-1 min-w-0 overflow-hidden relative">
+                {/* The active file's actions float over the editor's top-right
                   corner, Obsidian-style, rather than living in the title bar.
                   Anchored to the editor itself, not to the column around it:
                   the response pane is docked in that column too, and an
                   overlay spanning the whole width sat on top of the pane's
                   header - including the button that closes it. */}
-              {hasFileActions && (
-                <div className="absolute right-2 top-1 z-20">
-                  <FileActions
-                    selectedPath={tabs.selectedPath}
-                    isFileInWorkspace={
-                      !!tabs.selectedPath &&
-                      isUnderAnyRoot(
-                        tabs.selectedPath,
-                        tree.rootNodes.map((r) => r.path)
-                      )
-                    }
-                    showPreview={tabs.showMarkdownPreview}
-                    isPreviewable={isPreviewablePath(tabs.selectedPath)}
-                    canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
-                    foldedAll={foldedAll}
-                    canDictate={canDictate}
-                    isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
-                    workTogetherEnabled={settings.extensions.workTogether.enabled}
-                    workTogetherSharing={
-                      !!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)
-                    }
-                    workTogetherParticipantCount={
-                      (tabs.selectedPath &&
-                        workTogether.sessions[tabs.selectedPath]?.participants.length) ||
-                      0
-                    }
-                    spellcheckOn={settings.spellcheckEnabled && settings.spellLanguages.length > 0}
-                    spellIssueCount={spell.issues.length}
-                    onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
-                    httpEnvironmentNames={httpEnv?.names ?? []}
-                    httpEnvironment={httpEnvironmentName}
-                    onSelectHttpEnvironment={selectHttpEnvironment}
-                    voice={voice}
-                    readAloud={readAloud}
-                    onRevealActiveFile={revealActiveFile}
-                    onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
-                    onRunHttp={() => runHttpRequest()}
-                    onFormatDocument={formatActiveDocument}
-                    onToggleFold={toggleFold}
-                    onTogglePreview={() =>
-                      tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)
-                    }
-                    onToggleDictation={toggleDictation}
-                    onStartReadAloud={startReadAloud}
-                    onOpenShare={() => setShowShareDialog(true)}
-                  />
-                </div>
-              )}
-              {activeExt ? (
-                activeExt.id === 'google-tasks' ? (
-                  <GoogleTasksTab settings={settings} updateSetting={updateSetting} />
-                ) : activeExt.id === 'ports' ? (
-                  <PortsTab />
-                ) : activeExt.id === 'http-client' ? (
-                  <HttpClientTab
-                    settings={settings}
-                    updateSetting={updateSetting}
-                    exchange={activeExchange}
-                    onSend={(spec) => tabs.selectedPath && http.send(tabs.selectedPath, spec)}
-                    onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
-                    onSaveToFile={startHttpSave}
-                    rootNodes={tree.rootNodes}
-                    onOpenRequest={(filePath, line) => tabs.openTab(filePath, line)}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                    Unknown extension: {activeExt.id}
+                {hasFileActions && (
+                  <div className="absolute right-2 top-1 z-20">
+                    <FileActions
+                      selectedPath={tabs.selectedPath}
+                      isFileInWorkspace={
+                        !!tabs.selectedPath &&
+                        isUnderAnyRoot(
+                          tabs.selectedPath,
+                          tree.rootNodes.map((r) => r.path)
+                        )
+                      }
+                      showPreview={tabs.showMarkdownPreview}
+                      isPreviewable={isPreviewablePath(tabs.selectedPath)}
+                      canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
+                      foldedAll={foldedAll}
+                      canDictate={canDictate}
+                      isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
+                      workTogetherEnabled={settings.extensions.workTogether.enabled}
+                      workTogetherSharing={
+                        !!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)
+                      }
+                      workTogetherParticipantCount={
+                        (tabs.selectedPath &&
+                          workTogether.sessions[tabs.selectedPath]?.participants.length) ||
+                        0
+                      }
+                      spellcheckOn={
+                        settings.spellcheckEnabled && settings.spellLanguages.length > 0
+                      }
+                      spellIssueCount={spell.issues.length}
+                      onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
+                      httpEnvironmentNames={httpEnv?.names ?? []}
+                      httpEnvironment={httpEnvironmentName}
+                      onSelectHttpEnvironment={selectHttpEnvironment}
+                      voice={voice}
+                      readAloud={readAloud}
+                      onRevealActiveFile={revealActiveFile}
+                      onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+                      onRunHttp={() => runHttpRequest()}
+                      onFormatDocument={formatActiveDocument}
+                      onToggleFold={toggleFold}
+                      onTogglePreview={() =>
+                        tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)
+                      }
+                      onToggleDictation={toggleDictation}
+                      onStartReadAloud={startReadAloud}
+                      onOpenShare={() => setShowShareDialog(true)}
+                    />
                   </div>
-                )
-              ) : tabs.selectedPath ? (
-                tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
-                  <MarkdownPreview content={tabs.fileContent} documentPath={tabs.selectedPath} />
-                ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
-                  <HtmlPreview content={tabs.fileContent} />
+                )}
+                {activeExt ? (
+                  activeExt.id === 'google-tasks' ? (
+                    <GoogleTasksTab settings={settings} updateSetting={updateSetting} />
+                  ) : activeExt.id === 'ports' ? (
+                    <PortsTab />
+                  ) : activeExt.id === 'http-client' ? (
+                    <HttpClientTab
+                      settings={settings}
+                      updateSetting={updateSetting}
+                      exchange={activeExchange}
+                      onSend={(spec) => tabs.selectedPath && http.send(tabs.selectedPath, spec)}
+                      onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
+                      onSaveToFile={startHttpSave}
+                      rootNodes={tree.rootNodes}
+                      onOpenRequest={(filePath, line) => tabs.openTab(filePath, line)}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                      Unknown extension: {activeExt.id}
+                    </div>
+                  )
+                ) : tabs.selectedPath ? (
+                  tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
+                    <MarkdownPreview content={tabs.fileContent} documentPath={tabs.selectedPath} />
+                  ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
+                    <HtmlPreview content={tabs.fileContent} />
+                  ) : (
+                    <Editor
+                      height="100%"
+                      path={modelPath(tabs.selectedPath)}
+                      language={getLanguage(tabs.selectedPath)}
+                      theme={monacoTheme}
+                      // Uncontrolled: the model owns the text and only tab-state
+                      // bookkeeping flows through React on each keystroke - a
+                      // `value` prop makes the library diff the entire file
+                      // against the model on every render. Programmatic content
+                      // changes go through useTabs' applyContentToModel.
+                      defaultValue={tabs.fileContent}
+                      // Unmounting (preview toggle, extension tab, last tab
+                      // closed) must not dispose the current model - closing a
+                      // tab does that explicitly in useTabs. Without this, every
+                      // trip to Preview and back silently wiped the undo stack.
+                      keepCurrentModel
+                      onChange={tabs.handleEditorChange}
+                      onMount={handleEditorMount}
+                      options={editorOptions}
+                    />
+                  )
                 ) : (
-                  <Editor
-                    height="100%"
-                    path={modelPath(tabs.selectedPath)}
-                    language={getLanguage(tabs.selectedPath)}
-                    theme={monacoTheme}
-                    // Uncontrolled: the model owns the text and only tab-state
-                    // bookkeeping flows through React on each keystroke - a
-                    // `value` prop makes the library diff the entire file
-                    // against the model on every render. Programmatic content
-                    // changes go through useTabs' applyContentToModel.
-                    defaultValue={tabs.fileContent}
-                    // Unmounting (preview toggle, extension tab, last tab
-                    // closed) must not dispose the current model - closing a
-                    // tab does that explicitly in useTabs. Without this, every
-                    // trip to Preview and back silently wiped the undo stack.
-                    keepCurrentModel
-                    onChange={tabs.handleEditorChange}
-                    onMount={handleEditorMount}
-                    options={editorOptions}
-                  />
-                )
-              ) : (
-                <div className="flex-1 h-full flex items-center justify-center text-gray-500 flex-col gap-4">
-                  <span className="text-4xl text-gray-700">AuraPad</span>
-                  <span>Double-Shift to search files</span>
-                </div>
+                  <div className="flex-1 h-full flex items-center justify-center text-gray-500 flex-col gap-4">
+                    <span className="text-4xl text-gray-700">AuraPad</span>
+                    <span>Double-Shift to search files</span>
+                  </div>
+                )}
+              </div>
+
+              {activeExchange && tabs.selectedPath && !activeExt && (
+                <HttpResponsePane
+                  exchange={activeExchange}
+                  width={httpPaneWidth.width}
+                  onStartResize={httpPaneWidth.startResizing}
+                  onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
+                  onClose={() => tabs.selectedPath && http.close(tabs.selectedPath)}
+                />
               )}
             </div>
-
-            {activeExchange && tabs.selectedPath && !activeExt && (
-              <HttpResponsePane
-                exchange={activeExchange}
-                width={httpPaneWidth.width}
-                onStartResize={httpPaneWidth.startResizing}
-                onCancel={() => tabs.selectedPath && http.cancel(tabs.selectedPath)}
-                onClose={() => tabs.selectedPath && http.close(tabs.selectedPath)}
-              />
-            )}
           </div>
-        </div>
 
-        {settings.sidebarVisible && !isLeanWindow && (
-          <div
-            className={clsx(
-              'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
-              settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
-            )}
-            style={{ width: `${sidebarWidth.width}px`, fontSize: density.uiFontSize }}
-          >
+          {settings.sidebarVisible && !isLeanWindow && (
             <div
               className={clsx(
-                'absolute top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-blue-500/50 transition-colors z-10',
-                settings.sidebarPosition === 'left'
-                  ? 'right-0 translate-x-1/2'
-                  : 'left-0 -translate-x-1/2'
+                'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
+                settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
               )}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                sidebarWidth.startResizing()
-              }}
-            />
-            <Sidebar
-              monacoTheme={monacoTheme}
-              rowPadding={density.treeRowPadding}
-              sidebarView={sidebarView}
-              setSidebarView={setSidebarView}
-              rootNodes={tree.rootNodes}
-              onAddFolder={tree.handleAddFolder}
-              extensions={enabledExtensions}
-              activeExtensionId={activeExt?.id ?? null}
-              onOpenExtension={(id) => tabs.openTab(makeExtensionPath(id))}
-              recentExternalFiles={recentExternalPaths}
-              onRemoveRecentExternalFile={handleRemoveRecent}
-              selectedPath={tabs.selectedPath}
-              selectedPaths={tree.selectedPathSet}
-              revealRequest={tree.revealRequest}
-              onSelect={handleTreeSelect}
-              onContextMenu={handleTreeContextMenu}
-              onCreateNew={handleTreeCreateNew}
-              onMove={handleTreeMove}
-              onRowClick={handleTreeRowClick}
-              onRunPython={handleTreeRunPython}
-              onPreviewMarkdown={handleTreePreview}
-              git={git}
-              gitPanelRoot={gitPanelRoot}
-              onSelectGitRoot={setGitPanelRoot}
-              onOpenGit={openGitPanel}
-              isPathShared={workTogether.isSharing}
-              onOpenShare={openShareDialogFor}
-            />
-          </div>
-        )}
-      </div>
+              style={{ width: `${sidebarWidth.width}px`, fontSize: density.uiFontSize }}
+            >
+              <div
+                className={clsx(
+                  'absolute top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-blue-500/50 transition-colors z-10',
+                  settings.sidebarPosition === 'left'
+                    ? 'right-0 translate-x-1/2'
+                    : 'left-0 -translate-x-1/2'
+                )}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  sidebarWidth.startResizing()
+                }}
+              />
+              <Sidebar
+                monacoTheme={monacoTheme}
+                rowPadding={density.treeRowPadding}
+                sidebarView={sidebarView}
+                setSidebarView={setSidebarView}
+                rootNodes={tree.rootNodes}
+                onAddFolder={tree.handleAddFolder}
+                extensions={enabledExtensions}
+                activeExtensionId={activeExt?.id ?? null}
+                onOpenExtension={(id) => tabs.openTab(makeExtensionPath(id))}
+                recentExternalFiles={recentExternalPaths}
+                onRemoveRecentExternalFile={handleRemoveRecent}
+                selectedPath={tabs.selectedPath}
+                selectedPaths={tree.selectedPathSet}
+                revealRequest={tree.revealRequest}
+                onSelect={handleTreeSelect}
+                onContextMenu={handleTreeContextMenu}
+                onCreateNew={handleTreeCreateNew}
+                onMove={handleTreeMove}
+                onRowClick={handleTreeRowClick}
+                onRunPython={handleTreeRunPython}
+                onPreviewMarkdown={handleTreePreview}
+                git={git}
+                gitPanelRoot={gitPanelRoot}
+                onSelectGitRoot={setGitPanelRoot}
+                onOpenGit={openGitPanel}
+                isPathShared={workTogether.isSharing}
+                onOpenShare={openShareDialogFor}
+              />
+            </div>
+          )}
+        </div>
 
-      {/* Below everything, the full width of the window: the sidebar stops
+        {/* Below everything, the full width of the window: the sidebar stops
           where the terminal starts rather than the terminal living inside the
           editor column, which left it a narrow sliver on a narrow window. In
           the layout rather than floating over the editor, so the editor gets
           the height that's left - a long file scrolls to its last line
           instead of ending underneath the panel. */}
-      {terminal.showTerminal && terminal.terminals.length > 0 && !isLeanWindow && (
-        <TerminalPanel
-          terminal={terminal}
-          fontSize={density.terminalFontSize}
-          onOpenNew={openDefaultTerminal}
-        />
-      )}
+        {terminal.showTerminal && terminal.terminals.length > 0 && !isLeanWindow && (
+          <TerminalPanel
+            terminal={terminal}
+            fontSize={density.terminalFontSize}
+            onOpenNew={openDefaultTerminal}
+          />
+        )}
+      </div>
 
       {showSearch && (
         <GlobalSearch

@@ -71,6 +71,25 @@ export default {
       JSON.stringify((await cdp.evaluate('window.__ptyOut')).slice(-160))
     )
 
+    // Run Python File uses the project's virtualenv when there is one.
+    const fsm = await import('node:fs')
+    const venvBin = `${ws}/.venv/${process.platform === 'win32' ? 'Scripts' : 'bin'}`
+    const noVenv = await cdp.evaluate(
+      `window.api.findProjectPython(${JSON.stringify(ws + '/notes.txt')})`
+    )
+    fsm.mkdirSync(venvBin, { recursive: true })
+    const py = `${venvBin}/${process.platform === 'win32' ? 'python.exe' : 'python'}`
+    fsm.writeFileSync(py, '')
+    const withVenv = await cdp.evaluate(
+      `window.api.findProjectPython(${JSON.stringify(ws + '/notes.txt')})`
+    )
+    fsm.rmSync(`${ws}/.venv`, { recursive: true, force: true })
+    check(
+      'a .venv above a file is found as its Python, and absent one there is none',
+      noVenv === null && withVenv === py,
+      JSON.stringify({ noVenv, withVenv })
+    )
+
     await cdp.evaluate(`window.api.destroyPty(${JSON.stringify(termId)})`)
     const secondId = await cdp.evaluate(`window.api.createPty(${JSON.stringify(ws)})`)
     check('another session can be opened after closing one', secondId !== termId)
@@ -184,6 +203,47 @@ export default {
       'and the editor ends where it starts, not underneath it',
       geom && geom.editorBottom !== null && geom.editorBottom <= geom.top + 1,
       JSON.stringify(geom)
+    )
+
+    // Docking: the panel can sit on the left or right edge (a column beside
+    // the editor) as well as the bottom. The buttons are in the panel, not
+    // the drag region, but a DOM click is as good as a real one here.
+    const dockGeom = async (dock) => {
+      await cdp.evaluate(
+        `document.querySelector('button[aria-label="Dock Terminal ${dock}"]').click()`
+      )
+      await sleep(300)
+      return cdp.evaluate(`(() => {
+        const p = document.querySelector('[data-terminal-panel]').getBoundingClientRect()
+        return {
+          dock: document.querySelector('[data-terminal-panel]').dataset.terminalDock,
+          left: Math.round(p.left), right: Math.round(p.right),
+          top: Math.round(p.top), bottom: Math.round(p.bottom),
+          width: window.innerWidth, height: window.innerHeight
+        }
+      })()`)
+    }
+    const right = await dockGeom('Right')
+    check(
+      'Dock Right puts the panel against the right edge, full height below the header',
+      right.dock === 'right' &&
+        Math.abs(right.right - right.width) <= 1 &&
+        Math.abs(right.bottom - right.height) <= 1 &&
+        right.left > right.width / 2 - 100 &&
+        right.top < right.height / 2,
+      JSON.stringify(right)
+    )
+    const left = await dockGeom('Left')
+    check(
+      'Dock Left puts it against the left edge',
+      left.dock === 'left' && left.left === 0 && left.right < left.width / 2 + 100,
+      JSON.stringify(left)
+    )
+    const bottom = await dockGeom('Bottom')
+    check(
+      'Dock Bottom puts it back across the window',
+      bottom.dock === 'bottom' && bottom.left === 0 && Math.abs(bottom.right - bottom.width) <= 1,
+      JSON.stringify(bottom)
     )
 
     // Give the terminal both focus and something to clear.

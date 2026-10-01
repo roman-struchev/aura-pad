@@ -8,13 +8,46 @@ export type TerminalTab = { id: string; name: string }
 const MIN_TERMINAL_PX = 150
 const MIN_EDITOR_PX = 120
 
+const MIN_TERMINAL_WIDTH_PX = 240
+const MIN_EDITOR_WIDTH_PX = 240
+
+export type TerminalDock = 'bottom' | 'left' | 'right'
+
+const DOCK_KEY = 'aurapad.terminalDock'
+
+const readDock = (): TerminalDock => {
+  try {
+    const v = localStorage.getItem(DOCK_KEY)
+    if (v === 'left' || v === 'right' || v === 'bottom') return v
+  } catch {
+    // storage unavailable - fall through to the default
+  }
+  return 'bottom'
+}
+
+const clampTerminalWidth = (width: number): number =>
+  Math.max(MIN_TERMINAL_WIDTH_PX, Math.min(width, window.innerWidth - MIN_EDITOR_WIDTH_PX))
+
+// Dragging the panel by its tab strip: the outer fifth of the window on
+// either side docks there, anywhere else is the bottom.
+const dockAt = (clientX: number): TerminalDock => {
+  if (clientX < window.innerWidth * 0.2) return 'left'
+  if (clientX > window.innerWidth * 0.8) return 'right'
+  return 'bottom'
+}
+
 const clampTerminalHeight = (height: number): number =>
   Math.max(MIN_TERMINAL_PX, Math.min(height, window.innerHeight - MIN_EDITOR_PX))
 
 export function useTerminals() {
   const [rawShowTerminal, setShowTerminal] = useState(false)
   const [terminalHeight, setTerminalHeight] = useState(256)
+  const [terminalWidth, setTerminalWidth] = useState(480)
+  const [dock, setDockState] = useState<TerminalDock>(readDock)
   const [isResizing, setIsResizing] = useState(false)
+  // Non-null while the panel is being dragged to another edge: where it would
+  // land if the mouse were released now.
+  const [dockPreview, setDockPreview] = useState<TerminalDock | null>(null)
   const [terminals, setTerminals] = useState<TerminalTab[]>([])
   const [rawActiveTermId, setActiveTermId] = useState<string | null>(null)
   // Monotonic, never reused even as tabs close - `prev.length + 1` would
@@ -39,9 +72,44 @@ export function useTerminals() {
       : (terminals[terminals.length - 1]?.id ?? null)
   const showTerminal = rawShowTerminal && terminals.length > 0
 
+  const setDock = (next: TerminalDock): void => {
+    setDockState(next)
+    setTerminalHeight((h) => clampTerminalHeight(h))
+    setTerminalWidth((w) => clampTerminalWidth(w))
+    try {
+      localStorage.setItem(DOCK_KEY, next)
+    } catch {
+      // not persisted - still applies for this session
+    }
+  }
+
+  const startDocking = (): void => setDockPreview(dock)
+
+  useEffect(() => {
+    if (!dockPreview) return
+    const move = (e: MouseEvent): void => setDockPreview(dockAt(e.clientX))
+    const up = (e: MouseEvent): void => {
+      setDock(dockAt(e.clientX))
+      setDockPreview(null)
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    return () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+    // setDock only touches state setters and storage
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dockPreview !== null])
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return
+      if (dock !== 'bottom') {
+        const w = dock === 'left' ? e.clientX : window.innerWidth - e.clientX
+        if (w > MIN_TERMINAL_WIDTH_PX) setTerminalWidth(clampTerminalWidth(w))
+        return
+      }
       const newHeight = window.innerHeight - e.clientY
       // Dragging past either end parks the panel there rather than stopping
       // the drag dead: the grip keeps following the mouse back.
@@ -51,7 +119,7 @@ export function useTerminals() {
     if (isResizing) {
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = 'ns-resize'
+      document.body.style.cursor = dock === 'bottom' ? 'ns-resize' : 'ew-resize'
     } else {
       document.body.style.cursor = ''
     }
@@ -59,14 +127,17 @@ export function useTerminals() {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isResizing])
+  }, [isResizing, dock])
 
   // A window that gets shorter than the panel would otherwise leave nothing
   // for the editor - down to a Monaco of zero height, which renders as an
   // empty pane. The height gives way instead; the grip drags it back once
   // there's room again.
   useEffect(() => {
-    const handleWindowResize = (): void => setTerminalHeight((h) => clampTerminalHeight(h))
+    const handleWindowResize = (): void => {
+      setTerminalHeight((h) => clampTerminalHeight(h))
+      setTerminalWidth((w) => clampTerminalWidth(w))
+    }
     window.addEventListener('resize', handleWindowResize)
     return () => window.removeEventListener('resize', handleWindowResize)
   }, [])
@@ -122,14 +193,19 @@ export function useTerminals() {
   // The closed terminal's xterm textarea held focus and unmounts with it,
   // dropping focus to <body> - so the next Cmd+W would be routed to the file
   // tabs. Hand focus to whichever terminal becomes active once React commits.
+  // A fixed delay lost the race on a cold start (React hadn't committed the
+  // switch yet), so retry until the textarea exists and really took focus.
   const refocusTerminal = (): void => {
-    setTimeout(() => {
-      document
-        .querySelector<HTMLElement>(
-          '[data-terminal-panel] [data-active-terminal="true"] .xterm-helper-textarea'
-        )
-        ?.focus()
-    }, 50)
+    let attempts = 0
+    const tryFocus = (): void => {
+      const textarea = document.querySelector<HTMLElement>(
+        '[data-terminal-panel] [data-active-terminal="true"] .xterm-helper-textarea'
+      )
+      textarea?.focus()
+      if (document.activeElement === textarea && textarea) return
+      if (++attempts < 20) setTimeout(tryFocus, 50)
+    }
+    setTimeout(tryFocus, 50)
   }
 
   // The shell process behind this tab exited on its own (typed `exit`, `^D`,
@@ -143,6 +219,11 @@ export function useTerminals() {
     showTerminal,
     setShowTerminal,
     terminalHeight,
+    terminalWidth,
+    dock,
+    setDock,
+    dockPreview,
+    startDocking,
     setIsResizing,
     terminals,
     activeTermId,

@@ -64,7 +64,7 @@ import {
 } from './googleTasks'
 import { cancelHttpRequest, sendHttpRequest } from './http'
 import { clearHttpHistory, loadHttpHistory } from './httpHistory'
-import { lintPython, lintEslint } from './lint'
+import { lintPython, lintEslint, findProjectPython } from './lint'
 import { googleWebTranslate } from './translate'
 import { applyUpdate } from './updater'
 import {
@@ -389,6 +389,9 @@ function registerHttpIpc(): void {
 function registerDiagnosticsIpc(): void {
   // Both shell out with the given path as an argument (and eslint with the
   // root as its cwd), so they are as much a spawn surface as the pty is.
+  handleInvoke('find-project-python', (absPath) =>
+    pathDenial(absPath) ? null : findProjectPython(absPath)
+  )
   handleInvoke('lint-python', (absPath) => (pathDenial(absPath) ? null : lintPython(absPath)))
   handleInvoke('lint-eslint', (absPath, workspaceRoot) =>
     pathDenial(absPath, workspaceRoot) ? [] : lintEslint(absPath, workspaceRoot)
