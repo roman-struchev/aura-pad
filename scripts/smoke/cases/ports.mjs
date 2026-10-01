@@ -42,6 +42,11 @@ export default {
         JSON.stringify(row)
       )
 
+      // Earlier cases leave the tree long enough to push the extension rows
+      // below the window; a coordinate click can't hit what is off-screen.
+      await cdp.evaluate(
+        `document.querySelector('[title="Ports"]').scrollIntoView({ block: 'center' })`
+      )
       await ui.click('[title="Ports"]')
       check(
         'the Ports tab opens from the sidebar',

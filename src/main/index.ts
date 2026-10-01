@@ -87,6 +87,9 @@ if (is.dev) {
   }
 }
 
+// Set by the smoke runner (scripts/smoke/run.mjs) unless it is given --show.
+const INVISIBLE = process.env.AURAPAD_INVISIBLE === '1'
+
 // Only protocols that open in a browser or mail client - renderer content
 // (e.g. a link in a previewed Markdown file from an untrusted repo) must not
 // be able to launch arbitrary protocol handlers (file:, smb:, vscode:, ...).
@@ -175,6 +178,9 @@ function createWindow(init: { paths: string[]; primary?: boolean } = { paths: []
     width: 1000,
     height: 700,
     show: false,
+    // Smoke runs only: transparent from the first frame, whoever shows it
+    // (the runner raises the window before 'ready-to-show' fires).
+    ...(INVISIBLE ? { opacity: 0 } : {}),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 12 },
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -183,6 +189,7 @@ function createWindow(init: { paths: string[]; primary?: boolean } = { paths: []
       sandbox: false
     }
   })
+  if (INVISIBLE) mainWindow.setIgnoreMouseEvents(true)
   // Read now, not in the 'closed' handler: by then the window is destroyed and
   // touching webContents throws - an uncaught exception in main, which on a
   // quit leaves the process alive with its single-instance lock held.
@@ -218,7 +225,16 @@ function createWindow(init: { paths: string[]; primary?: boolean } = { paths: []
   mainWindow.on('responsive', () => unresponsiveWindows.delete(mainWindow))
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    if (INVISIBLE) {
+      // Smoke runs: on screen as far as Chromium can tell (a hidden or
+      // occluded window gets its rendering throttled), but fully transparent,
+      // click-through and never taking focus from whatever the person is doing.
+      mainWindow.setOpacity(0)
+      mainWindow.setIgnoreMouseEvents(true)
+      mainWindow.showInactive()
+    } else {
+      mainWindow.show()
+    }
   })
 
   // A renderer reload (View > Reload / Cmd+R) wipes the page's terminal state
@@ -343,6 +359,7 @@ registerIpcHandlers()
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.struchev.aurapad')
+  if (INVISIBLE) app.dock?.hide()
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })

@@ -5,6 +5,7 @@
 //
 //   npm run smoke            all cases
 //   npm run smoke -- A3 A7   only these ids (prefix match)
+//   npm run smoke -- --show  run with a visible window (default: invisible)
 //   npm run smoke -- --keep  leave the app running and the fixture on disk
 //
 // Deliberately one app launch for the whole suite: startup dominates the
@@ -28,6 +29,9 @@ const MAIN_PORT = PORT + 1
 
 const argv = process.argv.slice(2)
 const keepAlive = argv.includes('--keep')
+// By default the window is invisible and click-through (see INVISIBLE in
+// src/main/index.ts); --show brings back the normal, visible window.
+const showWindow = argv.includes('--show')
 const filters = argv.filter((a) => !a.startsWith('--'))
 
 const CASE_FILES = [
@@ -80,7 +84,11 @@ function launch(fixture) {
     ['run', 'dev', '--', '--', `--remote-debugging-port=${PORT}`, `--inspect=${MAIN_PORT}`],
     {
       cwd: repoRoot,
-      env: { ...process.env, AURAPAD_USER_DATA_DIR: fixture.profile },
+      env: {
+        ...process.env,
+        AURAPAD_USER_DATA_DIR: fixture.profile,
+        ...(showWindow ? {} : { AURAPAD_INVISIBLE: '1' })
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
       // Its own process group, so killApp below can take the whole tree down
       // in one signal (see there for why that matters).
@@ -134,7 +142,7 @@ async function raiseWindow() {
     const win = BrowserWindow.getAllWindows()[0]
     if (!win) return false
     win.showInactive()
-    win.moveTop()
+    ${showWindow ? 'win.moveTop()' : ''}
     return true
   })()`)
   main.close()
@@ -173,7 +181,8 @@ async function assertPortFree() {
   let holder = ''
   try {
     const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`], { encoding: 'utf-8' }).trim()
-    if (pids) holder = `\nIt is pid ${pids.split('\n').join(', ')} - \`kill ${pids.split('\n').join(' ')}\`.`
+    if (pids)
+      holder = `\nIt is pid ${pids.split('\n').join(', ')} - \`kill ${pids.split('\n').join(' ')}\`.`
   } catch {
     // No lsof, or nothing to report - the message below still stands.
   }
@@ -308,8 +317,7 @@ async function main() {
   for (const file of CASE_FILES) cases.push((await import(path.join(here, 'cases', file))).default)
   const ids = cases.map((c) => c.id)
   const selected = (id) =>
-    filters.length === 0 ||
-    filters.some((f) => (ids.includes(f) ? id === f : id.startsWith(f)))
+    filters.length === 0 || filters.some((f) => (ids.includes(f) ? id === f : id.startsWith(f)))
 
   for (const mod of cases) {
     if (!selected(mod.id)) continue
