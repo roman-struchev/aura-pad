@@ -9,6 +9,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
 import { AppHeader } from './components/AppHeader'
+import { Breadcrumbs } from './components/Breadcrumbs'
 import { FileActions } from './components/FileActions'
 import { TerminalPanel } from './components/TerminalPanel'
 import { UpdateToast } from './components/UpdateToast'
@@ -34,6 +35,7 @@ import { useTerminals } from './hooks/useTerminals'
 import { useTabs } from './hooks/useTabs'
 import { useWorkspaceTree } from './hooks/useWorkspaceTree'
 import { useGitStatus } from './hooks/useGitStatus'
+import { useGitDecorations } from './hooks/useGitDecorations'
 import { useDiagnostics } from './hooks/useDiagnostics'
 import { useSidebarWidth } from './hooks/useSidebarWidth'
 import { usePaneWidth } from './hooks/usePaneWidth'
@@ -98,6 +100,7 @@ function App(): React.JSX.Element {
   const monacoTheme = getMonacoTheme(resolvedTheme)
   const density = DENSITY[settings.uiMode]
 
+  const gitGutterOn = settings.extensions.git.enabled && settings.gitGutterEnabled
   // Stable identity unless the settings that feed it change - a fresh object
   // literal per render makes the editor re-apply updateOptions() on every
   // App render (i.e. on every keystroke).
@@ -113,10 +116,12 @@ function App(): React.JSX.Element {
       // Tighter gutter than Monaco's defaults; 0 when line numbers are off
       // so text isn't indented for no reason.
       lineNumbersMinChars: settings.lineNumbersEnabled ? 4 : 0,
-      lineDecorationsWidth: settings.lineNumbersEnabled ? 4 : 0,
-      scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 }
+      // Wide enough for the git change bar when it is on.
+      lineDecorationsWidth: (settings.lineNumbersEnabled ? 4 : 0) + (gitGutterOn ? 5 : 0),
+      scrollbar: { verticalScrollbarSize: 5, horizontalScrollbarSize: 5 },
+      stickyScroll: { enabled: settings.stickyScrollEnabled, maxLineCount: 4 }
     }),
-    [density.editorFontSize, settings.lineNumbersEnabled]
+    [density.editorFontSize, settings.lineNumbersEnabled, settings.stickyScrollEnabled, gitGutterOn]
   )
 
   const terminal = useTerminals()
@@ -385,6 +390,13 @@ function App(): React.JSX.Element {
   }
   const git = useGitStatus(settings.extensions.git.enabled, tabs.saveAllDirtyFileTabs)
   useDiagnostics(tabs.selectedPath, tabs.isSaved, tree.rootNodes)
+  useGitDecorations({
+    editor: mountedEditor,
+    path: tabs.selectedPath && !isExtensionPath(tabs.selectedPath) ? tabs.selectedPath : null,
+    repos: git.repos,
+    gutterEnabled: settings.gitGutterEnabled,
+    blameEnabled: settings.inlineBlameEnabled
+  })
   const recentExternalFiles = useRecentExternalFiles()
 
   // Record every open tab that falls outside all workspace roots, so it
@@ -995,6 +1007,13 @@ function App(): React.JSX.Element {
     if (tabs.selectedPath) tree.setRevealPath(tabs.selectedPath)
   }
 
+  // A breadcrumb click: like revealActiveFile, for any folder on the path.
+  const revealPathInTree = (path: string): void => {
+    if (!settings.sidebarVisible) updateSetting('sidebarVisible', true)
+    setSidebarView('files')
+    tree.revealAndSelect(path)
+  }
+
   // Entry point from the file tree's per-root branch badge: focus that
   // root's repo in the git panel and reveal the panel. Also un-hides the
   // sidebar, since the git panel lives inside it.
@@ -1104,6 +1123,53 @@ function App(): React.JSX.Element {
     [recentExternalFiles.entries]
   )
 
+  // The active file's actions: floated over the editor's top-right corner,
+  // or - with breadcrumbs on - at the right end of their strip, where they no
+  // longer sit on top of the code.
+  const breadcrumbsShown = settings.breadcrumbsEnabled && hasFileActions && !!tabs.selectedPath
+  const fileActions = (compact: boolean): React.ReactNode =>
+    hasFileActions && (
+      <FileActions
+        compact={compact}
+        selectedPath={tabs.selectedPath}
+        isFileInWorkspace={
+          !!tabs.selectedPath &&
+          isUnderAnyRoot(
+            tabs.selectedPath,
+            tree.rootNodes.map((r) => r.path)
+          )
+        }
+        showPreview={tabs.showMarkdownPreview}
+        isPreviewable={isPreviewablePath(tabs.selectedPath)}
+        canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
+        foldedAll={foldedAll}
+        canDictate={canDictate}
+        isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
+        workTogetherEnabled={settings.extensions.workTogether.enabled}
+        workTogetherSharing={!!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)}
+        workTogetherParticipantCount={
+          (tabs.selectedPath && workTogether.sessions[tabs.selectedPath]?.participants.length) || 0
+        }
+        spellcheckOn={settings.spellcheckEnabled && settings.spellLanguages.length > 0}
+        spellIssueCount={spell.issues.length}
+        onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
+        httpEnvironmentNames={httpEnv?.names ?? []}
+        httpEnvironment={httpEnvironmentName}
+        onSelectHttpEnvironment={selectHttpEnvironment}
+        voice={voice}
+        readAloud={readAloud}
+        onRevealActiveFile={revealActiveFile}
+        onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
+        onRunHttp={() => runHttpRequest()}
+        onFormatDocument={formatActiveDocument}
+        onToggleFold={toggleFold}
+        onTogglePreview={() => tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)}
+        onToggleDictation={toggleDictation}
+        onStartReadAloud={startReadAloud}
+        onOpenShare={() => setShowShareDialog(true)}
+      />
+    )
+
   return (
     <div
       className="flex h-screen bg-fleet-bg text-fleet-text flex-col relative overflow-hidden"
@@ -1190,6 +1256,16 @@ function App(): React.JSX.Element {
               </div>
             )}
 
+            {breadcrumbsShown && tabs.selectedPath && (
+              <Breadcrumbs
+                actions={fileActions(true)}
+                editor={tabs.showMarkdownPreview ? null : mountedEditor}
+                path={tabs.selectedPath}
+                rootPaths={tree.rootNodes.map((r) => r.path)}
+                onRevealPath={revealPathInTree}
+              />
+            )}
+
             <div className="flex-1 overflow-hidden flex">
               <div className="flex-1 min-w-0 overflow-hidden relative">
                 {/* The active file's actions float over the editor's top-right
@@ -1198,55 +1274,8 @@ function App(): React.JSX.Element {
                   the response pane is docked in that column too, and an
                   overlay spanning the whole width sat on top of the pane's
                   header - including the button that closes it. */}
-                {hasFileActions && (
-                  <div className="absolute right-2 top-1 z-20">
-                    <FileActions
-                      selectedPath={tabs.selectedPath}
-                      isFileInWorkspace={
-                        !!tabs.selectedPath &&
-                        isUnderAnyRoot(
-                          tabs.selectedPath,
-                          tree.rootNodes.map((r) => r.path)
-                        )
-                      }
-                      showPreview={tabs.showMarkdownPreview}
-                      isPreviewable={isPreviewablePath(tabs.selectedPath)}
-                      canFold={isMarkdownPath(tabs.selectedPath) && !tabs.showMarkdownPreview}
-                      foldedAll={foldedAll}
-                      canDictate={canDictate}
-                      isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
-                      workTogetherEnabled={settings.extensions.workTogether.enabled}
-                      workTogetherSharing={
-                        !!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)
-                      }
-                      workTogetherParticipantCount={
-                        (tabs.selectedPath &&
-                          workTogether.sessions[tabs.selectedPath]?.participants.length) ||
-                        0
-                      }
-                      spellcheckOn={
-                        settings.spellcheckEnabled && settings.spellLanguages.length > 0
-                      }
-                      spellIssueCount={spell.issues.length}
-                      onNextSpellingIssue={() => spell.revealNextIssue(editorInstanceRef.current)}
-                      httpEnvironmentNames={httpEnv?.names ?? []}
-                      httpEnvironment={httpEnvironmentName}
-                      onSelectHttpEnvironment={selectHttpEnvironment}
-                      voice={voice}
-                      readAloud={readAloud}
-                      onRevealActiveFile={revealActiveFile}
-                      onRunPython={() => tabs.selectedPath && runPythonFile(tabs.selectedPath)}
-                      onRunHttp={() => runHttpRequest()}
-                      onFormatDocument={formatActiveDocument}
-                      onToggleFold={toggleFold}
-                      onTogglePreview={() =>
-                        tabs.activeTabPath && tabs.togglePreview(tabs.activeTabPath)
-                      }
-                      onToggleDictation={toggleDictation}
-                      onStartReadAloud={startReadAloud}
-                      onOpenShare={() => setShowShareDialog(true)}
-                    />
-                  </div>
+                {hasFileActions && !breadcrumbsShown && (
+                  <div className="absolute right-2 top-1 z-20">{fileActions(false)}</div>
                 )}
                 {activeExt ? (
                   activeExt.id === 'google-tasks' ? (

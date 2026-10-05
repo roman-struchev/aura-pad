@@ -106,11 +106,15 @@ function mergeEntries(repo: GitRepoStatus): { changes: MergedEntry[]; unversione
   return { changes, unversioned }
 }
 
+// git reports a wholly untracked folder as one entry, `folder/` - split on
+// the last slash it would have no name at all and render as a blank row, so
+// the trailing slash is kept on the name instead.
 function splitPath(relPath: string): { name: string; dir: string } {
-  const idx = relPath.lastIndexOf('/')
-  return idx === -1
-    ? { name: relPath, dir: '' }
-    : { name: relPath.slice(idx + 1), dir: relPath.slice(0, idx) }
+  const isDir = relPath.endsWith('/')
+  const trimmed = isDir ? relPath.slice(0, -1) : relPath
+  const idx = trimmed.lastIndexOf('/')
+  const name = (idx === -1 ? trimmed : trimmed.slice(idx + 1)) + (isDir ? '/' : '')
+  return { name, dir: idx === -1 ? '' : trimmed.slice(0, idx) }
 }
 
 interface GroupCheckboxProps {

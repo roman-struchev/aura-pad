@@ -1,8 +1,14 @@
 import { execFile } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { decodeFileBuffer, decodeLikeFile } from './encoding'
-import type { GitCommit, GitFileEntry, GitFileState, GitRepoStatus } from '../shared/gitStatus'
+import { decodeFileBuffer, decodeLikeFile, encodeFileContent } from './encoding'
+import type {
+  GitBlameLine,
+  GitCommit,
+  GitFileEntry,
+  GitFileState,
+  GitRepoStatus
+} from '../shared/gitStatus'
 
 // Cap for execFile's stdout buffer on every git call. Diffs and `git show` of
 // a large file can be several MB; the default 1MB would truncate them.
@@ -248,6 +254,60 @@ export async function getDiff(
   } catch (e) {}
 
   return { original, modified }
+}
+
+// The committed version of a file, decoded like the working copy - the base
+// the editor's change markers diff the live buffer against. null when there
+// is none (untracked, newly added, no commits yet), which the caller reads as
+// "nothing to mark" rather than "every line is new".
+export async function getHeadContent(root: string, relPath: string): Promise<string | null> {
+  if (!isGitRepo(root)) return null
+  try {
+    const absPath = path.join(root, relPath)
+    return decodeLikeFile(absPath, await runGitBuffer(root, ['show', `HEAD:${relPath}`]))
+  } catch {
+    return null
+  }
+}
+
+const ZERO_HASH = /^0+$/
+
+// Who last touched one line of the buffer as it is *now*: `--contents -`
+// blames the text piped in instead of the file on disk, so a line number
+// counted in an editor with unsaved edits still points at the right line.
+// The buffer goes in encoded the way the file is written, or a cp1251 file
+// would blame every non-ASCII line as uncommitted. null on any failure
+// (untracked file, line past the end) - the caller just shows nothing.
+export function blameLine(
+  root: string,
+  relPath: string,
+  line: number,
+  content: string
+): Promise<GitBlameLine | null> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      'git',
+      ['blame', '--porcelain', '-L', `${line},${line}`, '--contents', '-', '--', relPath],
+      { cwd: root, maxBuffer: GIT_MAX_BUFFER },
+      (error, stdout) => {
+        if (error) return resolve(null)
+        const lines = stdout.split('\n')
+        const hash = lines[0]?.split(' ')[0] ?? ''
+        if (!hash) return resolve(null)
+        const field = (name: string): string =>
+          lines.find((l) => l.startsWith(name + ' '))?.slice(name.length + 1) ?? ''
+        resolve({
+          hash,
+          uncommitted: ZERO_HASH.test(hash),
+          author: field('author'),
+          date: parseInt(field('author-time'), 10) || 0,
+          summary: field('summary')
+        })
+      }
+    )
+    child.stdin?.on('error', () => {})
+    child.stdin?.end(encodeFileContent(path.join(root, relPath), content))
+  })
 }
 
 async function runGitSimple(

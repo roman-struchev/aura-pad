@@ -196,6 +196,15 @@ export interface AppSettings {
   // a layout the user dragged into shape survives a restart.
   httpPaneWidth: number
   lineNumbersEnabled: boolean
+  // The enclosing function/class (or Markdown heading) pinned to the top of
+  // the editor while you scroll through its body.
+  stickyScrollEnabled: boolean
+  // Path and symbol of the cursor's location, in a strip above the editor.
+  breadcrumbsEnabled: boolean
+  // Git in the editor (both also off while the Git extension is): change
+  // markers beside the line numbers, and the cursor line's blame after it.
+  gitGutterEnabled: boolean
+  inlineBlameEnabled: boolean
   // Each AI feature owns an on/off flag (toggled from its Configure dialog).
   // Off hides the feature's buttons and makes its menu items/shortcuts no-ops,
   // while its model/voice/pair choices below are kept for when it's turned on.
@@ -229,6 +238,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sidebarVisible: true,
   httpPaneWidth: 480,
   lineNumbersEnabled: true,
+  stickyScrollEnabled: false,
+  breadcrumbsEnabled: false,
+  gitGutterEnabled: true,
+  inlineBlameEnabled: false,
   dictationEnabled: true,
   voiceModel: 'base',
   voiceLanguage: 'auto',

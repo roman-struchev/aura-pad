@@ -61,5 +61,26 @@ export default {
       { timeoutMs: 10_000 }
     )
     check('a new file is reported as untracked', sawUntracked)
+
+    // A wholly untracked folder comes back from git as one `folder/` entry;
+    // its row in the panel used to render with no name at all.
+    fs.mkdirSync(`${ws}/untracked-dir`)
+    fs.writeFileSync(`${ws}/untracked-dir/inside.txt`, 'x\n')
+    await waitFor(
+      `window.api.getGitStatus().then((r) =>
+         !!r[0]?.unstaged?.some((f) => f.relPath === 'untracked-dir/'))`,
+      { timeoutMs: 10_000 }
+    )
+    await cdp.evaluate(
+      `[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Git')?.click()`
+    )
+    const folderRow = await waitFor(
+      `[...document.querySelectorAll('span')].some((s) => s.innerText === 'untracked-dir/')`,
+      { timeoutMs: 5_000 }
+    )
+    check('an untracked folder is listed by name in the git panel', folderRow)
+    await cdp.evaluate(
+      `[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Files')?.click()`
+    )
   }
 }

@@ -41,6 +41,8 @@ import { setupWatchers, recordSelfWrite } from './watcher'
 import {
   getAllRepoStatuses,
   getDiff,
+  getHeadContent,
+  blameLine,
   stagePaths,
   unstagePaths,
   discardPath,
@@ -296,6 +298,14 @@ function registerGitIpc(): void {
 
   handleInvoke('git-diff', (root, relPath) =>
     relativeDenial(root, [relPath]) ? { original: '', modified: '' } : getDiff(root, relPath)
+  )
+
+  handleInvoke('git-head-content', (root, relPath) =>
+    relativeDenial(root, [relPath]) ? null : getHeadContent(root, relPath)
+  )
+
+  handleInvoke('git-blame-line', (root, relPath, line, content) =>
+    relativeDenial(root, [relPath]) ? null : blameLine(root, relPath, line, content)
   )
 
   handleInvoke('git-stage', async (root, relPaths) => {

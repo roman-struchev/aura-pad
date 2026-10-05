@@ -4,7 +4,7 @@ import type { FileNode } from './fileNode'
 import type { ListeningPort } from './ports'
 import type { SearchResponse } from './searchResult'
 import type { ReplaceRequest, ReplaceResult, SearchOptions } from './searchQuery'
-import type { GitCommit, GitRepoStatus } from './gitStatus'
+import type { GitBlameLine, GitCommit, GitRepoStatus } from './gitStatus'
 import type { GTask, GTaskInput, GTaskList } from './googleTasks'
 import type { HttpEnvironments, HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
 import type { LintMarker } from './lint'
@@ -174,6 +174,11 @@ export interface InvokeContracts {
     args: [root: string, relPath: string]
     result: { original: string; modified: string }
   }
+  'git-head-content': { args: [root: string, relPath: string]; result: string | null }
+  'git-blame-line': {
+    args: [root: string, relPath: string, line: number, content: string]
+    result: GitBlameLine | null
+  }
   'git-stage': { args: [root: string, relPaths: string[]]; result: GitMutationResult }
   'git-unstage': { args: [root: string, relPaths: string[]]; result: GitMutationResult }
   'git-discard': { args: [root: string, relPath: string]; result: GitMutationResult }
@@ -330,6 +335,8 @@ export const INVOKE_CHANNELS = {
   createPty: 'create-pty',
   getGitStatus: 'git-status',
   getGitDiff: 'git-diff',
+  getGitHeadContent: 'git-head-content',
+  gitBlameLine: 'git-blame-line',
   gitStage: 'git-stage',
   gitUnstage: 'git-unstage',
   gitDiscard: 'git-discard',

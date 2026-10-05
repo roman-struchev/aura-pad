@@ -230,6 +230,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               descriptionClassName={density.settingsDescriptionClass}
             />
             <SettingToggle
+              label="Sticky Scroll"
+              description="Keep the enclosing function, class or heading pinned at the top while scrolling"
+              checked={settings.stickyScrollEnabled}
+              onChange={(v) => updateSetting('stickyScrollEnabled', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingToggle
+              label="Breadcrumbs"
+              description="Show the file's path and the symbol at the cursor above the editor"
+              checked={settings.breadcrumbsEnabled}
+              onChange={(v) => updateSetting('breadcrumbsEnabled', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingToggle
+              label="Git Change Markers"
+              description="Bars beside the line numbers for lines changed since the last commit; click one to see the old text or revert it"
+              checked={settings.gitGutterEnabled}
+              onChange={(v) => updateSetting('gitGutterEnabled', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingToggle
+              label="Inline Blame"
+              description="Author, age and commit message of the cursor line, shown faintly after it"
+              checked={settings.inlineBlameEnabled}
+              onChange={(v) => updateSetting('inlineBlameEnabled', v)}
+              labelClassName={density.settingsLabelClass}
+              descriptionClassName={density.settingsDescriptionClass}
+            />
+            <SettingToggle
               label="Tabs"
               description="Keep multiple files open at once"
               checked={settings.tabsEnabled}

@@ -171,6 +171,14 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
     setAnchorPath(node.path)
   }
 
+  // Show a path in the tree *and* make it the tree's selection - what a click
+  // on a breadcrumb means, folder or file.
+  const revealAndSelect = (path: string): void => {
+    setSelectedPaths([path])
+    setAnchorPath(path)
+    setRevealPath(path)
+  }
+
   const handleRowClick = (node: FileNode, modifiers: RowClickModifiers): void => {
     if (modifiers.range && anchorPath) {
       // The visible rows, in the order they're painted - so a shift-range
@@ -339,6 +347,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
     rootsLoaded,
     revealRequest,
     setRevealPath,
+    revealAndSelect,
     contextMenu,
     setContextMenu,
     clipboardCount,

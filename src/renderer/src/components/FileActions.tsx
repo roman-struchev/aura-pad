@@ -53,6 +53,9 @@ interface FileActionsProps {
   onToggleDictation: () => void
   onStartReadAloud: () => void
   onOpenShare: () => void
+  // Smaller icons and no backdrop, for when the row sits inside the
+  // breadcrumbs strip instead of floating over the editor.
+  compact?: boolean
 }
 
 // The active file's action buttons: reveal-in-tree, run, format, preview
@@ -87,8 +90,10 @@ export const FileActions: React.FC<FileActionsProps> = ({
   onTogglePreview,
   onToggleDictation,
   onStartReadAloud,
-  onOpenShare
+  onOpenShare,
+  compact = false
 }) => {
+  const iconSize = compact ? 13 : 16
   const voiceBusy = voice.status === 'downloading' || voice.status === 'transcribing'
   const isFormattable = isFormattablePath(selectedPath)
   // Uniform, muted secondary tone: file actions are a quiet toolbar, not
@@ -96,19 +101,32 @@ export const FileActions: React.FC<FileActionsProps> = ({
   const muted = 'text-gray-500 hover:text-fleet-textHover'
 
   return (
-    <div className="flex items-center gap-0.5 shrink-0 rounded-md bg-fleet-header/80 px-0.5 backdrop-blur-sm">
-      {isFileInWorkspace && (
+    <div
+      className={
+        compact
+          ? 'flex items-center gap-0.5 shrink-0'
+          : 'flex items-center gap-0.5 shrink-0 rounded-md bg-fleet-header/80 px-0.5 backdrop-blur-sm'
+      }
+    >
+      {/* In the breadcrumbs strip the file's own crumb already does this. */}
+      {isFileInWorkspace && !compact && (
         <ToolbarButton
+          dense={compact}
           onClick={onRevealActiveFile}
           title="Select Opened File in Tree"
           colorClassName={muted}
         >
-          <Crosshair size={16} />
+          <Crosshair size={iconSize} />
         </ToolbarButton>
       )}
       {isPythonPath(selectedPath) && (
-        <ToolbarButton onClick={onRunPython} title="Run Python" colorClassName={muted}>
-          <Play size={16} />
+        <ToolbarButton
+          dense={compact}
+          onClick={onRunPython}
+          title="Run Python"
+          colorClassName={muted}
+        >
+          <Play size={iconSize} />
         </ToolbarButton>
       )}
       {isHttpPath(selectedPath) && httpEnvironmentNames.length > 0 && (
@@ -133,14 +151,20 @@ export const FileActions: React.FC<FileActionsProps> = ({
         </select>
       )}
       {isHttpPath(selectedPath) && (
-        <ToolbarButton onClick={onRunHttp} title="Run Request (Cmd+Enter)" colorClassName={muted}>
-          <Play size={16} />
+        <ToolbarButton
+          dense={compact}
+          onClick={onRunHttp}
+          title="Run Request (Cmd+Enter)"
+          colorClassName={muted}
+        >
+          <Play size={iconSize} />
         </ToolbarButton>
       )}
       {spellcheckOn && isProsePath(selectedPath) && (
         // A count rather than a badge: clicking it walks to the next unknown
         // word, which is the only thing anyone wants to do with the number.
         <ToolbarButton
+          dense={compact}
           onClick={onNextSpellingIssue}
           title={
             spellIssueCount === 0
@@ -151,7 +175,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
           colorClassName={muted}
         >
           <span className="flex items-center gap-0.5">
-            <SpellCheck size={16} />
+            <SpellCheck size={iconSize} />
             {spellIssueCount > 0 && (
               <span className="text-[10px] leading-none">{spellIssueCount}</span>
             )}
@@ -160,6 +184,7 @@ export const FileActions: React.FC<FileActionsProps> = ({
       )}
       {isFormattable && (
         <ToolbarButton
+          dense={compact}
           onClick={onFormatDocument}
           title={
             selectedPath?.endsWith('.json')
@@ -168,32 +193,35 @@ export const FileActions: React.FC<FileActionsProps> = ({
           }
           colorClassName={muted}
         >
-          <AlignLeft size={16} />
+          <AlignLeft size={iconSize} />
         </ToolbarButton>
       )}
       {canFold && (
         <ToolbarButton
+          dense={compact}
           onClick={onToggleFold}
           active={foldedAll}
           colorClassName={muted}
           title={foldedAll ? 'Unfold All' : 'Fold All'}
         >
-          {foldedAll ? <ChevronsUpDown size={16} /> : <ChevronsDownUp size={16} />}
+          {foldedAll ? <ChevronsUpDown size={iconSize} /> : <ChevronsDownUp size={iconSize} />}
         </ToolbarButton>
       )}
       {isPreviewable && (
         <ToolbarButton
+          dense={compact}
           onClick={onTogglePreview}
           active={showPreview}
           colorClassName={muted}
           title={showPreview ? 'Show Source (Cmd+Shift+P)' : 'Show Preview (Cmd+Shift+P)'}
         >
-          {showPreview ? <Code2 size={16} /> : <Eye size={16} />}
+          {showPreview ? <Code2 size={iconSize} /> : <Eye size={iconSize} />}
         </ToolbarButton>
       )}
       {canDictate && (
         <>
           <ToolbarButton
+            dense={compact}
             onClick={onToggleDictation}
             title={
               voice.status === 'recording'
@@ -207,11 +235,11 @@ export const FileActions: React.FC<FileActionsProps> = ({
             colorClassName={voice.status === 'recording' ? 'text-blue-400 bg-fleet-active' : muted}
           >
             {voiceBusy ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={iconSize} className="animate-spin" />
             ) : voice.status === 'recording' ? (
-              <Square size={16} className="fill-current" />
+              <Square size={iconSize} className="fill-current" />
             ) : (
-              <Mic size={16} />
+              <Mic size={iconSize} />
             )}
           </ToolbarButton>
           {voice.status === 'recording' && (
@@ -228,12 +256,13 @@ export const FileActions: React.FC<FileActionsProps> = ({
       {workTogetherEnabled && (
         <>
           <ToolbarButton
+            dense={compact}
             onClick={onOpenShare}
             active={workTogetherSharing}
             title={workTogetherSharing ? 'Work Together (sharing)' : 'Share…'}
             colorClassName={muted}
           >
-            <Share2 size={16} />
+            <Share2 size={iconSize} />
           </ToolbarButton>
           {workTogetherSharing && workTogetherParticipantCount > 0 && (
             <span
@@ -248,14 +277,15 @@ export const FileActions: React.FC<FileActionsProps> = ({
       {(isProse || readAloud.speaking) && (
         <>
           <ToolbarButton
+            dense={compact}
             onClick={readAloud.speaking ? readAloud.stop : onStartReadAloud}
             title={readAloud.speaking ? 'Stop Reading (Esc)' : 'Read Aloud'}
             colorClassName={readAloud.speaking ? 'text-blue-400 bg-fleet-active' : muted}
           >
             {readAloud.speaking ? (
-              <Square size={16} className="fill-current" />
+              <Square size={iconSize} className="fill-current" />
             ) : (
-              <Volume2 size={16} />
+              <Volume2 size={iconSize} />
             )}
           </ToolbarButton>
           {readAloud.speaking &&

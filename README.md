@@ -72,6 +72,12 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Paste an image into a Markdown file (a screenshot, or a file copied in Finder/Explorer)
   and it is written to an `assets/` folder next to the document, with a relative link left
   at the cursor — the note and its images move together. The preview renders them.
+- **Sticky scroll** (Settings → Editor, off by default) keeps the function, class or Markdown heading you are inside pinned to
+  the top of the editor while its body scrolls past. **Breadcrumbs** (Settings → Editor,
+  off by default) show project › folders › file › symbol above the editor; click the path
+  to reveal the file in the tree, a symbol to jump to it. While they are on, the file's
+  action buttons (Run, Preview, Share…) sit at the right end of that strip instead of
+  floating over the code.
 - Themes: dark, light, system, Monokai, and Solarized; adjustable UI density, line numbers,
   and sidebar side.
 
@@ -136,6 +142,13 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 - See changed files at a glance, view diffs, stage, commit (or amend), push, and pull —
   right in the editor (`Cmd+K`).
+- **Change markers** beside the line numbers for every line that differs from the last
+  commit — green for added, blue for changed, a red wedge where lines were removed —
+  updated as you type, before anything is saved. Click one to see what the commit had
+  there and **Revert** that piece alone (an ordinary edit, so `Cmd+Z` brings yours back).
+- **Inline blame**: the cursor line's author, age and commit message, shown faintly at
+  its end — off by default, switched on in Settings → Editor (where the markers can be
+  turned off too).
 - Switch branches and browse the commit history without leaving the panel.
 - Works with several repos open at once; can be turned off entirely in Settings.
 

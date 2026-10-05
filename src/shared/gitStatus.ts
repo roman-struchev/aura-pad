@@ -30,3 +30,15 @@ export interface GitCommit {
   // Empty for undecorated commits.
   refs: string
 }
+
+// One line's `git blame`, for the editor's inline blame. `uncommitted` lines
+// (edited in the working copy, not yet in any commit) carry git's all-zero
+// hash and the placeholder author "Not Committed Yet".
+export interface GitBlameLine {
+  hash: string
+  uncommitted: boolean
+  author: string
+  // Unix seconds
+  date: number
+  summary: string
+}

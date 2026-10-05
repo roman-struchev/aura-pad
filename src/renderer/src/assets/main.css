@@ -240,3 +240,85 @@ body {
   -webkit-mask: radial-gradient(circle 8px at top right, #0000 98%, #000 100%);
   mask: radial-gradient(circle 8px at top right, #0000 98%, #000 100%);
 }
+
+/* Git change markers beside the line numbers (hooks/useGitDecorations.ts).
+   Bars, not text, so the fixed hues work across all four themes; they sit in
+   Monaco's line-decorations column, which App widens while they are on. */
+.monaco-editor .aura-git-added,
+.monaco-editor .aura-git-modified {
+  width: 3px !important;
+  margin-left: 3px;
+  cursor: pointer;
+}
+.monaco-editor .aura-git-added {
+  background: #2ea043;
+}
+.monaco-editor .aura-git-modified {
+  background: #3b82f6;
+}
+/* A removed block: a red wedge on the boundary below the line it sat under
+   (above line 1 when it was at the very top). */
+.monaco-editor .aura-git-deleted {
+  cursor: pointer;
+}
+.monaco-editor .aura-git-deleted::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  bottom: -4px;
+  border-left: 6px solid #ef4444;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  z-index: 1;
+}
+.monaco-editor .aura-git-deleted-top::after {
+  bottom: auto;
+  top: -4px;
+}
+
+/* An expanded hunk: what HEAD had, above the lines that replaced it. */
+.aura-git-hunk {
+  border-top: 1px solid var(--fleet-border);
+  border-bottom: 1px solid var(--fleet-border);
+  background: var(--fleet-sidebar);
+  overflow: hidden;
+}
+.aura-git-hunk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 25px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--fleet-text);
+}
+.aura-git-hunk-bar span {
+  opacity: 0.8;
+}
+.aura-git-hunk-bar button {
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--fleet-border);
+  color: var(--fleet-textHover);
+  background: var(--fleet-active);
+  cursor: pointer;
+}
+.aura-git-hunk-bar button:hover {
+  border-color: var(--accent-info);
+}
+.aura-git-hunk-old {
+  margin: 0;
+  padding: 0 0 6px;
+  color: var(--fleet-textHover);
+  background: rgba(239, 68, 68, 0.14);
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* Inline blame after the cursor line - deliberately faint, it is context
+   rather than content. */
+.monaco-editor .aura-blame {
+  color: var(--fleet-text);
+  opacity: 0.45;
+  font-style: italic;
+}
