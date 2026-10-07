@@ -1,6 +1,6 @@
 import React from 'react'
 import { PanelBottom, PanelLeft, PanelRight, Plus, X } from 'lucide-react'
-import type { TerminalDock } from '../hooks/useTerminals'
+import { isBottomDock, type TerminalDock } from '../hooks/useTerminals'
 import { Terminal } from './Terminal'
 import type { useTerminals } from '../hooks/useTerminals'
 
@@ -11,6 +11,36 @@ interface TerminalPanelProps {
   fontSize: number
   // App resolves the default cwd (active file's workspace root).
   onOpenNew: () => void
+  // Which side the sidebar is on, so the under-the-editor icon draws it there.
+  sidebarSide: 'left' | 'right'
+  // Grid placement when App lays the panel out under the editor column.
+  layoutStyle?: React.CSSProperties
+}
+
+// PanelBottom with the sidebar cut out of it: the drawer stops at the
+// sidebar's edge instead of running underneath it. Lucide has no such glyph,
+// so it is drawn here in lucide's own 24-unit, 2px-stroke grid.
+const PanelBottomBesideSidebar: React.FC<{ size: number; side: 'left' | 'right' }> = ({
+  size,
+  side
+}) => {
+  const edge = side === 'right' ? 15 : 9
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d={`M${edge} 3v18`} />
+      <path d={side === 'right' ? 'M3 15h12' : 'M9 15h12'} />
+    </svg>
+  )
 }
 
 // The bottom terminal drawer: tab strip, resize grip, and one live xterm per
@@ -20,15 +50,30 @@ interface TerminalPanelProps {
 // inside the editor column. `shrink-0` keeps the height the grip sets (the
 // editor above takes what's left); `relative` is what the grip, which sits on
 // the panel's top edge, positions against.
-const DOCKS: { dock: TerminalDock; label: string; Icon: typeof PanelLeft }[] = [
-  { dock: 'left', label: 'Dock Terminal Left', Icon: PanelLeft },
-  { dock: 'bottom', label: 'Dock Terminal Bottom', Icon: PanelBottom },
-  { dock: 'right', label: 'Dock Terminal Right', Icon: PanelRight }
+const DOCKS: {
+  dock: TerminalDock
+  label: string
+  icon: (side: 'left' | 'right') => React.ReactNode
+}[] = [
+  { dock: 'left', label: 'Dock Terminal Left', icon: () => <PanelLeft size={14} /> },
+  { dock: 'bottom', label: 'Dock Terminal Bottom', icon: () => <PanelBottom size={14} /> },
+  {
+    dock: 'editor',
+    label: 'Dock Terminal Under Editor',
+    icon: (side) => <PanelBottomBesideSidebar size={14} side={side} />
+  },
+  { dock: 'right', label: 'Dock Terminal Right', icon: () => <PanelRight size={14} /> }
 ]
 
-export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize, onOpenNew }) => {
+export const TerminalPanel: React.FC<TerminalPanelProps> = ({
+  terminal,
+  fontSize,
+  onOpenNew,
+  sidebarSide,
+  layoutStyle
+}) => {
   const { dock } = terminal
-  const vertical = dock === 'bottom'
+  const vertical = isBottomDock(dock)
   return (
     <>
       {terminal.dockPreview && (
@@ -53,12 +98,13 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize
         // inside the panel and Cmd+W still targets the terminal.
         tabIndex={-1}
         data-terminal-dock={dock}
-        className={`outline-none relative shrink-0 border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30 ${dock === 'bottom' ? 'border-t' : dock === 'left' ? 'order-first border-r' : 'border-l'}`}
-        style={
-          vertical
+        className={`outline-none relative shrink-0 border-[var(--terminal-border)] flex flex-col bg-[var(--terminal-panel)] z-30 ${vertical ? 'border-t' : dock === 'left' ? 'order-first border-r' : 'border-l'}`}
+        style={{
+          ...layoutStyle,
+          ...(vertical
             ? { height: `${terminal.terminalHeight}px` }
-            : { width: `${terminal.terminalWidth}px` }
-        }
+            : { width: `${terminal.terminalWidth}px` })
+        }}
       >
         <div
           className={`absolute z-40 hover:bg-blue-500/50 transition-colors ${vertical ? 'top-0 left-0 right-0 h-1.5 cursor-ns-resize' : `top-0 bottom-0 w-1.5 cursor-ew-resize ${dock === 'left' ? 'right-0' : 'left-0'}`}`}
@@ -97,7 +143,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize
               terminal.startDocking()
             }}
           />
-          {DOCKS.map(({ dock: d, label, Icon }) => (
+          {DOCKS.map(({ dock: d, label, icon }) => (
             <button
               key={d}
               aria-label={label}
@@ -105,7 +151,7 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({ terminal, fontSize
               onClick={() => terminal.setDock(d)}
               className={`p-1.5 ${dock === d ? 'text-white' : 'text-gray-400 hover:text-white'}`}
             >
-              <Icon size={14} />
+              {icon(sidebarSide)}
             </button>
           ))}
           <button

@@ -31,7 +31,7 @@ import { SpellcheckConfigModal } from './components/SpellcheckConfigModal'
 import { DENSITY } from './density'
 import { useTheme } from './hooks/useTheme'
 import { useSettings } from './hooks/useSettings'
-import { useTerminals } from './hooks/useTerminals'
+import { isBottomDock, useTerminals } from './hooks/useTerminals'
 import { useTabs } from './hooks/useTabs'
 import { useWorkspaceTree } from './hooks/useWorkspaceTree'
 import { useGitStatus } from './hooks/useGitStatus'
@@ -1170,6 +1170,11 @@ function App(): React.JSX.Element {
       />
     )
 
+  // Docked under the editor only means something with a sidebar beside it;
+  // without one it is just the bottom.
+  const terminalUnderEditor = terminal.dock === 'editor' && settings.sidebarVisible && !isLeanWindow
+  const editorGridColumn = settings.sidebarPosition === 'left' ? 2 : 1
+
   return (
     <div
       className="flex h-screen bg-fleet-bg text-fleet-text flex-col relative overflow-hidden"
@@ -1205,19 +1210,44 @@ function App(): React.JSX.Element {
       />
 
       {/* The terminal panel docks to the bottom, left or right of everything
-          under the header; this wrapper is what flips between column and row. */}
+          under the header; this wrapper is what flips between column and row.
+          Docked under the editor only, it turns into a grid instead and the
+          editor/sidebar row below dissolves into it (display: contents), so
+          the sidebar can span both rows. The panel never changes parent
+          either way - moving it would remount every xterm and lose the
+          scrollback. */}
       <div
         className={clsx(
-          'flex flex-1 min-h-0 min-w-0 overflow-hidden',
-          terminal.dock === 'bottom' ? 'flex-col' : 'flex-row'
+          'flex-1 min-h-0 min-w-0 overflow-hidden',
+          terminalUnderEditor
+            ? 'grid'
+            : clsx('flex', isBottomDock(terminal.dock) ? 'flex-col' : 'flex-row')
         )}
+        style={
+          terminalUnderEditor
+            ? {
+                gridTemplateColumns:
+                  settings.sidebarPosition === 'left'
+                    ? 'auto minmax(0, 1fr)'
+                    : 'minmax(0, 1fr) auto',
+                gridTemplateRows: 'minmax(0, 1fr) auto'
+              }
+            : undefined
+        }
       >
-        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
+        <div
+          className={
+            terminalUnderEditor
+              ? 'contents'
+              : 'flex flex-1 min-h-0 min-w-0 overflow-hidden relative'
+          }
+        >
           <div
             className={clsx(
-              'flex-1 flex flex-col min-w-0 relative',
+              'flex-1 flex flex-col min-w-0 min-h-0 relative',
               settings.sidebarPosition === 'left' && 'order-2'
             )}
+            style={terminalUnderEditor ? { gridColumn: editorGridColumn, gridRow: 1 } : undefined}
           >
             {tabs.externalChangeAvailable && (
               <div className="flex items-center justify-between gap-2 bg-yellow-900/90 text-yellow-100 text-xs px-3 py-1.5 shrink-0">
@@ -1347,11 +1377,19 @@ function App(): React.JSX.Element {
 
           {settings.sidebarVisible && !isLeanWindow && (
             <div
+              data-sidebar-pane
               className={clsx(
                 'relative bg-fleet-sidebar flex flex-col shrink-0 border-fleet-border',
                 settings.sidebarPosition === 'left' ? 'order-1 border-r' : 'border-l'
               )}
-              style={{ width: `${sidebarWidth.width}px`, fontSize: density.uiFontSize }}
+              style={{
+                width: `${sidebarWidth.width}px`,
+                fontSize: density.uiFontSize,
+                ...(terminalUnderEditor && {
+                  gridColumn: settings.sidebarPosition === 'left' ? 1 : 2,
+                  gridRow: '1 / span 2'
+                })
+              }}
             >
               <div
                 className={clsx(
@@ -1398,8 +1436,8 @@ function App(): React.JSX.Element {
           )}
         </div>
 
-        {/* Below everything, the full width of the window: the sidebar stops
-          where the terminal starts rather than the terminal living inside the
+        {/* Below everything, the full width of the window (unless docked
+          under the editor): the sidebar stops where the terminal starts rather than the terminal living inside the
           editor column, which left it a narrow sliver on a narrow window. In
           the layout rather than floating over the editor, so the editor gets
           the height that's left - a long file scrolls to its last line
@@ -1409,6 +1447,10 @@ function App(): React.JSX.Element {
             terminal={terminal}
             fontSize={density.terminalFontSize}
             onOpenNew={openDefaultTerminal}
+            sidebarSide={settings.sidebarPosition}
+            layoutStyle={
+              terminalUnderEditor ? { gridColumn: editorGridColumn, gridRow: 2 } : undefined
+            }
           />
         )}
       </div>

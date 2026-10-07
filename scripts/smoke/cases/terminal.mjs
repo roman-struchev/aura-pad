@@ -239,6 +239,31 @@ export default {
       left.dock === 'left' && left.left === 0 && left.right < left.width / 2 + 100,
       JSON.stringify(left)
     )
+    // Under the editor: still a bottom strip, but beside the sidebar rather
+    // than under it - and the same xterm, not a remounted one that lost its
+    // scrollback on the way.
+    await cdp.evaluate(`window.__smokeXterm = document.querySelector('[data-terminal-panel] .xterm')`)
+    const underEditor = await dockGeom('Under Editor')
+    const sidebarGeom = await cdp.evaluate(`(() => {
+      const s = document.querySelector('[data-sidebar-pane]').getBoundingClientRect()
+      return {
+        left: Math.round(s.left), right: Math.round(s.right), bottom: Math.round(s.bottom),
+        sameXterm: document.querySelector('[data-terminal-panel] .xterm') === window.__smokeXterm
+      }
+    })()`)
+    check(
+      'Dock Under Editor keeps the sidebar full height beside the panel',
+      underEditor.dock === 'editor' &&
+        Math.abs(underEditor.bottom - underEditor.height) <= 1 &&
+        Math.abs(sidebarGeom.bottom - underEditor.height) <= 1 &&
+        (underEditor.right <= sidebarGeom.left + 1 || underEditor.left >= sidebarGeom.right - 1),
+      JSON.stringify({ underEditor, sidebarGeom })
+    )
+    check(
+      'and moving there keeps the same terminal (scrollback intact)',
+      sidebarGeom.sameXterm,
+      JSON.stringify(sidebarGeom)
+    )
     const bottom = await dockGeom('Bottom')
     check(
       'Dock Bottom puts it back across the window',

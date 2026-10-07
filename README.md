@@ -157,9 +157,11 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - A real terminal inside the app: multiple tabs, opens at any folder from the file tree.
   The panel is a drawer across the bottom of the window — full width, under the sidebar
   too — and drag its top edge to resize; the editor keeps the height that's left.
-- Dock it where you like: the three buttons in the panel's tab strip pin it to the left,
-  the bottom or the right, or drag the empty part of the strip to the left/right fifth of
-  the window (or anywhere else for the bottom). The choice is remembered.
+- Dock it where you like: the buttons in the panel's tab strip pin it to the left, the
+  bottom, the right, or the bottom of the editor only — there the sidebar keeps its full
+  height beside the panel instead of stopping above it. Or drag the empty part of the strip
+  to the left/right fifth of the window (anywhere else keeps whichever bottom it was in).
+  The choice is remembered.
 - URLs in the output are clickable and open in your browser.
 - `Cmd+K` with the cursor in the terminal clears its scrollback (the same key toggles the
   Git panel everywhere else); the shell keeps running and a half-typed command survives.

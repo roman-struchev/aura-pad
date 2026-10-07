@@ -11,14 +11,19 @@ const MIN_EDITOR_PX = 120
 const MIN_TERMINAL_WIDTH_PX = 240
 const MIN_EDITOR_WIDTH_PX = 240
 
-export type TerminalDock = 'bottom' | 'left' | 'right'
+// 'editor' is the bottom too, but only under the editor column: the sidebar
+// keeps its full height beside both instead of stopping where the panel starts.
+export type TerminalDock = 'bottom' | 'editor' | 'left' | 'right'
+
+// Both bottom flavours lay the panel out as a horizontal strip.
+export const isBottomDock = (dock: TerminalDock): boolean => dock === 'bottom' || dock === 'editor'
 
 const DOCK_KEY = 'aurapad.terminalDock'
 
 const readDock = (): TerminalDock => {
   try {
     const v = localStorage.getItem(DOCK_KEY)
-    if (v === 'left' || v === 'right' || v === 'bottom') return v
+    if (v === 'left' || v === 'right' || v === 'bottom' || v === 'editor') return v
   } catch {
     // storage unavailable - fall through to the default
   }
@@ -29,11 +34,12 @@ const clampTerminalWidth = (width: number): number =>
   Math.max(MIN_TERMINAL_WIDTH_PX, Math.min(width, window.innerWidth - MIN_EDITOR_WIDTH_PX))
 
 // Dragging the panel by its tab strip: the outer fifth of the window on
-// either side docks there, anywhere else is the bottom.
-const dockAt = (clientX: number): TerminalDock => {
+// either side docks there, anywhere else is the bottom - whichever of the two
+// bottom flavours the panel was in, so dragging it doesn't undo that choice.
+const dockAt = (clientX: number, from: TerminalDock): TerminalDock => {
   if (clientX < window.innerWidth * 0.2) return 'left'
   if (clientX > window.innerWidth * 0.8) return 'right'
-  return 'bottom'
+  return from === 'editor' ? 'editor' : 'bottom'
 }
 
 const clampTerminalHeight = (height: number): number =>
@@ -87,9 +93,9 @@ export function useTerminals() {
 
   useEffect(() => {
     if (!dockPreview) return
-    const move = (e: MouseEvent): void => setDockPreview(dockAt(e.clientX))
+    const move = (e: MouseEvent): void => setDockPreview(dockAt(e.clientX, dock))
     const up = (e: MouseEvent): void => {
-      setDock(dockAt(e.clientX))
+      setDock(dockAt(e.clientX, dock))
       setDockPreview(null)
     }
     window.addEventListener('mousemove', move)
@@ -105,7 +111,7 @@ export function useTerminals() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return
-      if (dock !== 'bottom') {
+      if (!isBottomDock(dock)) {
         const w = dock === 'left' ? e.clientX : window.innerWidth - e.clientX
         if (w > MIN_TERMINAL_WIDTH_PX) setTerminalWidth(clampTerminalWidth(w))
         return
@@ -119,7 +125,7 @@ export function useTerminals() {
     if (isResizing) {
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = dock === 'bottom' ? 'ns-resize' : 'ew-resize'
+      document.body.style.cursor = isBottomDock(dock) ? 'ns-resize' : 'ew-resize'
     } else {
       document.body.style.cursor = ''
     }
