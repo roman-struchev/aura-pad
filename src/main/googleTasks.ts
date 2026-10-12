@@ -31,8 +31,11 @@ const accountsPath = (): string => path.join(app.getPath('userData'), 'googleTas
 // "secret" as non-confidential (RFC 8252), so shipping one in the app is standard
 // practice. PKCE (RFC 7636) and loopback redirection protect against authorization
 // code interception.
-const EMBEDDED_CLIENT_ID = process.env.AURAPAD_GTASKS_CLIENT_ID || ''
-const EMBEDDED_CLIENT_SECRET = process.env.AURAPAD_GTASKS_CLIENT_SECRET || ''
+const EMBEDDED_CLIENT_ID =
+  process.env.AURAPAD_GTASKS_CLIENT_ID ||
+  '746871449471-ki4j8anmmjhrhfd0pdmh7ufcm3onaceo.apps.googleusercontent.com'
+const EMBEDDED_CLIENT_SECRET =
+  process.env.AURAPAD_GTASKS_CLIENT_SECRET || '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'
 
 export function getClientStatus(): GTasksClientStatus {
   return {
