@@ -470,7 +470,7 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
         </button>
         {!hasCredentials && (
           <span className="text-[11px] text-gray-600 max-w-sm text-center">
-            OAuth client is not configured. See docs/GOOGLE_TASKS_SETUP.md.
+            OAuth client is not configured.
           </span>
         )}
       </div>

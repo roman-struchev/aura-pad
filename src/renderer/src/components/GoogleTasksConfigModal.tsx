@@ -99,7 +99,7 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
             </button>
             {!hasCredentials && (
               <span className="text-[11px] text-accent-warn">
-                OAuth client is not configured. See docs/GOOGLE_TASKS_SETUP.md.
+                OAuth client is not configured.
               </span>
             )}
           </div>

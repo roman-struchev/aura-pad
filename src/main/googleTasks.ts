@@ -168,7 +168,7 @@ export async function addAccount(): Promise<{ success: boolean; email?: string; 
   if (!clientId || !clientSecret) {
     return {
       success: false,
-      error: 'Google Tasks OAuth client is not configured. See docs/GOOGLE_TASKS_SETUP.md.'
+      error: 'Google Tasks OAuth client is not configured.'
     }
   }
   if (authInFlight) return { success: false, error: 'A sign-in is already in progress.' }
