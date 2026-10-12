@@ -177,7 +177,8 @@ const TaskRow: React.FC<TaskRowProps> = ({
 // are hidden per list by default - "Show completed (n)" reveals them.
 export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, updateSetting }) => {
   // Account list + connect/disconnect shared with the Settings modal.
-  const { accounts, initialized, connecting, connect, disconnect } = useGoogleAccounts()
+  const { accounts, clientStatus, initialized, connecting, connect, disconnect } =
+    useGoogleAccounts()
   // The account the user explicitly picked (null = none chosen yet). The
   // *effective* active account is derived below, so it stays valid as the
   // list changes without a setState-in-effect.
@@ -454,21 +455,24 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
   if (!initialized) return null
 
   if (accounts.length === 0) {
+    const hasCredentials = clientStatus?.hasCredentials ?? false
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 text-gray-500">
         <SquareCheckBig size={28} className="text-gray-600" />
         <span className="text-sm">Connect a Google account to see your tasks.</span>
         <button
           className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white flex items-center gap-1.5"
-          disabled={connecting}
+          disabled={connecting || !hasCredentials}
           onClick={addAccount}
         >
           {connecting && <Loader2 size={12} className="animate-spin" />}
           {connecting ? 'Waiting for browser sign-in…' : 'Add Google Account'}
         </button>
-        <span className="text-[11px] text-gray-600 max-w-sm text-center">
-          Requires an OAuth client (Settings → Google Tasks → Configure…).
-        </span>
+        {!hasCredentials && (
+          <span className="text-[11px] text-gray-600 max-w-sm text-center">
+            OAuth client is not configured. See docs/GOOGLE_TASKS_SETUP.md.
+          </span>
+        )}
       </div>
     )
   }

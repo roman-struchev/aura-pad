@@ -247,7 +247,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 **Google Tasks**
 
 - Your Google task lists in a tab: add, complete, reorder, and edit tasks alongside your
-  files. Off until you enter your own Google OAuth client id/secret in Settings.
+  files. Connect in one click with your Google account.
 
 **Updates**
 

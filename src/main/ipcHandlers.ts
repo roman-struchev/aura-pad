@@ -56,6 +56,7 @@ import {
 } from './git'
 import {
   listAccounts as gtasksListAccounts,
+  getClientStatus as gtasksGetClientStatus,
   addAccount as gtasksAddAccount,
   removeAccount as gtasksRemoveAccount,
   listTaskLists as gtasksListTaskLists,
@@ -362,6 +363,7 @@ function registerGitIpc(): void {
 
 function registerGoogleTasksIpc(): void {
   handleInvoke('gtasks-accounts', () => gtasksListAccounts())
+  handleInvoke('gtasks-client-status', () => gtasksGetClientStatus())
   handleInvoke('gtasks-add-account', () => gtasksAddAccount())
   handleInvoke('gtasks-remove-account', (email) => gtasksRemoveAccount(email))
   handleInvoke('gtasks-lists', (email) => gtasksListTaskLists(email))

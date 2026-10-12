@@ -5,7 +5,7 @@ import type { ListeningPort } from './ports'
 import type { SearchResponse } from './searchResult'
 import type { ReplaceRequest, ReplaceResult, SearchOptions } from './searchQuery'
 import type { GitBlameLine, GitCommit, GitRepoStatus } from './gitStatus'
-import type { GTask, GTaskInput, GTaskList } from './googleTasks'
+import type { GTask, GTaskInput, GTaskList, GTasksClientStatus } from './googleTasks'
 import type { HttpEnvironments, HttpHistoryEntry, HttpRequestSpec, HttpSendResult } from './http'
 import type { LintMarker } from './lint'
 import type { LocalHistoryEntry } from './localHistory'
@@ -199,6 +199,7 @@ export interface InvokeContracts {
     result: GitCombinedResult & { statuses: GitRepoStatus[] }
   }
   'gtasks-accounts': { args: []; result: string[] }
+  'gtasks-client-status': { args: []; result: GTasksClientStatus }
   'gtasks-add-account': { args: []; result: GTasksAddAccountResult }
   'gtasks-remove-account': { args: [email: string]; result: void }
   'gtasks-lists': { args: [email: string]; result: GTasksResult<GTaskList[]> }
@@ -348,6 +349,7 @@ export const INVOKE_CHANNELS = {
   gitBranches: 'git-branches',
   gitCheckout: 'git-checkout',
   gtasksAccounts: 'gtasks-accounts',
+  gtasksClientStatus: 'gtasks-client-status',
   gtasksAddAccount: 'gtasks-add-account',
   gtasksRemoveAccount: 'gtasks-remove-account',
   gtasksLists: 'gtasks-lists',

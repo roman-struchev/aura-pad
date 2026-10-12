@@ -300,7 +300,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
             {configureRow(
               'Google Tasks',
-              `${settings.extensions.googleTasks.enabled ? 'Enabled' : 'Disabled'} · accounts and OAuth client`,
+              `${settings.extensions.googleTasks.enabled ? 'Enabled' : 'Disabled'} · connected accounts`,
               onConfigureGoogleTasks
             )}
             {configureRow(

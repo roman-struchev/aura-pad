@@ -3,8 +3,7 @@ import crypto from 'crypto'
 import http from 'http'
 import path from 'path'
 import { readConfigFile, writeConfigFile } from './configFile'
-import { loadSettings } from './settings'
-import type { GTask, GTaskInput, GTaskList } from '../shared/googleTasks'
+import type { GTask, GTaskInput, GTaskList, GTasksClientStatus } from '../shared/googleTasks'
 
 // Read-write scope: the tab can create/edit tasks, not just display them.
 // openid+email are for the id_token, which is how the account gets labeled
@@ -28,12 +27,18 @@ interface StoredAccount {
 
 const accountsPath = (): string => path.join(app.getPath('userData'), 'googleTasksAccounts.json')
 
-// Optional baked-in OAuth client. For installed apps Google treats the
-// "secret" as non-confidential, so shipping one in the binary is normal
-// practice - fill these in once and the whole Settings→client-id step
-// disappears for every install; the settings fields then act as an override.
-const EMBEDDED_CLIENT_ID = ''
-const EMBEDDED_CLIENT_SECRET = ''
+// Built-in OAuth client. For installed desktop apps Google treats the
+// "secret" as non-confidential (RFC 8252), so shipping one in the app is standard
+// practice. PKCE (RFC 7636) and loopback redirection protect against authorization
+// code interception.
+const EMBEDDED_CLIENT_ID = process.env.AURAPAD_GTASKS_CLIENT_ID || ''
+const EMBEDDED_CLIENT_SECRET = process.env.AURAPAD_GTASKS_CLIENT_SECRET || ''
+
+export function getClientStatus(): GTasksClientStatus {
+  return {
+    hasCredentials: Boolean(EMBEDDED_CLIENT_ID && EMBEDDED_CLIENT_SECRET)
+  }
+}
 
 function loadAccounts(): StoredAccount[] {
   // Copied so add/remove below can build new lists without mutating the
@@ -54,10 +59,9 @@ export function listAccounts(): string[] {
 const accessTokens = new Map<string, { token: string; expiresAt: number }>()
 
 function oauthClient(): { clientId: string; clientSecret: string } {
-  const { clientId, clientSecret } = loadSettings().extensions.googleTasks
   return {
-    clientId: clientId || EMBEDDED_CLIENT_ID,
-    clientSecret: clientSecret || EMBEDDED_CLIENT_SECRET
+    clientId: EMBEDDED_CLIENT_ID,
+    clientSecret: EMBEDDED_CLIENT_SECRET
   }
 }
 
@@ -158,10 +162,10 @@ let authInFlight = false
 
 export async function addAccount(): Promise<{ success: boolean; email?: string; error?: string }> {
   const { clientId, clientSecret } = oauthClient()
-  if (!clientId) {
+  if (!clientId || !clientSecret) {
     return {
       success: false,
-      error: 'Set the Google OAuth Client ID in Settings → Google Tasks → Configure… first.'
+      error: 'Google Tasks OAuth client is not configured. See docs/GOOGLE_TASKS_SETUP.md.'
     }
   }
   if (authInFlight) return { success: false, error: 'A sign-in is already in progress.' }

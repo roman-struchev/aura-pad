@@ -136,11 +136,9 @@ export interface ExtensionSettings {
   }
   googleTasks: {
     enabled: boolean
-    // OAuth "Desktop app" client from Google Cloud Console. For installed
-    // apps the secret is not actually confidential - it's still required by
-    // Google's token endpoint for desktop-type clients.
-    clientId: string
-    clientSecret: string
+    // Legacy custom OAuth client credentials (now built-in by default).
+    clientId?: string
+    clientSecret?: string
   }
   // Real-time collaborative editing ("Work Together"): share the active tab
   // via a time-limited link. The backend is a separate, self-hosted service
@@ -257,9 +255,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   translateModel: 'google-web',
   extensions: {
     git: { enabled: true },
-    // Off by default: it needs a one-time OAuth client setup before it can
-    // do anything, so it starts hidden until configured.
-    googleTasks: { enabled: false, clientId: '', clientSecret: '' },
+    // Off by default: show the button/tab when the user enables it.
+    googleTasks: { enabled: false },
     // Off by default; the backend URL is pre-filled with the default hosted
     // instance so enabling the toggle alone is enough to get started, but
     // it's just a normal setting - point it at a self-hosted backend instead.

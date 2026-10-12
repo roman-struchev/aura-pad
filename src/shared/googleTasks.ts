@@ -31,3 +31,7 @@ export interface GTaskInput {
   notes?: string
   due?: string
 }
+
+export interface GTasksClientStatus {
+  hasCredentials: boolean
+}

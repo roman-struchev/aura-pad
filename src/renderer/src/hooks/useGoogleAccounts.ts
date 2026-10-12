@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { GTasksClientStatus } from '../../../shared/googleTasks'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 
 // Shared Google-account connect/disconnect state, used by both the Google
@@ -8,6 +9,7 @@ import { alertDialog, confirmDialog } from '../lib/dialogs'
 // active account, the modal shows a "just connected" highlight.
 export function useGoogleAccounts(): {
   accounts: string[]
+  clientStatus: GTasksClientStatus | null
   // False until the first account list has loaded - lets a consumer avoid
   // flashing an empty state before the initial fetch resolves.
   initialized: boolean
@@ -23,14 +25,19 @@ export function useGoogleAccounts(): {
   disconnect: (email: string) => Promise<boolean>
 } {
   const [accounts, setAccounts] = useState<string[]>([])
+  const [clientStatus, setClientStatus] = useState<GTasksClientStatus | null>(null)
   const [initialized, setInitialized] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [justConnected, setJustConnected] = useState<string | null>(null)
   const justConnectedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refresh = async (): Promise<string[]> => {
-    const list = await window.api.gtasksAccounts()
+    const [list, status] = await Promise.all([
+      window.api.gtasksAccounts(),
+      window.api.gtasksClientStatus()
+    ])
     setAccounts(list)
+    setClientStatus(status)
     setInitialized(true)
     return list
   }
@@ -38,10 +45,13 @@ export function useGoogleAccounts(): {
   useEffect(() => {
     // Inlined (rather than calling refresh()) so the state updates sit in the
     // fetch's .then, not synchronously in the effect body.
-    window.api.gtasksAccounts().then((list) => {
-      setAccounts(list)
-      setInitialized(true)
-    })
+    Promise.all([window.api.gtasksAccounts(), window.api.gtasksClientStatus()]).then(
+      ([list, status]) => {
+        setAccounts(list)
+        setClientStatus(status)
+        setInitialized(true)
+      }
+    )
     return () => {
       if (justConnectedTimer.current) clearTimeout(justConnectedTimer.current)
     }
@@ -74,5 +84,14 @@ export function useGoogleAccounts(): {
     return true
   }
 
-  return { accounts, initialized, connecting, justConnected, refresh, connect, disconnect }
+  return {
+    accounts,
+    clientStatus,
+    initialized,
+    connecting,
+    justConnected,
+    refresh,
+    connect,
+    disconnect
+  }
 }

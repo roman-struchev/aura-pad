@@ -237,6 +237,7 @@ Note: a full OAuth round-trip needs a real client; stub the token endpoints
 | 8.1 | Connect an account (finish the browser sign-in) | The app window comes to the front automatically; the new account appears with a transient green "Connected" highlight (config modal) or becomes the active account (tab) |
 | 8.2 | Connect from the Settings modal, then from the tab | Both paths add the account, show the alert on failure, and refresh the list (shared `useGoogleAccounts`) |
 | 8.3 | Disconnect an account from the tab | Confirm dialog; on confirm the account and its cached lists are dropped; the active account falls back to another connected one |
+| 8.4 | Config modal & tab account management | When built-in OAuth client is configured, 'Add Google Account' starts browser sign-in in one click; when accounts are connected, they appear in the list with disconnect button; if not configured, a warning prompts about missing client |
 
 ---
 

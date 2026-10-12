@@ -14,10 +14,9 @@ interface GoogleTasksConfigModalProps {
   onClose: () => void
 }
 
-// The Google Tasks extension's own settings page (Settings → Google Tasks →
-// Configure…): the enable toggle, the one-time OAuth client setup, and the
-// connected accounts. Accounts can also be added from the tab itself - this
-// is just the one place where everything lives together.
+// The Google Tasks extension's settings page (Settings → Google Tasks → Configure…):
+// the enable toggle and connected accounts. Accounts can also be added from the tab
+// itself - this is the central place to manage accounts.
 export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
   settings,
   updateSetting,
@@ -25,15 +24,16 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
   onClose
 }) => {
   const gtasks = settings.extensions.googleTasks
-  // Account list + connect/disconnect (with the "just connected" green
-  // highlight) shared with the Google Tasks tab via this hook.
-  const { accounts, connecting, justConnected, connect, disconnect } = useGoogleAccounts()
+  const { accounts, connecting, justConnected, connect, disconnect, clientStatus } =
+    useGoogleAccounts()
 
   const patch = (values: Partial<typeof gtasks>): void =>
     updateSetting('extensions', {
       ...settings.extensions,
       googleTasks: { ...gtasks, ...values }
     })
+
+  const hasCredentials = clientStatus?.hasCredentials ?? false
 
   return (
     <Modal title="Google Tasks" onClose={onClose} width="w-[26rem]">
@@ -47,76 +47,29 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
           descriptionClassName={density.settingsDescriptionClass}
         />
 
-        <div className="flex flex-col gap-2">
-          <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>OAuth Client</span>
-          {(
-            [
-              ['clientId', 'Client ID'],
-              ['clientSecret', 'Client Secret']
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="flex flex-col gap-1">
-              <span className={clsx(density.settingsDescriptionClass, 'text-gray-500')}>
-                {label}
-              </span>
-              <input
-                type={key === 'clientSecret' ? 'password' : 'text'}
-                className="bg-fleet-bg border border-fleet-border rounded px-2 py-1 text-xs text-fleet-text outline-none focus:border-blue-500"
-                value={gtasks[key]}
-                spellCheck={false}
-                onChange={(e) => patch({ [key]: e.target.value })}
-              />
-            </label>
-          ))}
-          <span className={clsx(density.settingsDescriptionClass, 'text-gray-600')}>
-            One-time setup: create a “Desktop app” OAuth client at{' '}
-            <a
-              href="https://console.cloud.google.com/apis/credentials"
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-400 hover:underline"
-            >
-              console.cloud.google.com/apis/credentials
-            </a>{' '}
-            (with the Tasks API enabled). After that, connecting an account is just a browser
-            sign-in.
-          </span>
-          <span className={clsx(density.settingsDescriptionClass, 'text-gray-600')}>
-            For create/edit access, add the <code>tasks</code> scope (not just{' '}
-            <code>tasks.readonly</code>) under{' '}
-            <a
-              href="https://console.cloud.google.com/apis/credentials/consent"
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-400 hover:underline"
-            >
-              OAuth consent screen → Data access
-            </a>
-            , then reconnect any already-connected account.
-          </span>
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <span className={clsx(density.settingsLabelClass, 'text-fleet-text')}>Accounts</span>
+
           {accounts.length === 0 && (
             <span className={clsx(density.settingsDescriptionClass, 'text-gray-500 italic')}>
               No accounts connected.
             </span>
           )}
+
           {accounts.map((email) => (
             <div
               key={email}
               className={clsx(
                 'group flex items-center gap-2 px-2 py-1 rounded border text-xs text-fleet-text transition-colors',
                 justConnected === email
-                  ? 'bg-green-500/10 border-green-500/50'
+                  ? 'bg-accent-ok/10 border-accent-ok/50'
                   : 'bg-fleet-bg border-fleet-border'
               )}
             >
-              {justConnected === email && <Check size={12} className="text-green-500 shrink-0" />}
+              {justConnected === email && <Check size={12} className="text-accent-ok shrink-0" />}
               <span className="truncate flex-1">{email}</span>
               {justConnected === email && (
-                <span className="text-green-500 shrink-0">Connected</span>
+                <span className="text-accent-ok shrink-0">Connected</span>
               )}
               <button
                 className="opacity-50 hover:opacity-100 shrink-0"
@@ -127,21 +80,29 @@ export const GoogleTasksConfigModal: React.FC<GoogleTasksConfigModalProps> = ({
               </button>
             </div>
           ))}
-          <button
-            className="self-start mt-1 px-2.5 py-1 text-xs rounded border border-fleet-border hover:bg-fleet-active text-fleet-text disabled:opacity-40 flex items-center gap-1.5"
-            disabled={connecting}
-            onClick={connect}
-          >
-            {connecting ? (
-              <>
-                <Loader2 size={12} className="animate-spin" /> Waiting for browser sign-in…
-              </>
-            ) : (
-              <>
-                <Plus size={12} /> Add Google Account
-              </>
+
+          <div className="flex flex-col gap-1 mt-1">
+            <button
+              className="self-start px-2.5 py-1 text-xs rounded border border-fleet-border hover:bg-fleet-active text-fleet-text disabled:opacity-40 flex items-center gap-1.5"
+              disabled={connecting || !hasCredentials}
+              onClick={connect}
+            >
+              {connecting ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Waiting for browser sign-in…
+                </>
+              ) : (
+                <>
+                  <Plus size={12} /> Add Google Account
+                </>
+              )}
+            </button>
+            {!hasCredentials && (
+              <span className="text-[11px] text-accent-warn">
+                OAuth client is not configured. See docs/GOOGLE_TASKS_SETUP.md.
+              </span>
             )}
-          </button>
+          </div>
         </div>
       </div>
     </Modal>
