@@ -9,7 +9,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-  CalendarArrowDown
+  CalendarArrowDown,
+  ArrowRightLeft
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { GTask, GTaskInput, GTaskList } from '../../../shared/googleTasks'
@@ -17,6 +18,7 @@ import type { AppSettings } from '../../../shared/settings'
 import { alertDialog } from '../lib/dialogs'
 import { useGoogleAccounts } from '../hooks/useGoogleAccounts'
 import { GoogleTaskEditModal } from './GoogleTaskEditModal'
+import { GoogleTaskTransferMenu, type TransferTargets } from './GoogleTaskTransferMenu'
 
 interface GoogleTasksTabProps {
   settings: AppSettings
@@ -72,6 +74,11 @@ interface TaskRowProps {
   // round trip to Google isn't instant, and with no feedback the task just
   // sits there looking unresponsive until it resolves.
   togglePending?: boolean
+  // True while the task is being moved to another account.
+  transferPending?: boolean
+  // Opens the "move to another account" menu at the given viewport point.
+  // Absent with a single connected account - there is nowhere to move to.
+  onTransfer?: (x: number, y: number) => void
   onToggleComplete: () => void
   onEdit: () => void
   onDragStart?: () => void
@@ -87,6 +94,8 @@ const TaskRow: React.FC<TaskRowProps> = ({
   isDragging,
   isDragOver,
   togglePending,
+  transferPending,
+  onTransfer,
   onToggleComplete,
   onEdit,
   onDragStart,
@@ -100,11 +109,20 @@ const TaskRow: React.FC<TaskRowProps> = ({
   return (
     <div
       className={clsx(
-        'px-2 py-1.5 rounded hover:bg-fleet-active cursor-pointer',
+        'group px-2 py-1.5 rounded hover:bg-fleet-active cursor-pointer',
         isDragOver && 'bg-blue-500/20',
-        isDragging && 'opacity-40'
+        (isDragging || transferPending) && 'opacity-40'
       )}
-      onClick={onEdit}
+      data-gtask-id={task.id}
+      onClick={transferPending ? undefined : onEdit}
+      onContextMenu={
+        onTransfer && !transferPending
+          ? (e) => {
+              e.preventDefault()
+              onTransfer(e.clientX, e.clientY)
+            }
+          : undefined
+      }
       title="Click to edit"
       draggable={draggable}
       onDragStart={onDragStart}
@@ -140,6 +158,29 @@ const TaskRow: React.FC<TaskRowProps> = ({
         >
           {task.title || '(untitled)'}
         </span>
+        {onTransfer && (
+          <button
+            className={clsx(
+              'shrink-0 p-0.5 rounded text-gray-500 hover:text-fleet-textHover hover:bg-fleet-border',
+              transferPending
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+            )}
+            title="Move to another account"
+            disabled={transferPending}
+            onClick={(e) => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              onTransfer(rect.left, rect.bottom + 2)
+            }}
+          >
+            {transferPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <ArrowRightLeft size={12} />
+            )}
+          </button>
+        )}
         {due && (
           <span
             className={clsx(
@@ -174,7 +215,9 @@ const TaskRow: React.FC<TaskRowProps> = ({
 // and editing tasks (title/notes/due date, each with its own dictation mic),
 // toggling completion, and drag-reordering open tasks within a list; deleting
 // a task isn't exposed here (do that in Google Tasks itself). Completed tasks
-// are hidden per list by default - "Show completed (n)" reveals them.
+// are hidden per list by default - "Show completed (n)" reveals them. With
+// more than one account connected, a task can be moved to another account
+// (hover icon or right-click), which is a copy there + delete here.
 export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, updateSetting }) => {
   // Account list + connect/disconnect shared with the Settings modal.
   const { accounts, clientStatus, initialized, connecting, connect, disconnect } =
@@ -205,6 +248,17 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
   // button shows a spinner and every list's button is disabled while it runs.
   const [sortingListId, setSortingListId] = useState<string | null>(null)
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null)
+  // The "move to another account" menu, anchored at a viewport point.
+  const [transferMenu, setTransferMenu] = useState<{
+    x: number
+    y: number
+    task: GTask
+    listId: string
+  } | null>(null)
+  // Task lists of the accounts a task can move to, fetched when the menu
+  // first needs them (the tab only loads the active account's lists).
+  const [transferTargets, setTransferTargets] = useState<TransferTargets>({})
+  const [transferringTaskId, setTransferringTaskId] = useState<string | null>(null)
   // Bumped by the refresh button; the fetch effect keys on it.
   const [refreshSeq, setRefreshSeq] = useState(0)
   // Which fetch has finished (and with what error). Loading/error are derived
@@ -251,6 +305,22 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
     }
   }, [activeEmail, refreshSeq])
 
+  // Any click elsewhere (including picking an item - it runs first) or Escape
+  // closes the transfer menu, the same way the tab bar's menus close.
+  useEffect(() => {
+    if (!transferMenu) return
+    const close = (): void => setTransferMenu(null)
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close()
+    }
+    window.addEventListener('click', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [transferMenu])
+
   // Re-pulls just one list after a mutation (create/edit/complete) - cheaper
   // and less jarring than refetching every list in every account.
   const refetchList = async (email: string, listId: string): Promise<void> => {
@@ -280,6 +350,67 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
       await refetchList(activeEmail, listId)
     } finally {
       setTogglingTaskId(null)
+    }
+  }
+
+  const openTransferMenu = (x: number, y: number, task: GTask, listId: string): void => {
+    setTransferMenu({ x, y, task, listId })
+    for (const email of accounts) {
+      if (email === activeEmail) continue
+      const current = transferTargets[email]
+      if (current && !('error' in current)) continue
+      const loaded = listsByEmail[email]
+      if (loaded) {
+        setTransferTargets((prev) => ({ ...prev, [email]: loaded.map((e) => e.list) }))
+        continue
+      }
+      setTransferTargets((prev) => ({ ...prev, [email]: undefined }))
+      window.api.gtasksLists(email).then((result) =>
+        setTransferTargets((prev) => ({
+          ...prev,
+          [email]: result.success ? result.data : { error: result.error }
+        }))
+      )
+    }
+  }
+
+  const transferTask = async (
+    task: GTask,
+    fromListId: string,
+    toEmail: string,
+    toListId: string
+  ): Promise<void> => {
+    // Captured: the user may switch accounts while the request runs.
+    const fromEmail = activeEmail
+    if (!fromEmail) return
+    setTransferringTaskId(task.id)
+    try {
+      const result = await window.api.gtasksTransferTask(
+        fromEmail,
+        fromListId,
+        task.id,
+        toEmail,
+        toListId
+      )
+      if (!result.success) {
+        await alertDialog(result.error)
+        // A half-done move (copied, not deleted) shows up as it really is.
+        await refetchList(fromEmail, fromListId)
+        return
+      }
+      // Gone from here along with its subtasks, which moved with it.
+      setListsByEmail((prev) => ({
+        ...prev,
+        [fromEmail]: (prev[fromEmail] ?? []).map((e) =>
+          e.list.id === fromListId
+            ? { ...e, tasks: e.tasks.filter((t) => t.id !== task.id && t.parent !== task.id) }
+            : e
+        )
+      }))
+      // The target account's lists are only cached if it was viewed before.
+      if (listsByEmail[toEmail]) await refetchList(toEmail, toListId)
+    } finally {
+      setTransferringTaskId(null)
     }
   }
 
@@ -478,6 +609,12 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
   }
 
   const lists = activeEmail ? listsByEmail[activeEmail] : undefined
+  const otherAccounts = accounts.filter((email) => email !== activeEmail)
+  const transferHandler =
+    otherAccounts.length > 0
+      ? (task: GTask, listId: string) => (x: number, y: number) =>
+          openTransferMenu(x, y, task, listId)
+      : () => undefined
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-fleet-bg">
@@ -518,7 +655,10 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
         <button
           className="p-1 hover:bg-fleet-active rounded text-gray-400 hover:text-fleet-textHover shrink-0"
           title="Refresh"
-          onClick={() => setRefreshSeq((s) => s + 1)}
+          onClick={() => {
+            setTransferTargets({})
+            setRefreshSeq((s) => s + 1)
+          }}
         >
           <RefreshCw size={13} className={clsx(loading && 'animate-spin')} />
         </button>
@@ -610,6 +750,8 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                           isDragging={draggedTaskId === task.id}
                           isDragOver={dragOverTaskId === task.id}
                           togglePending={togglingTaskId === task.id}
+                          transferPending={transferringTaskId === task.id}
+                          onTransfer={transferHandler(task, list.id)}
                           onToggleComplete={() => toggleComplete(task, list.id)}
                           onEdit={() => setEditState({ mode: 'edit', listId: list.id, task })}
                           onDragStart={() => {
@@ -656,6 +798,8 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
                             key={task.id}
                             task={task}
                             togglePending={togglingTaskId === task.id}
+                            transferPending={transferringTaskId === task.id}
+                            onTransfer={transferHandler(task, list.id)}
                             onToggleComplete={() => toggleComplete(task, list.id)}
                             onEdit={() => setEditState({ mode: 'edit', listId: list.id, task })}
                           />
@@ -668,6 +812,18 @@ export const GoogleTasksTab: React.FC<GoogleTasksTabProps> = ({ settings, update
           </div>
         )}
       </div>
+
+      {transferMenu && (
+        <GoogleTaskTransferMenu
+          x={transferMenu.x}
+          y={transferMenu.y}
+          accounts={otherAccounts}
+          targets={transferTargets}
+          onPick={(email, listId) =>
+            transferTask(transferMenu.task, transferMenu.listId, email, listId)
+          }
+        />
+      )}
 
       {editState && (
         <GoogleTaskEditModal

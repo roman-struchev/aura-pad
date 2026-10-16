@@ -63,7 +63,8 @@ import {
   listTasks as gtasksListTasks,
   createTask as gtasksCreateTask,
   updateTask as gtasksUpdateTask,
-  moveTask as gtasksMoveTask
+  moveTask as gtasksMoveTask,
+  transferTask as gtasksTransferTask
 } from './googleTasks'
 import { cancelHttpRequest, sendHttpRequest } from './http'
 import { clearHttpHistory, loadHttpHistory } from './httpHistory'
@@ -376,6 +377,9 @@ function registerGoogleTasksIpc(): void {
   )
   handleInvoke('gtasks-move-task', (email, listId, taskId, previousTaskId, destinationListId) =>
     gtasksMoveTask(email, listId, taskId, previousTaskId, destinationListId)
+  )
+  handleInvoke('gtasks-transfer-task', (fromEmail, fromListId, taskId, toEmail, toListId) =>
+    gtasksTransferTask(fromEmail, fromListId, taskId, toEmail, toListId)
   )
 }
 

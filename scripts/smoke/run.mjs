@@ -19,6 +19,7 @@ import fs from 'fs'
 import { connect, connectMain, waitFor, sleep } from './cdp.mjs'
 import { makeUi } from './ui.mjs'
 import { createFixture } from './fixture.mjs'
+import { startGtasksMock } from './gtasks-mock.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..')
@@ -26,6 +27,9 @@ const repoRoot = path.resolve(here, '..', '..')
 // would attach the suite to the wrong app.
 const PORT = Number(process.env.SMOKE_CDP_PORT || 9333)
 const MAIN_PORT = PORT + 1
+// The Google Tasks mock (see gtasks-mock.mjs) - clear of the HTTP and Ports
+// cases' ports at +20 and +21.
+const GTASKS_PORT = PORT + 30
 
 const argv = process.argv.slice(2)
 const keepAlive = argv.includes('--keep')
@@ -52,6 +56,7 @@ const CASE_FILES = [
   'git-editor.mjs',
   'http.mjs',
   'ports.mjs',
+  'google-tasks.mjs',
   'security.mjs',
   'update-toast.mjs',
   'windows.mjs',
@@ -88,6 +93,8 @@ function launch(fixture) {
       env: {
         ...process.env,
         AURAPAD_USER_DATA_DIR: fixture.profile,
+        AURAPAD_GTASKS_TOKEN_URL: `http://127.0.0.1:${GTASKS_PORT}/token`,
+        AURAPAD_GTASKS_API_URL: `http://127.0.0.1:${GTASKS_PORT}/tasks/v1`,
         ...(showWindow ? {} : { AURAPAD_INVISIBLE: '1' })
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -215,6 +222,9 @@ async function main() {
   await assertPortFree()
   const fixture = createFixture()
   console.log(`workspace: ${fixture.ws}\n`)
+  // Something else on the port only costs the Google Tasks case (it skips),
+  // not the run.
+  const gtasks = await startGtasksMock(GTASKS_PORT).catch(() => null)
 
   let app = launch(fixture)
   running = { app, fixture }
@@ -269,6 +279,7 @@ async function main() {
     cdp,
     ui: makeUi(cdp),
     fixture,
+    gtasks,
     ws: fixture.ws,
     check,
     skip,
@@ -352,6 +363,7 @@ async function main() {
     await quitApp()
     killApp(app)
     fixture.cleanup()
+    gtasks?.close()
   }
   process.exit(failed.length > 0 ? 1 : 0)
 }

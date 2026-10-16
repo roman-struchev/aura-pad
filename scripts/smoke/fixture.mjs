@@ -10,6 +10,7 @@ import os from 'os'
 import path from 'path'
 import { execFileSync } from 'child_process'
 import { createRequire } from 'module'
+import { GTASKS_ACCOUNTS } from './gtasks-mock.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -121,6 +122,18 @@ export function createFixture() {
   }
 
   fs.writeFileSync(path.join(profile, 'workspaces.json'), JSON.stringify([ws]))
+
+  // Two connected Google accounts, served by the mock in gtasks-mock.mjs
+  // (the refresh token doubles as the account's name there), and the Google
+  // Tasks extension switched on so its sidebar entry exists.
+  fs.writeFileSync(
+    path.join(profile, 'googleTasksAccounts.json'),
+    JSON.stringify(GTASKS_ACCOUNTS.map((email) => ({ email, refreshToken: email })))
+  )
+  fs.writeFileSync(
+    path.join(profile, 'settings.json'),
+    JSON.stringify({ extensions: { googleTasks: { enabled: true } } })
+  )
 
   return {
     root,

@@ -301,7 +301,9 @@ async function apiRequest(
       detail ? `Google Tasks API: ${detail}` : `Google Tasks API error (${res.status}).`
     )
   }
-  return (await res.json()) as Record<string, unknown>
+  // DELETE answers 204 with an empty body - nothing to parse.
+  const text = await res.text()
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {}
 }
 
 const apiGet = (email: string, url: string): Promise<Record<string, unknown>> =>
@@ -334,23 +336,26 @@ function toGTask(t: Record<string, unknown>): GTask {
     due: t.due ? String(t.due) : undefined,
     completed: t.completed ? String(t.completed) : undefined,
     updated: t.updated ? String(t.updated) : undefined,
-    position: t.position ? String(t.position) : undefined
+    position: t.position ? String(t.position) : undefined,
+    parent: t.parent ? String(t.parent) : undefined
   }
 }
 
+async function fetchTasks(email: string, listId: string): Promise<GTask[]> {
+  // showDeleted defaults to false - deleted tasks stay out, as intended.
+  // showHidden is required to see completed tasks at all (the Tasks apps
+  // "hide" them on completion); the renderer decides whether to display
+  // them (hidden by default, revealed on request).
+  const data = await apiGet(
+    email,
+    `${TASKS_API}/lists/${encodeURIComponent(listId)}/tasks?maxResults=200&showCompleted=true&showHidden=true`
+  )
+  const items = (data.items as Record<string, unknown>[] | undefined) ?? []
+  return items.map(toGTask)
+}
+
 export function listTasks(email: string, listId: string): Promise<ApiResult<GTask[]>> {
-  return wrap(async () => {
-    // showDeleted defaults to false - deleted tasks stay out, as intended.
-    // showHidden is required to see completed tasks at all (the Tasks apps
-    // "hide" them on completion); the renderer decides whether to display
-    // them (hidden by default, revealed on request).
-    const data = await apiGet(
-      email,
-      `${TASKS_API}/lists/${encodeURIComponent(listId)}/tasks?maxResults=200&showCompleted=true&showHidden=true`
-    )
-    const items = (data.items as Record<string, unknown>[] | undefined) ?? []
-    return items.map(toGTask)
-  })
+  return wrap(() => fetchTasks(email, listId))
 }
 
 export function createTask(
@@ -419,5 +424,64 @@ export function updateTask(
       body
     )
     return toGTask(data)
+  })
+}
+
+// The fields a task carries over to another account. Ids, positions and the
+// read-only `links` (e.g. "from Gmail") are the source account's own and
+// don't survive the trip.
+function copyBody(task: GTask): Record<string, unknown> {
+  return {
+    title: task.title,
+    notes: task.notes || undefined,
+    due: task.due || undefined,
+    status: task.status,
+    completed: task.status === 'completed' ? task.completed : undefined
+  }
+}
+
+// Moves a task into a list of *another* account. The Tasks API's move
+// endpoint only works within one account, so this is a copy + delete: the
+// task (and its subtasks, in their order) is created in the target first and
+// only then removed from the source - a failure part way leaves a duplicate
+// at worst, never a lost task. Subtasks are deleted before their parent so
+// the delete never depends on how Google cascades a parent's removal.
+export function transferTask(
+  fromEmail: string,
+  fromListId: string,
+  taskId: string,
+  toEmail: string,
+  toListId: string
+): Promise<ApiResult<GTask>> {
+  return wrap(async () => {
+    if (fromEmail === toEmail) throw new Error('The task is already in this account.')
+    // Read fresh rather than trusting the renderer's copy, which may predate
+    // an edit made elsewhere.
+    const sourceBase = `${TASKS_API}/lists/${encodeURIComponent(fromListId)}/tasks`
+    const task = toGTask(await apiGet(fromEmail, `${sourceBase}/${encodeURIComponent(taskId)}`))
+    const children = (await fetchTasks(fromEmail, fromListId))
+      .filter((t) => t.parent === taskId)
+      .sort((a, b) => (a.position ?? '').localeCompare(b.position ?? ''))
+
+    const targetBase = `${TASKS_API}/lists/${encodeURIComponent(toListId)}/tasks`
+    const created = toGTask(await apiRequest(toEmail, 'POST', targetBase, copyBody(task)))
+    let previous: string | undefined
+    for (const child of children) {
+      const params = new URLSearchParams({ parent: created.id })
+      if (previous) params.set('previous', previous)
+      const copy = await apiRequest(toEmail, 'POST', `${targetBase}?${params}`, copyBody(child))
+      previous = String(copy.id)
+    }
+
+    try {
+      for (const t of [...children, task])
+        await apiRequest(fromEmail, 'DELETE', `${sourceBase}/${encodeURIComponent(t.id)}`)
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e)
+      throw new Error(
+        `Copied to ${toEmail}, but it could not be removed from ${fromEmail}: ${reason}`
+      )
+    }
+    return created
   })
 }

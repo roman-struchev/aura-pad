@@ -222,6 +222,12 @@ export interface InvokeContracts {
     ]
     result: GTasksResult<GTask>
   }
+  // Moves a task (with its subtasks) into a list of another connected
+  // account: created there, then deleted here. Resolves with the new task.
+  'gtasks-transfer-task': {
+    args: [fromEmail: string, fromListId: string, taskId: string, toEmail: string, toListId: string]
+    result: GTasksResult<GTask>
+  }
   // The HTTP client. requestId is the renderer's handle for cancelling a
   // request that is still in flight (see the http-cancel send channel).
   'http-send': { args: [requestId: string, spec: HttpRequestSpec]; result: HttpSendResult }
@@ -357,6 +363,7 @@ export const INVOKE_CHANNELS = {
   gtasksCreateTask: 'gtasks-create-task',
   gtasksUpdateTask: 'gtasks-update-task',
   gtasksMoveTask: 'gtasks-move-task',
+  gtasksTransferTask: 'gtasks-transfer-task',
   httpSend: 'http-send',
   httpEnvironments: 'http-environments',
   httpSaveRequest: 'http-save-request',

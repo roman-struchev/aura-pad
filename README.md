@@ -248,6 +248,8 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 
 - Your Google task lists in a tab: add, complete, reorder, and edit tasks alongside your
   files. Connect in one click with your Google account.
+- Several Google accounts side by side; move a task (with its subtasks) to another
+  account in two clicks — the arrows icon on hover, or right-click the task.
 
 **Updates**
 

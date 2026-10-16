@@ -20,6 +20,8 @@ export interface GTask {
   // this order (a documented API quirk), so callers must sort by it
   // themselves to get the order the Google Tasks app shows.
   position?: string
+  // Id of the parent task when this one is a subtask.
+  parent?: string
 }
 
 // Payload for creating/updating a task. `due`, when present, is either a full
