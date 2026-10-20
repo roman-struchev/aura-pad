@@ -260,7 +260,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Off by default; the backend URL is pre-filled with the default hosted
     // instance so enabling the toggle alone is enough to get started, but
     // it's just a normal setting - point it at a self-hosted backend instead.
-    workTogether: { enabled: false, backendUrl: 'https://aura.struchev.site', displayName: 'Host' },
+    workTogether: { enabled: false, backendUrl: 'https://aura-pad.struchev.com', displayName: 'Host' },
     // On by default: unlike the others it needs no setup at all, and being
     // listed under Extensions in the sidebar is the only way anyone finds it.
     httpClient: {
