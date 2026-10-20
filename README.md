@@ -1,7 +1,7 @@
 # aura-server
 
 Backend for [aura-pad](https://github.com/roman-struchev/aura-pad)'s Work Together
-feature, running at [aura.struchev.site](https://aura.struchev.site).
+feature, running at [aura-pad.struchev.com.com](https://aura-pad.struchev.com.com).
 
 ## Work Together backend
 
