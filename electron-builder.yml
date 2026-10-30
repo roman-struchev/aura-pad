@@ -16,6 +16,8 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.node.tsbuildinfo}'
   - '!{docs,.claude,.idea,.github}/**'
+  # The Work Together backend (Spring Boot) - deployed separately, never shipped in the app.
+  - '!server/**'
   - '!{tailwind.config.js,postcss.config.js}'
   # node-pty's own source/build scaffolding - only the prebuilt native addon
   # under prebuilds/ is ever loaded at runtime.

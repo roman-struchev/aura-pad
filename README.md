@@ -241,7 +241,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   install needed, with read-only/read-write and an expiry you set.
 - Off by default; the backend URL is pre-filled with a hosted instance, or point it at
   your own. Self-hostable backend:
-  [aura-server](https://github.com/roman-struchev/aura-server). The contract a backend
+  [`server/`](server/README.md) in this repo. The contract a backend
   must implement is in [docs/edit-together/specification.md](docs/edit-together/specification.md).
 
 **Google Tasks**

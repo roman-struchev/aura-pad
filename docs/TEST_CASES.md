@@ -231,7 +231,7 @@ Guards: `waitForAuthCode` focus and `transferTask` in `src/main/googleTasks.ts`,
 `useGoogleAccounts`, `GoogleTasksConfigModal`, `GoogleTasksTab`, `GoogleTaskTransferMenu`.
 
 Note: a full OAuth round-trip needs a real client; stub the token endpoints
-(`AURAPAD_GTASKS_*` env vars) or the IPC in the main inspector per the verify skill.
+(`AURAPAD_GTASKS_*` env vars) or the IPC in the main inspector (AGENTS.md, "Driving the app by hand").
 
 | # | Steps | Expected |
 |---|-------|----------|

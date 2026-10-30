@@ -1,14 +1,14 @@
 # aura-server
 
-Backend for [aura-pad](https://github.com/roman-struchev/aura-pad)'s Work Together
-feature, running at [aura-pad.struchev.com.com](https://aura-pad.struchev.com.com).
+Backend for AuraPad's Work Together feature (this folder of the AuraPad repo),
+running at [aura-pad.struchev.com](https://aura-pad.struchev.com).
 
 ## Work Together backend
 
 Implements the **Work Together** collaborative-editing backend contract specified in
-[`docs/edit-together/specification.md`](https://github.com/roman-struchev/aura-pad/blob/main/docs/edit-together/specification.md)
-of the [aura-pad](https://github.com/roman-struchev/aura-pad) editor
-(see also [`feature-desc.md`](https://github.com/roman-struchev/aura-pad/blob/main/docs/edit-together/feature-desc.md)
+[`docs/edit-together/specification.md`](../docs/edit-together/specification.md)
+of the editor
+(see also [`feature-desc.md`](../docs/edit-together/feature-desc.md)
 for the product framing). In short: AuraPad shares an open file by creating a
 *session* here and minting a time-limited *link*; whoever opens that link — no
 AuraPad install needed — gets a live Monaco editor synced over Yjs, relayed
@@ -57,6 +57,10 @@ Guest editor assets are pre-built and committed, so plain `bootRun` is
 enough unless you edit `frontend/work-together-guest/` — then rebuild first
 with `npm run build` there.
 
-Deployment is via the existing GitHub Actions workflow
-(`.github/workflows/gradlew-publish-and-deploy.yml`) → Docker Hub → the
-`docker-compose.yml` on the target host.
+Commands run from this `server/` folder.
+
+Deployment: a push to `main` that touches `server/` runs
+[`.github/workflows/server-deploy.yml`](../.github/workflows/server-deploy.yml)
+(tests → jar → Docker Hub `romanew/all:aura-server` → `docker-compose.yml`
+copied to the host and restarted). It can also be started by hand from the
+Actions tab.

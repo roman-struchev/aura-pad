@@ -16,7 +16,7 @@ const fs = require('fs')
 const path = require('path')
 
 const projectRoot = path.resolve(__dirname, '..')
-// aura-server repo root is two levels up from frontend/work-together-guest
+// server/ root (the Gradle project) is two levels up from frontend/work-together-guest
 const repoRoot = path.resolve(projectRoot, '..', '..')
 
 const staticDir = path.join(repoRoot, 'src', 'main', 'resources', 'static', 'work-together')

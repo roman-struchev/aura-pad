@@ -1,9 +1,21 @@
-name: Java CI
-on: [push]
+name: Server build/deploy
+
+# The Work Together backend lives in server/. Only changes there (or to this
+# file) rebuild and redeploy it; the Electron app has its own build.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/server-deploy.yml'
+  workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
     steps:
       - uses: actions/checkout@v4
 
@@ -13,14 +25,15 @@ jobs:
           java-version: '25'
           distribution: 'zulu'
 
-      - name: Build jar
-        run: ./gradlew bootJar
+      - name: Test and build jar
+        run: ./gradlew test bootJar
 
       - name: Publish to Registry
         uses: elgohr/Publish-Docker-Github-Action@master
         with:
           name: romanew/all
           tags: aura-server
+          workdir: server
           username: ${{ secrets.DOCKER_PUBLISH_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKER_PUBLISH_REGISTRY_PASSWORD }}
 
@@ -37,7 +50,8 @@ jobs:
           username: root
           port: 22
           key: ${{ secrets.SSH_PRIVATE_KEY_PERSONAL }}
-          source: docker-compose.yml
+          source: server/docker-compose.yml
+          strip_components: 1
           target: ~/aura-server/
 
       - name: Start using docker-compose
