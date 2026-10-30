@@ -48,13 +48,16 @@ import { useWorkTogether } from './hooks/useWorkTogether'
 import { useSpellcheck } from './hooks/useSpellcheck'
 import type { MenuAction } from '../../shared/menuAction'
 import { useMenuActions } from './hooks/useMenuActions'
+import { useAppUpdate } from './hooks/useAppUpdate'
+import { useMonacoWidgetFixes } from './hooks/useMonacoWidgetFixes'
+import { useWindowLifecycle } from './hooks/useWindowLifecycle'
+import { useHttpEnvironments } from './hooks/useHttpEnvironments'
 import { buildCommands, type Command } from './lib/commands'
 import { useGlobalHotkeys } from './hooks/useGlobalHotkeys'
-import type { UpdateNotification, UpdateProgress } from '../../shared/updateNotification'
-import type { HttpEnvironments, HttpRequestSpec } from '../../shared/http'
+import type { HttpRequestSpec } from '../../shared/http'
 import { TranslatePopup } from './components/TranslatePopup'
 import { DialogHost } from './components/DialogHost'
-import { alertDialog, confirmDialog } from './lib/dialogs'
+import { alertDialog } from './lib/dialogs'
 import { useStableCallback } from './lib/useStableCallback'
 import { findRepoForRoot } from './lib/repoForRoot'
 import {
@@ -466,12 +469,7 @@ function App(): React.JSX.Element {
   const [showSpellcheckConfig, setShowSpellcheckConfig] = useState(false)
   // The tab whose local history is open (null = closed).
   const [historyPath, setHistoryPath] = useState<string | null>(null)
-  // The environments the active .http file can run against, and the request
-  // waiting to be written to a .http file (from the HTTP Client tab).
-  const [httpEnvironments, setHttpEnvironments] = useState<{
-    path: string
-    envs: HttpEnvironments
-  } | null>(null)
+  // The request waiting to be written to a .http file (from the HTTP Client tab).
   const [httpSaveSpec, setHttpSaveSpec] = useState<HttpRequestSpec | null>(null)
   // Quick open's live query, so switching to search-in-files carries it over.
   // Same reasoning as lastSearchQueryRef: it changes on every keystroke.
@@ -559,119 +557,9 @@ function App(): React.JSX.Element {
   const [sidebarView, setSidebarView] = useState<'files' | 'git'>('files')
   // Which repo the git panel shows; set by the file tree's per-root badge.
   const [gitPanelRoot, setGitPanelRoot] = useState<string | null>(null)
-  // A new app version: either downloaded and ready to install (restart), or -
-  // where this build can't self-update - available for manual download.
-  const [updateNotification, setUpdateNotification] = useState<UpdateNotification | null>(null)
-  // True from clicking Install/Restart until the app restarts itself - or
-  // until main reports a failed attempt (a fresh notification with `failed`
-  // set), which must drop the spinner and show the retry state instead.
-  const [updateInstalling, setUpdateInstalling] = useState(false)
-  // How far the macOS install script has got, so the spinner can carry a
-  // percentage instead of nothing. Null until the script reports its first
-  // step (and on the other platforms, which install without a script).
-  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
-  const [appVersion, setAppVersion] = useState<string>('')
+  const appUpdate = useAppUpdate()
 
-  useEffect(() => {
-    window.api.getAppVersion().then(setAppVersion)
-  }, [])
-
-  useEffect(
-    () =>
-      window.api.onUpdateNotification((update) => {
-        setUpdateNotification(update)
-        setUpdateInstalling(false)
-        setUpdateProgress(null)
-      }),
-    []
-  )
-
-  // Progress is only ever emitted while an install is actually running, so it
-  // also (re)asserts the installing state - the toast can't be showing its
-  // buttons while the script is already replacing the app underneath it.
-  useEffect(
-    () =>
-      window.api.onUpdateProgress((progress) => {
-        setUpdateProgress(progress)
-        setUpdateInstalling(true)
-      }),
-    []
-  )
-
-  // 'manual' just opens the releases page - nothing to wait for. The
-  // self-applying modes keep the toast up as a progress indicator until the
-  // app restarts itself. Shared by the update toast and the Settings modal.
-  const handleApplyUpdate = (): void => {
-    window.api.applyUpdate()
-    setUpdateProgress(null)
-    if (updateNotification?.mode === 'manual') setUpdateNotification(null)
-    else setUpdateInstalling(true)
-  }
-
-  // Monaco's built-in widgets (e.g. the Find/Replace bar's icon buttons) use
-  // native title="" attributes, which pop up an OS-style tooltip that clashes
-  // with the app's look. Some of those widgets render in an overlay layer
-  // outside the specific editor instance's own DOM node, so watch the whole
-  // document - but scope the selector to Monaco's own elements only, so this
-  // never touches our own toolbar buttons' tooltips. Keep an aria-label so
-  // screen readers still get the same text.
-  useEffect(() => {
-    const strip = (el: Element): void => {
-      const title = el.getAttribute('title')
-      if (!title) return
-      if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', title)
-      el.removeAttribute('title')
-    }
-    // Only elements inside a Monaco editor - and only the mutated subtrees,
-    // not a document-wide querySelectorAll per mutation batch: Monaco emits
-    // mutations continuously while typing/scrolling, and the full-document
-    // scan burned CPU on every one of them.
-    const stripWithin = (el: Element): void => {
-      if (!el.closest('.monaco-editor')) return
-      strip(el)
-      el.querySelectorAll('[title]').forEach(strip)
-    }
-    document.querySelectorAll('.monaco-editor[title], .monaco-editor [title]').forEach(strip)
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes') {
-          if (mutation.target instanceof Element) stripWithin(mutation.target)
-        } else {
-          mutation.addedNodes.forEach((node) => {
-            if (node instanceof Element) stripWithin(node)
-          })
-        }
-      }
-    })
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['title']
-    })
-    return () => observer.disconnect()
-  }, [])
-
-  // The Find/Replace widget's own buttons (close, next/previous match,
-  // replace, case-sensitive/whole-word/regex toggles) don't use a native
-  // title="" at all - they use Monaco's custom IHoverService overlay, whose
-  // "(Escape)"-style label is what actually clashes visually (the
-  // title-stripping observer above never touched it, since there's no title
-  // to strip). That overlay is a real, absolutely-positioned DOM node
-  // appended outside the widget, and it can end up rendering on top of the
-  // close button itself, swallowing clicks meant for it. Monaco shows the
-  // hover from a plain (non-capturing) mouseover listener on each button, so
-  // a capture-phase listener higher up the tree that stops the event before
-  // it reaches the button prevents the hover from ever appearing.
-  useEffect(() => {
-    const suppressFindWidgetHover = (e: MouseEvent): void => {
-      if ((e.target as HTMLElement).closest?.('.find-widget')) {
-        e.stopPropagation()
-      }
-    }
-    document.addEventListener('mouseover', suppressFindWidgetHover, true)
-    return () => document.removeEventListener('mouseover', suppressFindWidgetHover, true)
-  }, [])
+  useMonacoWidgetFixes()
 
   useGlobalHotkeys({
     // Escape priority chain: the translation popup sits on top of whatever
@@ -712,15 +600,7 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
-  // Opening a file via the OS ("Open With AuraPad", double-click once
-  // registered as a handler, or a second launch attempt while already
-  // running) arrives here as a plain path - just open it like any other file.
-  useEffect(() => {
-    const unsubscribe = window.api.onOpenFileRequest((filePath) => {
-      tabsRef.current.openTab(filePath)
-    })
-    return unsubscribe
-  }, [])
+  useWindowLifecycle(tabsRef)
 
   const menuActions: Record<MenuAction, () => void> = {
     'open-folder': () => treeRef.current.handleAddFolder(),
@@ -774,60 +654,7 @@ function App(): React.JSX.Element {
   }
   useMenuActions(menuActions)
 
-  // Tells main it's now safe to deliver a file-open request directly instead
-  // of queuing it - must run only once, after the subscription above is in
-  // place, so a file open that raced the app's startup (macOS "Open With",
-  // or a plain CLI arg on first launch) never fires before anything is
-  // listening for it.
-  useEffect(() => {
-    window.api.notifyRendererReady()
-  }, [])
-
-  // The window is about to close (titlebar close button, Cmd+Q, or the app
-  // quitting) - main paused the close and is waiting for this to either let
-  // it through immediately (nothing unsaved) or confirm after asking the
-  // user, so unsaved edits are never silently discarded.
-  useEffect(() => {
-    const unsubscribe = window.api.onRequestClose(async () => {
-      const unsavedCount = tabsRef.current.getUnsavedCount()
-      if (
-        unsavedCount === 0 ||
-        (await confirmDialog(
-          unsavedCount === 1
-            ? 'You have unsaved changes in 1 tab. Quit without saving?'
-            : `You have unsaved changes in ${unsavedCount} tabs. Quit without saving?`
-        ))
-      ) {
-        window.api.confirmClose()
-      } else {
-        // Declined: main must forget a pending Cmd+Q, or the next plain
-        // window close would quit the whole app with it.
-        window.api.declineClose()
-      }
-    })
-    return unsubscribe
-  }, [])
-
-  // The .http file's environments (http-client.env.json next to it, or at the
-  // project root). Read per file rather than kept in sync with a watcher: it
-  // is one small JSON read on tab switch, and the selector is only looked at
-  // when a request is about to run.
-  useEffect(() => {
-    const path = tabs.selectedPath
-    if (!path || !isHttpPath(path)) return
-    let alive = true
-    void window.api.httpEnvironments(path).then((envs) => {
-      if (alive) setHttpEnvironments({ path, envs })
-    })
-    return () => {
-      alive = false
-    }
-  }, [tabs.selectedPath])
-
-  // Only the answer that belongs to the file on screen; anything else is a
-  // stale read for a tab that has already been switched away from.
-  const httpEnv =
-    httpEnvironments && httpEnvironments.path === tabs.selectedPath ? httpEnvironments.envs : null
+  const httpEnv = useHttpEnvironments(tabs.selectedPath)
   const httpEnvironmentName = settings.extensions.httpClient.environment
   const httpEnvVariables = (httpEnvironmentName && httpEnv?.variables[httpEnvironmentName]) || {}
 
@@ -1473,13 +1300,13 @@ function App(): React.JSX.Element {
         />
       )}
 
-      {updateNotification && (
+      {appUpdate.notification && (
         <UpdateToast
-          notification={updateNotification}
-          installing={updateInstalling}
-          progress={updateProgress}
-          onApply={handleApplyUpdate}
-          onDismiss={() => setUpdateNotification(null)}
+          notification={appUpdate.notification}
+          installing={appUpdate.installing}
+          progress={appUpdate.progress}
+          onApply={appUpdate.apply}
+          onDismiss={appUpdate.dismiss}
         />
       )}
 
@@ -1576,11 +1403,11 @@ function App(): React.JSX.Element {
           settings={settings}
           updateSetting={updateSetting}
           density={density}
-          appVersion={appVersion}
-          updateNotification={updateNotification}
-          updateInstalling={updateInstalling}
-          updateProgress={updateProgress}
-          onUpdateAction={handleApplyUpdate}
+          appVersion={appUpdate.appVersion}
+          updateNotification={appUpdate.notification}
+          updateInstalling={appUpdate.installing}
+          updateProgress={appUpdate.progress}
+          onUpdateAction={appUpdate.apply}
           onConfigureDictation={() => setShowDictationConfig(true)}
           onConfigureReadAloud={() => setShowReadAloudConfig(true)}
           onConfigureTranslate={() => setShowTranslateConfig(true)}

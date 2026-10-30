@@ -36,10 +36,12 @@ const MESSAGE_SNAPSHOT = 4
 const SNAPSHOT_DEBOUNCE_MS = 20_000
 
 // Terminal close codes from specification.md §5.1: the session/token is gone
-// for good, so reconnecting would just fail forever. Every other close (a
-// network drop, a backend restart, an abnormal 1006) is transient and worth
-// retrying.
-const TERMINAL_CLOSE_CODES = new Set([4001, 4002, 4003, 4004])
+// for good, so reconnecting would just fail forever. 1009 (message too big)
+// joins them: the document outgrew the backend's frame limit, and every
+// reconnect would push the same oversized snapshot and be cut off again. Every
+// other close (a network drop, a backend restart, an abnormal 1006) is
+// transient and worth retrying.
+const TERMINAL_CLOSE_CODES = new Set([1009, 4001, 4002, 4003, 4004])
 
 // Reconnect backoff: first retry after 1s, doubling up to 30s, then steady.
 const RECONNECT_BASE_MS = 1_000
@@ -107,7 +109,8 @@ export class WorkTogetherProvider {
     this.unsubscribeClosed = window.api.onWorkTogetherClosed(this.sessionId, (code, reason) => {
       this.connected = false
       this.onStatus?.('disconnected')
-      this.onClosed?.(code, reason)
+      // 1009's reason is the server's internal buffer message; say what it means.
+      this.onClosed?.(code, code === 1009 ? 'the file is too large to share' : reason)
       // A clean, expected shutdown (we asked to stop, or the session/token is
       // permanently gone) must not trigger the retry loop.
       if (TERMINAL_CLOSE_CODES.has(code)) this.wantConnection = false
