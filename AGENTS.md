@@ -3,11 +3,20 @@
 A lightweight text/code editor: Electron + React + Monaco, plus the small
 backend for its Work Together feature.
 
-- `src/main` — Node side
-- `src/preload` — the typed `window.api` bridge, generated from `src/shared/ipc.ts`
-- `src/renderer` — the app
+- `desktop/` — the Electron app
+  - `src/main` — Node side
+  - `src/preload` — the typed `window.api` bridge, generated from `src/shared/ipc.ts`
+  - `src/renderer` — the app
+  - `scripts/smoke` — the smoke suite
 - `server/` — Work Together backend (Spring Boot, Java 25, Gradle); see
   [Server](#server)
+- `docs/` — all documentation lives here, never inside a component folder
+- `scripts/` — repo-level scripts: `install.sh` (its URL is baked into
+  installed apps' updater and the README — never move it) and `release.sh`
+- `Makefile` — `make test` runs every component's checks
+
+Unless a path says otherwise, paths and commands in the sections about the app
+are relative to `desktop/`.
 
 [README.md](README.md) is the user-facing description — what the app does,
 feature by feature, plus install and release. Read it when you need to know
@@ -18,6 +27,7 @@ change.**
 ## After you change anything
 
 ```bash
+cd desktop
 npm run smoke      # throwaway profile + fixture workspace — the actual gate
 npm run typecheck
 npm run lint       # pre-existing errors are noisy; compare, don't chase zero
@@ -125,7 +135,7 @@ AURAPAD_USER_DATA_DIR="$(mktemp -d)" npm run dev -- -- --remote-debugging-port=9
 ## Server
 
 `server/` is the backend the Work Together feature talks to; its contract is
-`docs/edit-together/specification.md`, details in `server/README.md`.
+`docs/edit-together/specification.md`, details in `docs/server.md`.
 
 ```bash
 cd server
@@ -133,8 +143,7 @@ cd server
 ./gradlew bootRun    # local instance
 ```
 
-- It is excluded from the Electron build (`electron-builder.yml`), eslint and
-  prettier; the smoke suite does not cover it.
+- The smoke suite does not cover it.
 - The guest editor page is built from `server/frontend/work-together-guest/`
   (`npm run build` there) and the output is committed under
   `server/src/main/resources/`. Rebuild and commit it when you change that

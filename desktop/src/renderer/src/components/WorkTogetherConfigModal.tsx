@@ -74,7 +74,7 @@ export const WorkTogetherConfigModal: React.FC<WorkTogetherConfigModalProps> = (
           The address of the Work Together backend - a separate, self-hosted service that relays
           edits and mints the share links. It must implement the{' '}
           <a
-            href="https://github.com/roman-struchev/aura-editor/blob/main/docs/edit-together/specification.md"
+            href="https://github.com/roman-struchev/aura-pad/blob/main/docs/edit-together/specification.md"
             target="_blank"
             rel="noreferrer"
             className="text-blue-400 hover:underline"

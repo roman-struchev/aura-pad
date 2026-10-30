@@ -241,7 +241,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   install needed, with read-only/read-write and an expiry you set.
 - Off by default; the backend URL is pre-filled with a hosted instance, or point it at
   your own. Self-hostable backend:
-  [`server/`](server/README.md) in this repo. The contract a backend
+  [`server/`](docs/server.md) in this repo. The contract a backend
   must implement is in [docs/edit-together/specification.md](docs/edit-together/specification.md).
 
 **Google Tasks**
@@ -261,14 +261,19 @@ The full list of keyboard shortcuts is available in the app under Settings → S
 
 ## Development
 
-Install deps and run in dev mode.
+The repo holds two components: the Electron app in `desktop/` and the Work Together
+backend in `server/` (see [docs/server.md](docs/server.md)). All docs are in `docs/`.
+`make test` runs the checks of both.
+
+Install deps and run the app in dev mode:
 
 ```bash
+cd desktop
 npm install
 npm run dev
 ```
 
-Checks:
+Checks (from `desktop/`):
 
 ```bash
 npm run smoke      # launches the app against a throwaway profile and drives it

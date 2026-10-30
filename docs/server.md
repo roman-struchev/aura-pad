@@ -1,14 +1,15 @@
-# aura-server
+# Server (aura-server)
 
-Backend for AuraPad's Work Together feature (this folder of the AuraPad repo),
+Backend for AuraPad's Work Together feature, in `server/` of this repo,
 running at [aura-pad.struchev.com](https://aura-pad.struchev.com).
+Paths and commands here are relative to `server/`.
 
 ## Work Together backend
 
 Implements the **Work Together** collaborative-editing backend contract specified in
-[`docs/edit-together/specification.md`](../docs/edit-together/specification.md)
+[`docs/edit-together/specification.md`](edit-together/specification.md)
 of the editor
-(see also [`feature-desc.md`](../docs/edit-together/feature-desc.md)
+(see also [`feature-desc.md`](edit-together/feature-desc.md)
 for the product framing). In short: AuraPad shares an open file by creating a
 *session* here and minting a time-limited *link*; whoever opens that link — no
 AuraPad install needed — gets a live Monaco editor synced over Yjs, relayed
@@ -56,8 +57,6 @@ describing the AuraPad project with a link to its GitHub repo.
 Guest editor assets are pre-built and committed, so plain `bootRun` is
 enough unless you edit `frontend/work-together-guest/` — then rebuild first
 with `npm run build` there.
-
-Commands run from this `server/` folder.
 
 Deployment: a push to `main` that touches `server/` runs
 [`.github/workflows/server-deploy.yml`](../.github/workflows/server-deploy.yml)

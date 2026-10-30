@@ -20,7 +20,7 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "release": "bash scripts/release.sh"
+    "release": "bash ../scripts/release.sh"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

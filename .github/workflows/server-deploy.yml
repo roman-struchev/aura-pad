@@ -1,7 +1,7 @@
 name: Server build/deploy
 
 # The Work Together backend lives in server/. Only changes there (or to this
-# file) rebuild and redeploy it; the Electron app has its own build.yml.
+# file) rebuild and redeploy it; the desktop app has its own desktop-build.yml.
 on:
   push:
     branches: [main]

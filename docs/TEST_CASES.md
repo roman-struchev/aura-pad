@@ -1,5 +1,8 @@
 # Test cases
 
+The desktop app's checklist. Paths and commands are relative to `desktop/`
+(the server has its own tests: `cd server && ./gradlew test`).
+
 Two parts:
 
 - **Part A — baseline.** Does the app still do the things it exists for? These
