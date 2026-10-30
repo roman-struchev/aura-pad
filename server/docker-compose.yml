@@ -1,0 +1,15 @@
+version: '3.7'
+
+services:
+  aura-server:
+    image: 'romanew/all:aura-server'
+    container_name: aura-server
+    network_mode: host
+    environment:
+      - server.port=${PORT:-10005}
+      - WORKTOGETHER_TOKEN_SECRET=${WORKTOGETHER_TOKEN_SECRET:-}
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 768M

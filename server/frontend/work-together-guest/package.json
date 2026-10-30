@@ -1,0 +1,20 @@
+{
+  "name": "work-together-guest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Guest-facing collaborative Monaco editor page for the Work Together feature",
+  "scripts": {
+    "bundle": "esbuild src/app.js --bundle --minify --format=iife --alias:monaco-editor/esm/vs/editor/editor.api.js=./src/monaco-shim.js --outfile=dist/app.js",
+    "copy:assets": "node scripts/copy-assets.js",
+    "build": "npm run bundle && npm run copy:assets"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.52.0",
+    "y-monaco": "^0.1.6",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

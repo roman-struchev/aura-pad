@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Work Together</title>
+  <link rel="icon" type="image/svg+xml" th:href="@{/favicon.svg}" />
+  <style>
+    :root {
+      --bg: #12121a;
+      --bg-2: #16161f;
+      --fg: #ecebf5;
+      --muted: #9896ac;
+      --border: #29283a;
+    }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--fg);
+    }
+    .box {
+      text-align: center; max-width: 24rem; padding: 2.25rem 2rem;
+      background: var(--bg-2); border: 1px solid var(--border); border-radius: 0.9rem;
+    }
+    .box img { width: 28px; height: 28px; border-radius: 8px; margin-bottom: 0.9rem; }
+    .box h1 { font-size: 1.05rem; font-weight: 600; margin: 0 0 0.5rem; }
+    .box p { font-size: 0.88rem; color: var(--muted); margin: 0; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <img th:src="@{/favicon.svg}" alt="" />
+    <h1 th:text="${message}">Error Message</h1>
+    <p>Ask the host for a new link if you still need access.</p>
+  </div>
+</body>
+</html>

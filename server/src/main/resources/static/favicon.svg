@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="aura-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C6CFF"/>
+      <stop offset="50%" stop-color="#4C7DFF"/>
+      <stop offset="100%" stop-color="#33CFE0"/>
+    </linearGradient>
+    <radialGradient id="aura-glow" cx="30%" cy="24%" r="60%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#aura-bg)"/>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#aura-glow)"/>
+  <path d="M22 23 L13.5 32 L22 41" fill="none" stroke="#ffffff" stroke-width="4.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 23 L50.5 32 L42 41" fill="none" stroke="#ffffff" stroke-width="4.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="35.5" y1="19" x2="28.5" y2="45" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round"/>
+</svg>

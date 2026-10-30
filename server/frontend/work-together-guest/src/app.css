@@ -1,0 +1,152 @@
+:root {
+  --bg: #12121a;
+  --bg-2: #16161f;
+  --fg: #ecebf5;
+  --muted: #9896ac;
+  --border: #29283a;
+  --accent: #7c8cff;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.wt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.wt-filepath {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.wt-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.wt-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* Semantic (state) colors below are deliberately not the brand accent -
+   they need to read as "this needs attention" regardless of theme. */
+
+.wt-badge-readonly {
+  background: #4a3c14;
+  color: #e8c96a;
+}
+
+.wt-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #34333f;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.wt-status-connected {
+  background: #1c3a28;
+  color: #6bd18a;
+}
+
+.wt-status-connecting {
+  background: #4a3c14;
+  color: #e8c96a;
+}
+
+.wt-status-disconnected {
+  background: #4a1f1f;
+  color: #e88a8a;
+}
+
+.wt-participants {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 240px;
+}
+
+.wt-participant {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 8px 2px 6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.wt-participant-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.wt-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.wt-terminal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg);
+}
+
+.wt-terminal-box {
+  font-size: 18px;
+  color: var(--fg);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px 48px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}

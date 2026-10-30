@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title th:text="${filePath} + ' — Work Together'">Work Together</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" th:href="@{/work-together/app.css}" />
+  <style>
+    /* Fallback in case app.css hasn't loaded yet - avoids a flash of unstyled content. */
+    html, body { margin: 0; padding: 0; background: #12121a; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script th:inline="javascript">
+    // Thymeleaf automatically encodes variables into safe JSON/JS literals natively.
+    window.__WORK_TOGETHER__ = {
+      sessionId: /*[[${sessionId}]]*/ '',
+      token: /*[[${token}]]*/ '',
+      role: /*[[${role}]]*/ '',
+      language: /*[[${language}]]*/ '',
+      filePath: /*[[${filePath}]]*/ '',
+      initialContent: /*[[${initialContent}]]*/ ''
+    };
+  </script>
+
+  <script th:src="@{/work-together/vs/loader.js}"></script>
+  <script th:inline="javascript">
+    require.config({ paths: { vs: '/work-together/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      // Monaco is now available as window.monaco. Load the bundled app
+      // logic (Yjs / y-websocket / y-monaco wiring + UI) now.
+      var s = document.createElement('script');
+      s.src = /*[[@{/work-together/app.js}]]*/ '/work-together/app.js';
+      document.body.appendChild(s);
+    });
+  </script>
+</body>
+</html>
