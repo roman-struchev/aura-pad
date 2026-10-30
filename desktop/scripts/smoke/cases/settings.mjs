@@ -46,7 +46,10 @@ export default {
 
     // Restore: relaunch and check the persisted session comes back.
     await cdp.evaluate(
-      `window.api.getSettings().then((s) => window.api.saveSettings({ ...s, theme: 'dark', tabsEnabled: true }))`
+      `window.api.getSettings().then((s) => window.api.saveSettings({ ...s, theme: 'dark', tabsEnabled: true,
+        // The old hosted backend's default, which now redirects to a name that
+        // doesn't resolve: loading settings must move it to the current one.
+        extensions: { ...s.extensions, workTogether: { ...s.extensions.workTogether, backendUrl: 'https://aura.struchev.site/' } } }))`
     )
     await sleep(700)
     const expected = JSON.parse(
@@ -66,5 +69,13 @@ export default {
     )
     const themeNow = await ctx.cdp.evaluate('window.api.getSettings().then((s) => s.theme)')
     check('settings survive the restart', themeNow === 'dark', String(themeNow))
+    const backendNow = await ctx.cdp.evaluate(
+      'window.api.getSettings().then((s) => s.extensions.workTogether.backendUrl)'
+    )
+    check(
+      'a Work Together backend left on the old default host moves to the current one',
+      backendNow === 'https://aura-pad.struchev.com',
+      String(backendNow)
+    )
   }
 }

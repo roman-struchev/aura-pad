@@ -3,6 +3,8 @@ import path from 'path'
 import { readConfigFile, writeConfigFile } from './configFile'
 import { type AppSettings, DEFAULT_SETTINGS } from '../shared/settings'
 
+const LEGACY_WORK_TOGETHER_BACKEND_URL = 'https://aura.struchev.site'
+
 const settingsConfigPath = path.join(app.getPath('userData'), 'settings.json')
 
 export function loadSettings(): AppSettings {
@@ -49,6 +51,18 @@ export function loadSettings(): AppSettings {
     typeof legacyHistoryCollapsed === 'boolean'
   ) {
     settings.extensions.httpClient.sidePanelCollapsed = legacyHistoryCollapsed
+  }
+
+  // The hosted backend moved to aura-pad.struchev.com. The old default host
+  // now redirects to a name that doesn't resolve, so anyone who kept the old
+  // default would only ever see ERR_NAME_NOT_RESOLVED. A self-hosted URL is
+  // left alone.
+  if (
+    settings.extensions.workTogether.backendUrl.trim().replace(/\/+$/, '') ===
+    LEGACY_WORK_TOGETHER_BACKEND_URL
+  ) {
+    settings.extensions.workTogether.backendUrl =
+      DEFAULT_SETTINGS.extensions.workTogether.backendUrl
   }
 
   // Legacy flat key from before extension settings were namespaced. Only
