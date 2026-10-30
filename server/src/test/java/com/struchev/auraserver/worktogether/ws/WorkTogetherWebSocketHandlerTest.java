@@ -2,6 +2,7 @@ package com.struchev.auraserver.worktogether.ws;
 
 import com.struchev.auraserver.worktogether.ConnectAuth;
 import com.struchev.auraserver.worktogether.Role;
+import com.struchev.auraserver.worktogether.SessionLimits;
 import com.struchev.auraserver.worktogether.SessionService;
 import com.struchev.auraserver.worktogether.model.WtConnection;
 import com.struchev.auraserver.worktogether.model.WtSession;
@@ -18,6 +19,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -43,10 +45,15 @@ class WorkTogetherWebSocketHandlerTest {
     @BeforeEach
     void setUp() {
         sessionService = mock(SessionService.class);
-        handler = new WorkTogetherWebSocketHandler(sessionService);
-        wtSession = new WtSession("sess_1", "src/App.tsx", "typescript", "const x = 1;",
+        handler = new WorkTogetherWebSocketHandler(sessionService, new SessionLimits(1024, 4096, 1 << 20, 20));
+        wtSession = new WtSession("sess_1", "src/App.tsx", "typescript", "const x = 1;", "10.0.0.1",
                 Instant.now(), 3600L, Instant.now().plusSeconds(3600));
         when(sessionService.findLiveSession("sess_1")).thenReturn(wtSession);
+        // The service owns snapshot bookkeeping; here it just stores the frame.
+        doAnswer(inv -> {
+            inv.<WtSession>getArgument(0).setLatestSnapshot(inv.getArgument(1));
+            return null;
+        }).when(sessionService).storeSnapshot(any(), any());
     }
 
     private WebSocketSession newClientSession(String connectionId, Role role) {

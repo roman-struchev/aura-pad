@@ -9,8 +9,10 @@ import com.struchev.auraserver.worktogether.dto.MintLinkResponse;
 import com.struchev.auraserver.worktogether.dto.ParticipantStatus;
 import com.struchev.auraserver.worktogether.dto.SessionStatusResponse;
 import com.struchev.auraserver.worktogether.exception.BadRequestException;
+import com.struchev.auraserver.worktogether.exception.CapacityExceededException;
 import com.struchev.auraserver.worktogether.exception.InvalidTokenException;
 import com.struchev.auraserver.worktogether.exception.NotFoundException;
+import com.struchev.auraserver.worktogether.exception.RateLimitExceededException;
 import com.struchev.auraserver.worktogether.exception.ValidationException;
 import com.struchev.auraserver.worktogether.model.WtConnection;
 import com.struchev.auraserver.worktogether.model.WtLink;
@@ -27,6 +29,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Core business logic for the Work Together backend: session/link lifecycle,
@@ -41,6 +44,11 @@ public class SessionService {
     private final TokenService tokenService;
     private final ObjectMapper objectMapper;
     private final long maxSessionTtlCeilingSeconds;
+    private final SessionLimits limits;
+    // Bytes held for all live sessions: their initial content plus their
+    // latest snapshot. Everything lives in memory, so this is what keeps a
+    // flood of (or a few huge) sessions from taking the process down.
+    private final AtomicLong usedBytes = new AtomicLong();
 
     private final ConcurrentHashMap<String, WtSession> sessions = new ConcurrentHashMap<>();
     // Reverse index so the short guest URL (/j/{linkId}) can be resolved
@@ -50,15 +58,17 @@ public class SessionService {
     private final ConcurrentHashMap<String, String> linkIdToSessionId = new ConcurrentHashMap<>();
 
     public SessionService(TokenService tokenService, ObjectMapper objectMapper,
-                           @Value("${worktogether.max-session-ttl-seconds:604800}") long maxSessionTtlCeilingSeconds) {
+                           @Value("${worktogether.max-session-ttl-seconds}") long maxSessionTtlCeilingSeconds,
+                           SessionLimits limits) {
         this.tokenService = tokenService;
         this.objectMapper = objectMapper;
         this.maxSessionTtlCeilingSeconds = maxSessionTtlCeilingSeconds;
+        this.limits = limits;
     }
 
     // ---- §3.1 create session ----
 
-    public CreateSessionResponse createSession(CreateSessionRequest request) {
+    public CreateSessionResponse createSession(CreateSessionRequest request, String clientIp) {
         if (isBlank(request.filePath()) || isBlank(request.language()) || request.content() == null) {
             throw new BadRequestException("filePath, language and content are required");
         }
@@ -75,7 +85,19 @@ public class SessionService {
         Instant expiresAt = now.plusSeconds(maxTtlSeconds);
         String sessionId = IdGenerator.next("sess_");
         WtSession session = new WtSession(sessionId, request.filePath(), request.language(),
-                request.content(), now, maxTtlSeconds, expiresAt);
+                request.content(), clientIp, now, maxTtlSeconds, expiresAt);
+        if (session.contentBytes() > limits.maxContentBytes()) {
+            throw new ValidationException("The file is too large to share (limit "
+                    + limits.maxContentBytes() / 1024 + " KB)");
+        }
+        long openFromIp = sessions.values().stream().filter(s -> clientIp.equals(s.clientIp())).count();
+        if (openFromIp >= limits.maxSessionsPerIp()) {
+            throw new RateLimitExceededException("Too many open sessions from this address - end some first");
+        }
+        if (usedBytes.addAndGet(session.contentBytes()) > limits.memoryBudgetBytes()) {
+            usedBytes.addAndGet(-session.contentBytes());
+            throw new CapacityExceededException("The server is at capacity, try again later");
+        }
         sessions.put(sessionId, session);
 
         String hostToken = tokenService.mint(sessionId, Role.HOST, null, expiresAt);
@@ -149,6 +171,10 @@ public class SessionService {
         if (session.end()) {
             closeConnections(session, c -> true, WorkTogetherCloseCodes.SESSION_ENDED);
             sessions.remove(session.sessionId());
+            synchronized (session) {
+                usedBytes.addAndGet(-(session.contentBytes() + lengthOf(session.latestSnapshot())));
+                session.setLatestSnapshot(null);
+            }
             for (WtLink link : session.links()) {
                 linkIdToSessionId.remove(link.linkId());
             }
@@ -235,6 +261,32 @@ public class SessionService {
         notifyHosts(session, Map.of("type", "leave", "connectionId", connectionId));
     }
 
+    /**
+     * Replaces the session's cached snapshot (§4.4), unless the new one would push the
+     * server past its memory budget - then the old snapshot stays, which only means a
+     * lone reconnect may resync from a slightly older state.
+     */
+    public void storeSnapshot(WtSession session, byte[] frame) {
+        synchronized (session) {
+            if (session.ended()) {
+                return; // already released by endSession
+            }
+            long delta = frame.length - lengthOf(session.latestSnapshot());
+            if (usedBytes.addAndGet(delta) > limits.memoryBudgetBytes() && delta > 0) {
+                usedBytes.addAndGet(-delta);
+                log.warn("Dropping a {}-byte snapshot for session {}: memory budget reached",
+                        frame.length, session.sessionId());
+                return;
+            }
+            session.setLatestSnapshot(frame);
+        }
+    }
+
+    /** Bytes currently held for live sessions; see {@link #usedBytes}. */
+    long usedBytes() {
+        return usedBytes.get();
+    }
+
     public WtSession findLiveSession(String sessionId) {
         WtSession session = sessions.get(sessionId);
         return (session != null && !session.ended()) ? session : null;
@@ -319,6 +371,10 @@ public class SessionService {
         } catch (Exception e) {
             log.debug("Failed to send control message: {}", e.getMessage());
         }
+    }
+
+    private static long lengthOf(byte[] bytes) {
+        return bytes == null ? 0 : bytes.length;
     }
 
     private static boolean isBlank(String s) {

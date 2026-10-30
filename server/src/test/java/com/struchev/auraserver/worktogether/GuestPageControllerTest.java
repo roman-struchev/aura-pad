@@ -59,7 +59,7 @@ class GuestPageControllerTest {
     void activeLinkRendersGuestTemplate() throws Exception {
         when(rateLimiter.tryAcquire(any())).thenReturn(true);
 
-        WtSession session = new WtSession("session-123", "src/index.js", "javascript", "console.log('hello');", Instant.now(), 3600L, Instant.now().plusSeconds(3600));
+        WtSession session = new WtSession("session-123", "src/index.js", "javascript", "console.log('hello');", "10.0.0.1", Instant.now(), 3600L, Instant.now().plusSeconds(3600));
         WtLink link = new WtLink("link-123", "session-123", Role.READ, Instant.now(), Instant.now().plusSeconds(1800));
         GuestLinkContext ctx = new GuestLinkContext(session, link);
 

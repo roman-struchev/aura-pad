@@ -7,6 +7,9 @@ import com.struchev.auraserver.worktogether.dto.MintLinkRequest;
 import com.struchev.auraserver.worktogether.dto.MintLinkResponse;
 import com.struchev.auraserver.worktogether.dto.SessionStatusResponse;
 import com.struchev.auraserver.worktogether.exception.BadRequestException;
+import com.struchev.auraserver.worktogether.exception.CapacityExceededException;
+import com.struchev.auraserver.worktogether.exception.RateLimitExceededException;
+import com.struchev.auraserver.worktogether.model.WtSession;
 import com.struchev.auraserver.worktogether.exception.NotFoundException;
 import com.struchev.auraserver.worktogether.exception.ValidationException;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,17 +20,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SessionServiceTest {
 
+    // Small numbers so each cap is easy to hit: 100-byte files, a 300-byte budget, 3 sessions per address.
+    private static final SessionLimits LIMITS = new SessionLimits(100, 1024, 300, 3);
+
     private SessionService sessionService;
 
     @BeforeEach
     void setUp() {
         TokenService tokenService = new TokenService(new ObjectMapper(), "test-secret");
-        sessionService = new SessionService(tokenService, new ObjectMapper(), 86_400);
+        sessionService = new SessionService(tokenService, new ObjectMapper(), 86_400, LIMITS);
     }
 
     private CreateSessionResponse createSession() {
         return sessionService.createSession(
-                new CreateSessionRequest("src/App.tsx", "typescript", "const x = 1;", 3600L));
+                new CreateSessionRequest("src/App.tsx", "typescript", "const x = 1;", 3600L), "10.0.0.1");
     }
 
     @Test
@@ -124,5 +130,68 @@ class SessionServiceTest {
 
         assertThat(status.links()).hasSize(1);
         assertThat(status.links().get(0).role()).isEqualTo(Role.READ);
+    }
+
+    // ---- size caps (SessionLimits) ----
+
+    private CreateSessionResponse createSession(String content, String clientIp) {
+        return sessionService.createSession(
+                new CreateSessionRequest("a.txt", "plaintext", content, 3600L), clientIp);
+    }
+
+    @Test
+    void fileOverTheContentCapIsRefused() {
+        assertThatThrownBy(() -> createSession("x".repeat(101), "10.0.0.1"))
+                .isInstanceOf(ValidationException.class);
+        assertThat(sessionService.usedBytes()).isZero();
+    }
+
+    @Test
+    void oneAddressCanHoldOnlySoManyLiveSessions() {
+        for (int i = 0; i < 3; i++) {
+            createSession("x", "10.0.0.1");
+        }
+
+        assertThatThrownBy(() -> createSession("x", "10.0.0.1"))
+                .isInstanceOf(RateLimitExceededException.class);
+        // Another address is unaffected, and ending a session frees a slot.
+        CreateSessionResponse other = createSession("x", "10.0.0.2");
+        sessionService.endSession(other.sessionId());
+    }
+
+    @Test
+    void newSessionsAreRefusedOnceTheMemoryBudgetIsUsedUp() {
+        createSession("x".repeat(100), "10.0.0.1");
+        createSession("x".repeat(100), "10.0.0.2");
+        CreateSessionResponse third = createSession("x".repeat(100), "10.0.0.3");
+
+        assertThatThrownBy(() -> createSession("x", "10.0.0.4"))
+                .isInstanceOf(CapacityExceededException.class);
+
+        sessionService.endSession(third.sessionId());
+        createSession("x", "10.0.0.4");
+    }
+
+    @Test
+    void snapshotsCountAgainstTheBudgetAndAreReleasedWithTheSession() {
+        CreateSessionResponse response = createSession("x".repeat(10), "10.0.0.1");
+        WtSession session = sessionService.findLiveSession(response.sessionId());
+
+        sessionService.storeSnapshot(session, new byte[200]);
+        assertThat(sessionService.usedBytes()).isEqualTo(210);
+
+        // Would take the total past 300: dropped, the previous snapshot stays.
+        sessionService.storeSnapshot(session, new byte[300]);
+        assertThat(session.latestSnapshot()).hasSize(200);
+        assertThat(sessionService.usedBytes()).isEqualTo(210);
+
+        // A smaller one replaces it and gives the difference back.
+        sessionService.storeSnapshot(session, new byte[50]);
+        assertThat(sessionService.usedBytes()).isEqualTo(60);
+
+        sessionService.endSession(response.sessionId());
+        assertThat(sessionService.usedBytes()).isZero();
+        sessionService.storeSnapshot(session, new byte[50]);
+        assertThat(sessionService.usedBytes()).isZero();
     }
 }

@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Guest editor page: built from frontend/work-together-guest (`npm run build`),
+### by CI before the jar and by hand before a local bootRun ###
+/src/main/resources/static/work-together/

@@ -3,6 +3,7 @@ package com.struchev.auraserver.worktogether.ws;
 import com.struchev.auraserver.worktogether.ConnectAuth;
 import com.struchev.auraserver.worktogether.IdGenerator;
 import com.struchev.auraserver.worktogether.Role;
+import com.struchev.auraserver.worktogether.SessionLimits;
 import com.struchev.auraserver.worktogether.SessionService;
 import com.struchev.auraserver.worktogether.model.WtConnection;
 import com.struchev.auraserver.worktogether.model.WtSession;
@@ -56,9 +57,13 @@ public class WorkTogetherWebSocketHandler extends AbstractWebSocketHandler {
     private static final String ATTR_CONNECTION_ID = "wtConnectionId";
 
     private final SessionService sessionService;
+    // Per-connection outgoing buffer: room for a couple of full-document
+    // frames queued behind each other before the peer counts as too slow.
+    private final int sendBufferLimitBytes;
 
-    public WorkTogetherWebSocketHandler(SessionService sessionService) {
+    public WorkTogetherWebSocketHandler(SessionService sessionService, SessionLimits limits) {
         this.sessionService = sessionService;
+        this.sendBufferLimitBytes = limits.maxMessageBytes() * 2;
     }
 
     @Override
@@ -68,7 +73,7 @@ public class WorkTogetherWebSocketHandler extends AbstractWebSocketHandler {
         String connectionId = IdGenerator.next("conn_");
         session.getAttributes().put(ATTR_CONNECTION_ID, connectionId);
 
-        WebSocketSession sendSafeSession = new ConcurrentWebSocketSessionDecorator(session, 10_000, 512 * 1024);
+        WebSocketSession sendSafeSession = new ConcurrentWebSocketSessionDecorator(session, 10_000, sendBufferLimitBytes);
         WtConnection connection = new WtConnection(connectionId, sessionId, auth.role(), auth.linkId(),
                 Instant.now(), auth.displayName(), sendSafeSession);
         sessionService.registerConnection(connection);
@@ -149,7 +154,7 @@ public class WorkTogetherWebSocketHandler extends AbstractWebSocketHandler {
         body.position(body.position() + 1); // skip the snapshot tag
         byte[] frame = new byte[body.remaining()];
         body.get(frame);
-        wtSession.setLatestSnapshot(frame);
+        sessionService.storeSnapshot(wtSession, frame);
     }
 
     private void relay(WtSession wtSession, String senderConnectionId, BinaryMessage message) {

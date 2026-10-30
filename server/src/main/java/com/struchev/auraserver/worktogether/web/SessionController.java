@@ -56,7 +56,8 @@ public class SessionController {
         if (!rateLimiter.tryAcquire("create:" + ClientIp.of(servletRequest))) {
             throw new RateLimitExceededException("Rate limit exceeded, try again shortly");
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(sessionService.createSession(request));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(sessionService.createSession(request, ClientIp.of(servletRequest)));
     }
 
     @PostMapping("/{sessionId}/links")

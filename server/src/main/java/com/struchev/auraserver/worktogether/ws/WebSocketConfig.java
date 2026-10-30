@@ -1,9 +1,12 @@
 package com.struchev.auraserver.worktogether.ws;
 
+import com.struchev.auraserver.worktogether.SessionLimits;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 /**
  * Registers the raw (non-SockJS/STOMP) WebSocket endpoint from specification.md §4:
@@ -21,6 +24,15 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public WebSocketConfig(WorkTogetherWebSocketHandler handler, WorkTogetherHandshakeInterceptor interceptor) {
         this.handler = handler;
         this.interceptor = interceptor;
+    }
+
+    // Without this Tomcat caps a frame at 8 KB and closes the socket (1009) on
+    // anything bigger - and a Host's first snapshot is the whole document.
+    @Bean
+    public ServletServerContainerFactoryBean webSocketContainer(SessionLimits limits) {
+        ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
+        container.setMaxBinaryMessageBufferSize(limits.maxMessageBytes());
+        return container;
     }
 
     @Override

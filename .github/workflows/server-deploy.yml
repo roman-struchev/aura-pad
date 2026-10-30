@@ -25,6 +25,18 @@ jobs:
           java-version: '25'
           distribution: 'zulu'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: server/frontend/work-together-guest/package-lock.json
+
+      # The guest editor page's JS/CSS/Monaco are build output, not in git.
+      - name: Build guest editor page
+        working-directory: server/frontend/work-together-guest
+        run: npm ci && npm run build
+
       - name: Test and build jar
         run: ./gradlew test bootJar
 

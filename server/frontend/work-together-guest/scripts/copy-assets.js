@@ -5,11 +5,10 @@
  *   dist/app.js                          -> src/main/resources/static/work-together/app.js
  *   src/app.css                          -> src/main/resources/static/work-together/app.css
  *   node_modules/monaco-editor/min/vs/*  -> src/main/resources/static/work-together/vs/
- *   src/guest-template.html              -> src/main/resources/templates/worktogether/guest-template.html
  *
- * This script only touches files under those four destinations (plus
- * creating the parent directories if missing) - it never touches Java
- * source or build.gradle.
+ * That folder is build output (git-ignored). The page's HTML is the Thymeleaf
+ * template src/main/resources/templates/worktogether/guest-template.html,
+ * edited in place - it is not generated.
  */
 
 const fs = require('fs')
@@ -20,7 +19,6 @@ const projectRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(projectRoot, '..', '..')
 
 const staticDir = path.join(repoRoot, 'src', 'main', 'resources', 'static', 'work-together')
-const resourcesDir = path.join(repoRoot, 'src', 'main', 'resources', 'templates', 'worktogether')
 
 function rmrf (dir) {
   if (fs.existsSync(dir)) {
@@ -48,7 +46,6 @@ function copyDir (src, dest) {
 }
 
 fs.mkdirSync(staticDir, { recursive: true })
-fs.mkdirSync(resourcesDir, { recursive: true })
 
 // 1. bundled app.js (already built by `npm run bundle` into dist/app.js)
 copyFile(
@@ -68,11 +65,5 @@ const vsDest = path.join(staticDir, 'vs')
 rmrf(vsDest)
 copyDir(vsSrc, vsDest)
 console.log('copied', path.relative(repoRoot, vsSrc), '->', path.relative(repoRoot, vsDest), '(directory)')
-
-// 4. HTML template (server-side placeholder substitution happens in Java)
-copyFile(
-  path.join(projectRoot, 'src', 'guest-template.html'),
-  path.join(resourcesDir, 'guest-template.html')
-)
 
 console.log('\nAll assets copied successfully.')

@@ -27,6 +27,9 @@ public class WtSession {
     private final String filePath;
     private final String language;
     private final String content;
+    private final long contentBytes;
+    // Who created the session, for the per-IP cap on live sessions.
+    private final String clientIp;
     private final Instant createdAt;
     private final long maxTtlSeconds;
     private final Instant expiresAt;
@@ -40,12 +43,14 @@ public class WtSession {
     // until the first write-capable participant pushes one.
     private final AtomicReference<byte[]> latestSnapshot = new AtomicReference<>();
 
-    public WtSession(String sessionId, String filePath, String language, String content,
+    public WtSession(String sessionId, String filePath, String language, String content, String clientIp,
                       Instant createdAt, long maxTtlSeconds, Instant expiresAt) {
         this.sessionId = sessionId;
         this.filePath = filePath;
         this.language = language;
         this.content = content;
+        this.contentBytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        this.clientIp = clientIp;
         this.createdAt = createdAt;
         this.maxTtlSeconds = maxTtlSeconds;
         this.expiresAt = expiresAt;
@@ -65,6 +70,15 @@ public class WtSession {
 
     public String content() {
         return content;
+    }
+
+    /** UTF-8 size of {@link #content()}, counted against the server's memory budget. */
+    public long contentBytes() {
+        return contentBytes;
+    }
+
+    public String clientIp() {
+        return clientIp;
     }
 
     public Instant createdAt() {

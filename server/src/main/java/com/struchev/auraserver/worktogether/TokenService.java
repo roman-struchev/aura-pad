@@ -58,12 +58,7 @@ public class TokenService {
         return payloadPart + "." + signaturePart;
     }
 
-    /** Verifies signature + expiry only; use when the caller doesn't yet know which session a token belongs to. */
-    public TokenClaims verify(String token) {
-        return verify(token, null);
-    }
-
-    /** Verifies signature + expiry, and (if given) that the token was minted for {@code expectedSessionId}. */
+    /** Verifies signature + expiry, and that the token was minted for {@code expectedSessionId}. */
     public TokenClaims verify(String token, String expectedSessionId) {
         if (token == null || token.isBlank()) {
             throw new InvalidTokenException("Missing token");
@@ -84,7 +79,7 @@ public class TokenService {
             throw new InvalidTokenException("Invalid token signature");
         }
         Payload payload = readPayload(payloadBytes);
-        if (expectedSessionId != null && !payload.sessionId.equals(expectedSessionId)) {
+        if (!expectedSessionId.equals(payload.sessionId)) {
             throw new InvalidTokenException("Token does not match session");
         }
         Instant expiresAt = Instant.ofEpochSecond(payload.exp);

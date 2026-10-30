@@ -144,10 +144,12 @@ cd server
 ```
 
 - The smoke suite does not cover it.
-- The guest editor page is built from `server/frontend/work-together-guest/`
-  (`npm run build` there) and the output is committed under
-  `server/src/main/resources/`. Rebuild and commit it when you change that
-  frontend.
+- The guest editor page's JS/CSS/Monaco are built from
+  `server/frontend/work-together-guest/` (`npm ci && npm run build` there) into
+  a git-ignored folder; CI builds them before the jar. Its HTML is the
+  Thymeleaf template under `server/src/main/resources/templates/`.
+- `WorkTogetherEndToEndTest` runs the real server on a port — the place to
+  test anything about frames, headers or limits that mocks can't see.
 - A push to `main` touching `server/` deploys it
   (`.github/workflows/server-deploy.yml`). A change to the spec usually means
   changing both the app and the server in the same commit.

@@ -8,6 +8,8 @@ services:
     environment:
       - server.port=${PORT:-10005}
       - WORKTOGETHER_TOKEN_SECRET=${WORKTOGETHER_TOKEN_SECRET:-}
+      # Share links always point here, whatever Host header cloudflared passes on.
+      - WORKTOGETHER_PUBLIC_BASE_URL=https://aura-pad.struchev.com
     restart: always
     deploy:
       resources:

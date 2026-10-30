@@ -35,6 +35,11 @@ public class WorkTogetherExceptionHandler {
         return body(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
     }
 
+    @ExceptionHandler(CapacityExceededException.class)
+    public ResponseEntity<Map<String, String>> handleCapacity(CapacityExceededException ex) {
+        return body(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
     private ResponseEntity<Map<String, String>> body(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of("error", message));
     }

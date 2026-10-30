@@ -50,13 +50,4 @@ class TokenServiceTest {
         assertThatThrownBy(() -> tokenService.verify(token, "sess_2"))
                 .isInstanceOf(InvalidTokenException.class);
     }
-
-    @Test
-    void verifyWithoutExpectedSessionSkipsSessionCheck() {
-        String token = tokenService.mint("sess_1", Role.READ, "lnk_1", Instant.now().plusSeconds(60));
-
-        TokenClaims claims = tokenService.verify(token);
-
-        assertThat(claims.sessionId()).isEqualTo("sess_1");
-    }
 }
