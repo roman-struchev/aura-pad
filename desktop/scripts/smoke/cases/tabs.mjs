@@ -75,6 +75,61 @@ export default {
     )
     check('it lands in the "recently opened outside" list', recent.includes(external))
 
+    // An open tab on such a file follows outside edits too. No workspace
+    // root's watcher covers it, so it used to keep whatever was read at open
+    // time until closed and reopened. Markdown so the change can be read off
+    // the preview's ordinary DOM rather than Monaco's.
+    const externalMd = path.join(fixture.outside, 'external-notes.md')
+    fs.writeFileSync(externalMd, '# Outside\n\nfirst version\n')
+    await cdp.evaluate(
+      `window.api.listPathMatches(${JSON.stringify(path.join(fixture.outside, 'external-n'))})`
+    )
+    const mainForExternal = await connectMain()
+    if (!mainForExternal) {
+      skip('an outside edit reaches a tab on a file outside the workspace', 'no --inspect target')
+    } else {
+      await mainForExternal.evaluate(
+        `(() => { require('electron').BrowserWindow.getAllWindows()[0]` +
+          `.webContents.send('open-file-request', ${JSON.stringify(externalMd)}); return true })()`
+      )
+      check(
+        'a file outside the workspace opens as a tab',
+        await waitFor(
+          `window.api.getOpenTabs().then((s) => s.activeTabPath === ${JSON.stringify(externalMd)})`,
+          { timeoutMs: 8000 }
+        ),
+        JSON.stringify(await ui.openTabs())
+      )
+      await ui.togglePreview()
+      const preview = `(document.querySelector('.markdown-body')?.innerText || '')`
+      check(
+        'its preview shows the file',
+        await waitFor(`${preview}.includes('first version')`, { timeoutMs: 8000 })
+      )
+      // Give main a beat to arm the watcher for the newly opened file.
+      await sleep(500)
+      fs.writeFileSync(externalMd, '# Outside\n\nsecond version from outside\n')
+      check(
+        'an outside edit reaches a tab on a file outside the workspace',
+        await waitFor(`${preview}.includes('second version from outside')`, { timeoutMs: 15_000 }),
+        await cdp.evaluate(preview)
+      )
+      // And an atomic save (temp file + rename, how most editors write) -
+      // the one a watcher on the file itself, rather than its folder, misses.
+      const tmp = path.join(fixture.outside, '.external-notes.md.tmp')
+      fs.writeFileSync(tmp, '# Outside\n\nthird version, saved atomically\n')
+      fs.renameSync(tmp, externalMd)
+      check(
+        'an atomic outside save reaches it as well',
+        await waitFor(`${preview}.includes('third version, saved atomically')`, {
+          timeoutMs: 15_000
+        }),
+        await cdp.evaluate(preview)
+      )
+      await ui.togglePreview()
+      await ui.closeTab('external-notes.md')
+    }
+
     // A crowded strip: more tabs than fit must scroll, and the active one has
     // to stay in view - it used to be appended past the right edge, invisible,
     // with no scrollbar (the strip hides it) to say so. Opened through main's

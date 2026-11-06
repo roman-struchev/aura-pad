@@ -405,6 +405,9 @@ export interface SendContracts {
   'pty-write': [termId: string, data: string]
   'pty-resize': [termId: string, cols: number, rows: number]
   'http-cancel': [requestId: string]
+  // Every file this window has open in a tab, so main can watch the ones no
+  // workspace root covers (src/main/watcher.ts). Sent whole on each change.
+  'set-open-files': [paths: string[]]
 }
 
 export const SEND_CHANNELS = {
@@ -419,7 +422,8 @@ export const SEND_CHANNELS = {
   destroyPty: 'destroy-pty',
   ptyWrite: 'pty-write',
   ptyResize: 'pty-resize',
-  httpCancel: 'http-cancel'
+  httpCancel: 'http-cancel',
+  setOpenFiles: 'set-open-files'
 } as const satisfies Record<string, keyof SendContracts>
 
 // ---------------------------------------------------------------------------

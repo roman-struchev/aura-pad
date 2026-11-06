@@ -130,7 +130,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   outlives the session). Files with unsaved edits in a tab are skipped and say so —
   their next autosave would write the old text straight back.
 - Stays in sync with changes made outside the app — and warns instead of losing your
-  unsaved edits.
+  unsaved edits. That includes open tabs on files from outside the workspaces.
 - Files opened from outside the workspaces (Finder, "Open With…") stay in a "Recently
   Opened" list in the sidebar.
 - Respects `.gitignore`. Files up to 10 MB open in the editor; full-text search scans

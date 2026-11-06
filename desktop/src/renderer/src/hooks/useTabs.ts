@@ -706,6 +706,18 @@ export function useTabs(
     return unsubscribe
   }, [])
 
+  // Tell main which files this window has open: files outside every workspace
+  // have no root watcher covering them, so main watches those one by one
+  // (src/main/watcher.ts). Keyed on the joined path list, not `tabs`, which
+  // changes on every keystroke.
+  const openFilePaths = tabs
+    .filter((t) => !isExtensionPath(t.path))
+    .map((t) => t.path)
+    .join('\0')
+  useEffect(() => {
+    window.api.setOpenFiles(openFilePaths ? openFilePaths.split('\0') : [])
+  }, [openFilePaths])
+
   // Restore last session's open tabs on launch. Only paths (not content) are
   // persisted, so each is re-read from disk here; ones that no longer exist
   // (deleted/moved since last run) are silently skipped rather than showing

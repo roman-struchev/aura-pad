@@ -37,7 +37,7 @@ import { killListeningProcess, listListeningPorts } from './ports'
 import { listSnapshots, readSnapshot, recordSnapshot, shouldSnapshot } from './localHistory'
 import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
 import { encodeFileContent } from './encoding'
-import { setupWatchers, recordSelfWrite } from './watcher'
+import { setupWatchers, recordSelfWrite, setOpenFiles } from './watcher'
 import {
   getAllRepoStatuses,
   getDiff,
@@ -217,6 +217,25 @@ function registerWorkspaceIpc(): void {
     const result = writeFileContent(filePath, encoded)
     if (result.success) recordSelfWrite(filePath, encoded)
     return result
+  })
+
+  // Windows whose open files are being watched for, so a closed window's
+  // files stop being watched with it.
+  const openFileReporters = new Set<number>()
+  handleSend('set-open-files', (event, paths) => {
+    const id = event.sender.id
+    if (!openFileReporters.has(id)) {
+      openFileReporters.add(id)
+      event.sender.once('destroyed', () => {
+        openFileReporters.delete(id)
+        setOpenFiles(id, [])
+      })
+    }
+    // Only paths this window may read anyway - a tab can't hold anything else.
+    setOpenFiles(
+      id,
+      paths.filter((p) => pathDenial(p) === null)
+    )
   })
 
   handleInvoke('rename-path', async (oldPath, newName) => {

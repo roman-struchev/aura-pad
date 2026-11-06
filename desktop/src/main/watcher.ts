@@ -198,13 +198,11 @@ function isFullyIgnored(rootPath: string, filename: string): boolean {
   return ig.ignores(relPosix)
 }
 
-function handleFsWatchEvent(rootPath: string, eventType: string, filename: string | null): void {
-  if (!filename) return
-  if (isFullyIgnored(rootPath, filename)) return
-
-  scheduleGitStatusRefresh()
-
-  const fullPath = path.join(rootPath, filename)
+// The content half of event handling, shared by the workspace-root watchers
+// and the per-file ones below: decides whether an event on `fullPath` is our
+// own write echoing back (returns true - the caller should stay quiet) or a
+// real outside change, which it reports to the renderer.
+function handleContentEvent(fullPath: string, eventType: string): boolean {
   const key = selfWriteKey(fullPath)
 
   // True when the file's current content is still exactly what we last wrote
@@ -244,27 +242,26 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
 
   if (eventType === 'change') {
     const recent = recentSelfWrites.get(key)
-    if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return
+    if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return true
     if (matchesLastSelfWrite()) {
       forgetSelfWrite(key)
-      return
+      return true
     }
     forgetSelfWrite(key)
     recordObservedContent(key, fullPath)
     broadcast('file-changed-externally', fullPath)
-    return
+    return false
   }
 
-  // 'rename' covers create/delete/move of an entry - the tree shape may
-  // differ. Except when it's our own save: writeFileContent atomically
-  // replaces the target via temp-file + rename, which surfaces here as a
-  // 'rename' on the saved path, and rebuilding the whole tree on every
-  // (auto)save would be pure noise. Same suppression as the 'change' branch;
-  // the record is deliberately not forgotten here, since a 'change' event
-  // for the same write may still follow.
+  // 'rename' covers create/delete/move of an entry. Except when it's our own
+  // save: writeFileContent atomically replaces the target via temp-file +
+  // rename, which surfaces here as a 'rename' on the saved path. Same
+  // suppression as the 'change' branch; the record is deliberately not
+  // forgotten here, since a 'change' event for the same write may still
+  // follow.
   const recent = recentSelfWrites.get(key)
-  if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return
-  if (matchesLastSelfWrite()) return
+  if (recent && Date.now() - recent.time < SELF_WRITE_GRACE_MS) return true
+  if (matchesLastSelfWrite()) return true
 
   // Past the suppression checks, an entry that is still a file is a file whose
   // content is not what we last wrote - which is an external change, whatever
@@ -287,14 +284,28 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   try {
     stillAFile = fs.statSync(fullPath).isFile()
   } catch {
-    // Deleted or moved away - the tree rebuild below is the whole story.
+    // Deleted or moved away - the caller's tree rebuild is the whole story.
   }
   if (stillAFile) {
     forgetSelfWrite(key)
     recordObservedContent(key, fullPath)
     broadcast('file-changed-externally', fullPath)
   }
+  return false
+}
 
+function handleFsWatchEvent(rootPath: string, eventType: string, filename: string | null): void {
+  if (!filename) return
+  if (isFullyIgnored(rootPath, filename)) return
+
+  scheduleGitStatusRefresh()
+
+  // Our own save, echoing back: rebuilding the whole tree on every (auto)save
+  // would be pure noise.
+  if (handleContentEvent(path.join(rootPath, filename), eventType)) return
+  if (eventType === 'change') return
+
+  // A structural change - the tree shape may differ.
   clearTimeout(structureDebounceTimers.get(rootPath))
   structureDebounceTimers.set(
     rootPath,
@@ -303,6 +314,80 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
       broadcast('workspaces-changed', await getWorkspaceTrees())
     }, STRUCTURE_DEBOUNCE_MS)
   )
+}
+
+// Open tabs on files outside every watched workspace root - opened from
+// Finder, "Open With...", the Recently Opened list - have no root watcher to
+// report on them, so their tabs used to sit on whatever was read at open time
+// until closed and reopened. Each window reports its open file paths
+// (setOpenFiles); those no root covers get a watcher of their own.
+//
+// Watched through the parent directory, not the file itself: fs.watch on a
+// file follows its inode, and an atomic save (temp file + rename - this app,
+// vim, VS Code all save that way) swaps the inode out, after which a watcher
+// on the file never hears anything again.
+const openFilesByWindow = new Map<number, string[]>()
+interface DirWatch {
+  watcher: fs.FSWatcher
+  // NFC-normalized basename -> the path exactly as the tab has it, which is
+  // what the renderer matches the broadcast against. FSEvents may hand the
+  // name back in another Unicode normalization than the tab was opened with.
+  files: Map<string, string>
+}
+const openFileDirWatchers = new Map<string, DirWatch>()
+
+const isUnder = (root: string, p: string): boolean =>
+  p === root || p.startsWith(root.endsWith(path.sep) ? root : root + path.sep)
+
+export function setOpenFiles(windowId: number, paths: string[]): void {
+  if (paths.length === 0) openFilesByWindow.delete(windowId)
+  else openFilesByWindow.set(windowId, paths)
+  syncOpenFileWatchers()
+}
+
+function syncOpenFileWatchers(): void {
+  const roots = [...activeWatchers.keys()]
+  const wanted = new Map<string, Map<string, string>>()
+  for (const paths of openFilesByWindow.values()) {
+    for (const p of paths) {
+      if (!path.isAbsolute(p) || roots.some((root) => isUnder(root, p))) continue
+      const dir = path.dirname(p)
+      if (!wanted.has(dir)) wanted.set(dir, new Map())
+      wanted.get(dir)!.set(path.basename(p).normalize('NFC'), p)
+    }
+  }
+
+  for (const [dir, entry] of openFileDirWatchers) {
+    if (wanted.has(dir)) continue
+    entry.watcher.close()
+    openFileDirWatchers.delete(dir)
+  }
+  for (const [dir, files] of wanted) {
+    const existing = openFileDirWatchers.get(dir)
+    if (existing) {
+      existing.files = files
+      continue
+    }
+    try {
+      const entry: DirWatch = {
+        files,
+        watcher: fs.watch(dir, (eventType, filename) => {
+          if (!filename) return
+          const tabPath = entry.files.get(filename.normalize('NFC'))
+          if (tabPath) handleContentEvent(tabPath, eventType)
+        })
+      }
+      // The folder itself going away (deleted, unmounted) surfaces as an
+      // 'error' - unhandled, that would throw in the main process.
+      entry.watcher.on('error', () => {
+        entry.watcher.close()
+        if (openFileDirWatchers.get(dir) === entry) openFileDirWatchers.delete(dir)
+      })
+      openFileDirWatchers.set(dir, entry)
+    } catch (e) {
+      console.error(`Failed to watch "${dir}" for open files:`, e)
+    }
+  }
 }
 
 export function setupWatchers(): void {
@@ -324,9 +409,14 @@ export function setupWatchers(): void {
       console.error(`Failed to watch workspace "${rootPath}":`, e)
     }
   }
+  // The set of roots just changed: a file a root used to cover may now need
+  // its own watcher, or the other way round.
+  syncOpenFileWatchers()
 }
 
 export function closeAllWatchers(): void {
   activeWatchers.forEach((w) => w.close())
   activeWatchers.clear()
+  openFileDirWatchers.forEach((entry) => entry.watcher.close())
+  openFileDirWatchers.clear()
 }
