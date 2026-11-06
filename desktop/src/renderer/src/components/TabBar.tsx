@@ -5,6 +5,7 @@ import type { OpenTab } from '../hooks/useTabs'
 import { TabContextMenu } from './TabContextMenu'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
 import { extensionTabInfo } from '../lib/extensions'
+import { isImagePath } from '../lib/fileType'
 
 interface TabBarProps {
   tabs: OpenTab[]
@@ -348,7 +349,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           onTogglePin={() => togglePin(contextMenu.path)}
           onDetach={() => detachTab(contextMenu.path)}
           onShowHistory={() => showHistory(contextMenu.path)}
-          canShowHistory={!extensionTabInfo(contextMenu.path)}
+          canShowHistory={!extensionTabInfo(contextMenu.path) && !isImagePath(contextMenu.path)}
           filePath={extensionTabInfo(contextMenu.path) ? null : contextMenu.path}
           rootPaths={rootPaths}
           detachLabel={isPrimaryWindow ? 'Move to New Window' : 'Move Back to Main Window'}

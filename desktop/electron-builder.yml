@@ -74,6 +74,9 @@ fileAssociations:
   - ext: sh
     name: Shell Script
     role: Editor
+  - ext: puml
+    name: PlantUML Diagram
+    role: Editor
 win:
   executableName: aurapad
 nsis:

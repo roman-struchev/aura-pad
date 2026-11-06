@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as monaco from 'monaco-editor'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 import { isExtensionPath } from '../../../shared/extensionTab'
-import { isMarkdownPath } from '../lib/fileType'
+import { isImagePath, isMarkdownPath } from '../lib/fileType'
 import { modelUri } from '../lib/modelUri'
 
 export type OpenTab = {
@@ -17,6 +17,9 @@ export type OpenTab = {
   // retry that same buffer on its own - it would fail again every 1.2 s - but
   // the next edit, Cmd+S or the banner's Retry does.
   saveError?: { message: string; content: string }
+  // Image tabs only: bumped when the file changes on disk, so the viewer
+  // re-reads it. Their `content` stays '' - an image is never read as text.
+  revision?: number
 }
 
 // A tab autosave should leave alone for now: already failed on exactly this
@@ -92,6 +95,7 @@ export function useTabs(
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null
   const selectedPath = activeTab?.path ?? null
   const fileContent = activeTab?.content ?? ''
+  const activeTabRevision = activeTab?.revision
   const isSaved = activeTab?.isSaved ?? true
   const externalChangeAvailable = activeTab?.externalChangeAvailable ?? false
   const saveError = activeTab?.saveError?.message ?? null
@@ -187,8 +191,10 @@ export function useTabs(
     // from disk. Everything downstream is already safe for them: autosave is
     // gated on isSaved (always true here), the watcher only ever reports real
     // paths, and disposing a monaco model for an ext:// URI is a no-op.
+    // Images aren't read here either: the viewer fetches the bytes itself,
+    // and readFile would refuse them as binary.
     let content = ''
-    if (!isExtensionPath(filePath)) {
+    if (!isExtensionPath(filePath) && !isImagePath(filePath)) {
       const result = await window.api.readFile(filePath)
       if (!result.success) {
         await alertDialog(result.error || 'Failed to open file.')
@@ -574,6 +580,16 @@ export function useTabs(
 
   const reloadFromDisk = async (): Promise<void> => {
     if (!activeTabPath) return
+    if (isImagePath(activeTabPath)) {
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.path === activeTabPath
+            ? { ...t, revision: (t.revision ?? 0) + 1, externalChangeAvailable: false }
+            : t
+        )
+      )
+      return
+    }
     const result = await window.api.readFile(activeTabPath)
     if (result.success) {
       const content = result.content || ''
@@ -677,6 +693,13 @@ export function useTabs(
     const unsubscribe = window.api.onFileChangedExternally(async (changedPath) => {
       const tab = tabsRef.current.find((t) => t.path === changedPath)
       if (!tab) return
+      // Read-only and never dirty: just tell the viewer to fetch it again.
+      if (isImagePath(changedPath)) {
+        setTabs((prev) =>
+          prev.map((t) => (t.path === changedPath ? { ...t, revision: (t.revision ?? 0) + 1 } : t))
+        )
+        return
+      }
       if (tab.isSaved) {
         const result = await window.api.readFile(changedPath)
         if (!result.success) return
@@ -752,7 +775,7 @@ export function useTabs(
         // render an empty state), same spirit as silently skipping deleted
         // files below.
         let content = ''
-        if (!isExtensionPath(p)) {
+        if (!isExtensionPath(p) && !isImagePath(p)) {
           const result = await window.api.readFile(p)
           if (!result.success) continue
           content = result.content || ''
@@ -814,6 +837,7 @@ export function useTabs(
     saveError,
     retrySave,
     showMarkdownPreview,
+    activeTabRevision,
     updateTab,
     setFileContent,
     openTab,

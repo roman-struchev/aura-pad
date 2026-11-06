@@ -5,6 +5,9 @@ import { FileSearch } from './components/FileSearch'
 import { CommandPalette } from './components/CommandPalette'
 import { MarkdownPreview } from './components/MarkdownPreview'
 import { HtmlPreview } from './components/HtmlPreview'
+import { ImageViewer } from './components/ImageViewer'
+import { ZoomableImage } from './components/ZoomableImage'
+import { PlantUmlPreview } from './components/PlantUmlPreview'
 import { SettingsModal } from './components/SettingsModal'
 import { TabBar } from './components/TabBar'
 import { Sidebar } from './components/Sidebar'
@@ -63,9 +66,12 @@ import { findRepoForRoot } from './lib/repoForRoot'
 import {
   isHtmlPath,
   isHttpPath,
+  isImagePath,
+  isPlantUmlPath,
   isPreviewablePath,
   isProsePath,
-  isMarkdownPath
+  isMarkdownPath,
+  isSvgPath
 } from './lib/fileType'
 import { HttpResponsePane } from './components/HttpResponsePane'
 import { curlCommandAt, toCurl } from './lib/http/curl'
@@ -297,7 +303,7 @@ function App(): React.JSX.Element {
   // sensible fallback to flip to.
   const startTranslate = (): void => {
     if (!settingsRef.current.translateEnabled) return
-    if (tabsRef.current.showMarkdownPreview) return
+    if (tabsRef.current.showMarkdownPreview || isImagePath(tabsRef.current.selectedPath)) return
     const editor = editorInstanceRef.current
     if (!editor) return
     translateRef.current.translateSelection(editor)
@@ -864,12 +870,15 @@ function App(): React.JSX.Element {
         group: 'Go',
         run: revealActiveFile
       })
-      extras.push({
-        id: 'local-history',
-        label: 'Local History…',
-        group: 'File',
-        run: () => setHistoryPath(filePath)
-      })
+      // An image is never written by the editor, so it has no history.
+      if (!isImagePath(filePath)) {
+        extras.push({
+          id: 'local-history',
+          label: 'Local History…',
+          group: 'File',
+          run: () => setHistoryPath(filePath)
+        })
+      }
       if (filePath.endsWith('.py')) {
         extras.push({
           id: 'run-python',
@@ -972,7 +981,9 @@ function App(): React.JSX.Element {
         foldedAll={foldedAll}
         canDictate={canDictate}
         isProse={settings.readAloudEnabled && isProsePath(tabs.selectedPath)}
-        workTogetherEnabled={settings.extensions.workTogether.enabled}
+        workTogetherEnabled={
+          settings.extensions.workTogether.enabled && !isImagePath(tabs.selectedPath)
+        }
         workTogetherSharing={!!tabs.selectedPath && workTogether.isSharing(tabs.selectedPath)}
         workTogetherParticipantCount={
           (tabs.selectedPath && workTogether.sessions[tabs.selectedPath]?.participants.length) || 0
@@ -1116,7 +1127,9 @@ function App(): React.JSX.Element {
             {breadcrumbsShown && tabs.selectedPath && (
               <Breadcrumbs
                 actions={fileActions(true)}
-                editor={tabs.showMarkdownPreview ? null : mountedEditor}
+                editor={
+                  tabs.showMarkdownPreview || isImagePath(tabs.selectedPath) ? null : mountedEditor
+                }
                 path={tabs.selectedPath}
                 rootPaths={tree.rootNodes.map((r) => r.path)}
                 onRevealPath={revealPathInTree}
@@ -1156,7 +1169,31 @@ function App(): React.JSX.Element {
                     </div>
                   )
                 ) : tabs.selectedPath ? (
-                  tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
+                  isImagePath(tabs.selectedPath) ? (
+                    // Keyed by path: switching between two image tabs must
+                    // not carry one image's zoom over to the next.
+                    <ImageViewer
+                      key={tabs.selectedPath}
+                      path={tabs.selectedPath}
+                      revision={tabs.activeTabRevision}
+                    />
+                  ) : tabs.showMarkdownPreview && isSvgPath(tabs.selectedPath) ? (
+                    // Through <img>: an SVG drawn as an image runs no script
+                    // and fetches nothing, whatever the file contains.
+                    <ZoomableImage
+                      key={tabs.selectedPath}
+                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(tabs.fileContent)}`}
+                      alt={tabs.selectedPath}
+                      checkerboard
+                    />
+                  ) : tabs.showMarkdownPreview && isPlantUmlPath(tabs.selectedPath) ? (
+                    <PlantUmlPreview
+                      key={tabs.selectedPath}
+                      content={tabs.fileContent}
+                      documentPath={tabs.selectedPath}
+                      dark={resolvedTheme === 'dark' || resolvedTheme === 'monokai'}
+                    />
+                  ) : tabs.showMarkdownPreview && isMarkdownPath(tabs.selectedPath) ? (
                     <MarkdownPreview content={tabs.fileContent} documentPath={tabs.selectedPath} />
                   ) : tabs.showMarkdownPreview && isHtmlPath(tabs.selectedPath) ? (
                     <HtmlPreview content={tabs.fileContent} />

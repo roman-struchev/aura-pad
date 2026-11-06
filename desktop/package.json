@@ -43,6 +43,7 @@
     "@huggingface/transformers": "^4.2.0",
     "@mintplex-labs/piper-tts-web": "^1.0.4",
     "@monaco-editor/react": "^4.7.0",
+    "@plantuml/core": "1.2026.9",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

@@ -81,6 +81,8 @@ And two helpers worth reaching for instead of a `sleep`:
 | A6 | Search, options and replace | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape; switching between quick open and search-in-files swaps the one dialog and carries the query both ways; match case / whole word / regex / file filter each narrow as advertised and an unfinished regex is reported not thrown; replace-in-files rewrites what it says it did, refuses paths outside the allowed folders, and one Undo puts it back — driven through the API and through the overlay (preview, Replace All, Undo) |
 | A20 | Go to line, structure, palette | `Cmd+L` opens quick open in line mode and offers the line; `Cmd+F12` opens it on the file's structure (classes/functions/constants of a .ts, headings of a .md with fenced blocks skipped) and a fuzzy query narrows it to one symbol; picking one keeps the file active; `name#symbol` opens another file at its symbol; `Shift+Cmd+A` opens the command palette, lists menu-backed and extra actions, filters fuzzily, closes on Escape, and Enter really runs the action (the sidebar toggle, checked in settings); a mode key pressed over an already-open quick open re-seeds it; both dialogs keep a WCAG-AA contrast in the light theme |
 | A16 | Markdown image paste | An image on the clipboard pasted into a `.md` file lands in `assets/` next to it, the document gets a relative link, the preview renders it as a data: URL, the same paste in a non-Markdown file writes nothing, and a document path outside the allowed folders is refused |
+| A23 | Image viewer and SVG preview | A PNG opens in the viewer (no binary-file error), its info line gives the pixel size, a small image is not enlarged while a large one is fitted, Zoom In / Fit / 1:1 change the zoom, an upper-case extension opens too, an undecodable `.png` says so in the tab; the tab offers no preview toggle, no Local History and no Share, never writes the file back, and follows a rewrite on disk; an `.svg` opens as text and its preview draws it as an `<img>` without running the script inside it |
+| A24 | PlantUML preview | The engine is not loaded until the first diagram; a `.puml` offers the preview toggle and renders a sequence diagram (with Graphviz handed to the engine), follows a change to the file, renders a source without `@startuml`, shows PlantUML's error with its line for an invalid source, reads a local `!include` from disk, reports a missing include and a standard-library include (`<C4/…>`) instead of fetching it, and toggles back to source |
 | A17 | Local history | A save stores the state it replaced, a second save moments later is coalesced into it, replace-across-files always stores one, versions read back byte-for-byte, an unknown id and a file outside the allowed folders are refused, and the tab menu's Local History restores a picked version into the tab |
 | A18 | Spell checking | An installed dictionary is listed and an unknown language refused; Settings → Spelling turns it on and remembers it; a prose file's unknown words are counted in the toolbar (affixed forms counting as known), typing another one is picked up, a clean file reports none, and a non-prose file is not checked at all |
 | A7 | Preview and formatting | Markdown and HTML previews render and toggle back to source; Format rewrites JSON and autosaves |
@@ -514,6 +516,29 @@ manual is everything around them.
    while the terminal has focus.
 4. With no file open, `Cmd+F12` opens the dialog and it says so instead of
    listing nothing.
+
+---
+
+## 22. Image viewer and PlantUML preview
+
+**Guards:** `src/renderer/src/components/ZoomableImage.tsx`,
+`src/renderer/src/components/ImageViewer.tsx`,
+`src/renderer/src/components/PlantUmlPreview.tsx`, `src/renderer/src/lib/plantuml.ts`,
+`src/main/pastedImages.ts`, `electron-builder.yml`
+
+A23/A24 drive the buttons and read the decoded image back; what they can't do is
+a real trackpad, the native menu, the OS's "Open With", or watch a packaged
+build's network.
+
+| # | Steps | Expected |
+|---|-------|----------|
+| 22.1 | Open a large screenshot, pinch on the trackpad, then `Cmd`+scroll | Both zoom around the pointer (the spot under it stays put); the page itself never zooms |
+| 22.2 | Open a `.puml`, press `Cmd+Shift+P` (the menu accelerator, not the toolbar button) | The diagram replaces the source; pressing it again returns to the source |
+| 22.3 | In a packaged build, Finder → right-click a `.png` → Open With → AuraPad (or drop it on the window) | It opens in the image viewer, not with the binary-file dialog |
+| 22.4 | In a packaged build, preview a diagram for the first time (DevTools → Network open) with `!include <C4/C4_Context>` | The preview shows "cannot include <C4/C4_Context>"; no request leaves the app |
+| 22.5 | Preview a real, large class diagram (100+ classes) | It renders; the UI may pause while it lays out, but no error about the SVG size for an ordinary diagram |
+| 22.6 | Switch the theme between dark / light / Monokai / Solarized with a diagram previewed, toggling the preview off and on | Dark and Monokai draw it dark, light and Solarized light; the zoom bar and info line stay readable in all four |
+| 22.7 | Open a 15 MB image | The tab says it is too large (15.0 MB, limit 10 MB) and *Open in Default App* opens it in the system viewer |
 
 ---
 

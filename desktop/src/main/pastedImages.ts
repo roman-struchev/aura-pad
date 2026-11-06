@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { readFilesFromClipboard } from './clipboardFiles'
 import { pathDenial } from './pathAccess'
-import type { PastedImageResult } from '../shared/ipc'
+import type { ImageDataUrlResult, PastedImageResult } from '../shared/ipc'
 
 // Pasting an image into a Markdown file: the bytes are written next to the
 // document and the editor gets a relative link to them, which is what keeps
@@ -71,22 +71,32 @@ const MIME_BY_EXT: Record<string, string> = {
   '.gif': 'image/gif',
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
-  '.bmp': 'image/bmp'
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+  '.avif': 'image/avif'
 }
 
-export function readImageDataUrl(imagePath: string): { success: boolean; dataUrl?: string } {
-  if (pathDenial(imagePath)) return { success: false }
+export function readImageDataUrl(imagePath: string): ImageDataUrlResult {
+  if (pathDenial(imagePath)) return { success: false, reason: 'denied' }
   const mime = MIME_BY_EXT[path.extname(imagePath).toLowerCase()]
-  if (!mime) return { success: false }
+  if (!mime) return { success: false, reason: 'unsupported' }
+  let size: number
   try {
     const stat = fs.statSync(imagePath)
-    if (!stat.isFile() || stat.size > MAX_PREVIEW_IMAGE_BYTES) return { success: false }
+    if (!stat.isFile()) return { success: false, reason: 'missing' }
+    size = stat.size
+  } catch {
+    return { success: false, reason: 'missing' }
+  }
+  if (size > MAX_PREVIEW_IMAGE_BYTES) return { success: false, size, reason: 'too-large' }
+  try {
     return {
       success: true,
+      size,
       dataUrl: `data:${mime};base64,${fs.readFileSync(imagePath).toString('base64')}`
     }
   } catch {
-    return { success: false }
+    return { success: false, size, reason: 'missing' }
   }
 }
 

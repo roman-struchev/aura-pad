@@ -67,6 +67,18 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
 - Error checking for TypeScript, JavaScript, and Python; uses your project's own ESLint
   setup if it has one.
 - One-click Markdown and HTML preview; format JSON/HTML/XML with `Option+Cmd+L`.
+- **Images** (PNG, JPEG, GIF, WebP, BMP, ICO, AVIF) open in a tab of their own instead of
+  the editor: fitted to the pane (never blown up past 100%), zoomed with the buttons or
+  `Cmd`+wheel / pinch, back to Fit or 1:1 in one click, with the pixel size and file size
+  shown and a checkerboard behind transparent areas. The tab is read-only and follows the
+  file when it changes on disk. Images up to 10 MB are shown; larger ones offer *Open in
+  Default App*. SVG stays editable text, and its preview (`Cmd+Shift+P`) draws it as an
+  image — scripts inside the file never run.
+- **PlantUML** (`.puml`, `.plantuml`, `.pu`, `.iuml`): the preview renders the diagram right
+  in the editor, with the PlantUML engine bundled in the app — no Java, no server, nothing
+  leaves your machine. It follows the dark or light theme, reads local `!include` files from
+  disk, and shows PlantUML's own error (with the line) when the source doesn't parse. The
+  standard library (`!include <C4/…>`, AWS, …) is not bundled and is not fetched.
 - Opens files that aren't UTF-8 (cp1251, UTF-16, …) and writes them back in their original
   encoding instead of corrupting them.
 - Paste an image into a Markdown file (a screenshot, or a file copied in Finder/Explorer)
@@ -133,7 +145,7 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   unsaved edits. That includes open tabs on files from outside the workspaces.
 - Files opened from outside the workspaces (Finder, "Open With…") stay in a "Recently
   Opened" list in the sidebar.
-- Respects `.gitignore`. Files up to 10 MB open in the editor; full-text search scans
+- Respects `.gitignore`. Text files up to 10 MB open in the editor; full-text search scans
   every text file up to 2 MB, whatever its extension (binaries are skipped). The result
   list stops at 500 matches (50 per file) and says so when it does; the match counts —
   and what Replace All changes — still cover every match in the listed files.

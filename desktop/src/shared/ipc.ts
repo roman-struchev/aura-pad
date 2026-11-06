@@ -52,6 +52,15 @@ export interface FileReadResult extends OpResult {
   content?: string
 }
 
+// Why an image came back empty: the viewer says so instead of showing a
+// blank pane. `size` (bytes) is set whenever the file could be stat'ed.
+export interface ImageDataUrlResult {
+  success: boolean
+  dataUrl?: string
+  size?: number
+  reason?: 'too-large' | 'unsupported' | 'denied' | 'missing'
+}
+
 // An image pasted into a Markdown file, written next to it: the relative path
 // is what goes into the document, the absolute one is what the tree and the
 // watcher deal in.
@@ -139,11 +148,11 @@ export interface InvokeContracts {
   // Write the clipboard's image next to a Markdown file - see
   // src/main/pastedImages.ts.
   'save-pasted-image': { args: [documentPath: string]; result: PastedImageResult }
-  // A local image the Markdown preview references, as a data: URL (the page's
-  // CSP has no file: source, on purpose).
+  // A local image the Markdown preview references (or the image viewer
+  // shows), as a data: URL (the page's CSP has no file: source, on purpose).
   'read-image-data-url': {
     args: [imagePath: string]
-    result: { success: boolean; dataUrl?: string }
+    result: ImageDataUrlResult
   }
   // Local history: the states a file was in before AuraPad wrote over it,
   // newest first, and the text of one of them (see src/main/localHistory.ts).

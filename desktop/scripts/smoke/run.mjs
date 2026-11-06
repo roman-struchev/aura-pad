@@ -48,6 +48,8 @@ const CASE_FILES = [
   'navigate.mjs',
   'preview.mjs',
   'markdown-images.mjs',
+  'images.mjs',
+  'plantuml.mjs',
   'local-history.mjs',
   'spellcheck.mjs',
   'terminal.mjs',
@@ -125,7 +127,11 @@ function killApp(app) {
     app.child.kill('SIGKILL')
   }
   try {
-    const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`], { encoding: 'utf-8' }).trim()
+    // LISTEN only: a bare tcp:PORT also lists every client connected to the
+    // port - this runner's own CDP socket included - and it SIGKILLed itself.
+    const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`, '-sTCP:LISTEN'], {
+      encoding: 'utf-8'
+    }).trim()
     for (const pid of pids.split('\n').filter(Boolean)) {
       try {
         process.kill(Number(pid), 'SIGKILL')
@@ -188,7 +194,9 @@ async function assertPortFree() {
   // it is a --keep run (or an aborted one) still holding the port.
   let holder = ''
   try {
-    const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`], { encoding: 'utf-8' }).trim()
+    const pids = execFileSync('lsof', ['-ti', `tcp:${PORT}`, '-sTCP:LISTEN'], {
+      encoding: 'utf-8'
+    }).trim()
     if (pids)
       holder = `\nIt is pid ${pids.split('\n').join(', ')} - \`kill ${pids.split('\n').join(' ')}\`.`
   } catch {

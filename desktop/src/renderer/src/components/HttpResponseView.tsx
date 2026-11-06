@@ -5,6 +5,7 @@ import { ToolbarButton } from './ToolbarButton'
 import { prettyPrintMarkup } from '../lib/formatMarkup'
 import { toCurl } from '../lib/http/curl'
 import type { HttpExchange } from '../hooks/useHttpClient'
+import { formatBytes } from '../lib/formatBytes'
 
 interface HttpResponseViewProps {
   exchange: HttpExchange
@@ -21,12 +22,6 @@ interface HttpResponseViewProps {
 }
 
 type ViewTab = 'body' | 'headers' | 'request'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
 
 // Status colors follow the class, not the exact code: green 2xx, blue 3xx,
 // amber 4xx (your fault), red 5xx (theirs).

@@ -7,10 +7,22 @@
 export const isHtmlPath = (path: string | null): boolean =>
   !!path && (path.endsWith('.html') || path.endsWith('.htm'))
 
+// Raster images open in the image viewer instead of the editor - they are
+// never read as text (the binary sniff would refuse them anyway). SVG is not
+// here: it is text, edited as such, and previewed like Markdown.
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i
+export const isImagePath = (path: string | null): boolean => !!path && IMAGE_EXTENSIONS.test(path)
+
+export const isSvgPath = (path: string | null): boolean => !!path && /\.svg$/i.test(path)
+
+export const isPlantUmlPath = (path: string | null): boolean =>
+  !!path && /\.(puml|plantuml|pu|iuml)$/i.test(path)
+
 // Files with a rendered preview mode (the toolbar's Show Preview toggle and
-// the tree's hover eye icon): Markdown, plus raw HTML in a sandboxed iframe.
+// the tree's hover eye icon): Markdown, raw HTML in a sandboxed iframe, SVG
+// drawn as an image, and PlantUML rendered to a diagram.
 export const isPreviewablePath = (path: string | null): boolean =>
-  !!path && (path.endsWith('.md') || isHtmlPath(path))
+  !!path && (path.endsWith('.md') || isHtmlPath(path) || isSvgPath(path) || isPlantUmlPath(path))
 
 export const isMarkdownPath = (path: string | null): boolean => !!path && path.endsWith('.md')
 
