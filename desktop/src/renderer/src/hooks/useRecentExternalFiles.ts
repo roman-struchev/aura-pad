@@ -19,5 +19,8 @@ export function useRecentExternalFiles() {
     window.api.removeRecentExternalFile(filePath).then(setEntries)
   }
 
-  return { entries, touch, remove }
+  // Main already returned the new list (it added a folder entry itself).
+  const replace = (next: RecentExternalFile[]): void => setEntries(next)
+
+  return { entries, touch, remove, replace }
 }

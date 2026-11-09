@@ -4,6 +4,7 @@ import {
   loadWorkspaces,
   saveWorkspaces,
   getWorkspaceTrees,
+  getOutsideFolderTrees,
   searchInWorkspaces,
   readFileContent,
   writeFileContent,
@@ -20,7 +21,9 @@ import { loadWorkTogetherResumeState, saveWorkTogetherResumeState } from './work
 import {
   loadRecentExternalFiles,
   touchRecentExternalFile,
-  removeRecentExternalFile
+  touchRecentExternalFolder,
+  removeRecentExternalFile,
+  loadOutsideFolders
 } from './recentExternalFiles'
 import { listPathMatches } from './pathBrowse'
 import { replaceInFiles, undoReplaceInFiles } from './replaceInFiles'
@@ -35,7 +38,17 @@ import {
 import { appendHttpRequest } from './httpSave'
 import { killListeningProcess, listListeningPorts } from './ports'
 import { listSnapshots, readSnapshot, recordSnapshot, shouldSnapshot } from './localHistory'
-import { grantPath, grantPaths, isAllowedPath, pathDenial, relativeDenial } from './pathAccess'
+import {
+  grantPath,
+  grantPaths,
+  isAllowedPath,
+  pathDenial,
+  relativeDenial,
+  PATH_DENIED
+} from './pathAccess'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { encodeFileContent } from './encoding'
 import { setupWatchers, recordSelfWrite, setOpenFiles } from './watcher'
 import {
@@ -165,7 +178,53 @@ function registerWorkspaceIpc(): void {
   handleInvoke('touch-recent-external-file', (filePath) =>
     isAllowedPath(filePath) ? touchRecentExternalFile(filePath) : loadRecentExternalFiles()
   )
-  handleInvoke('remove-recent-external-file', (filePath) => removeRecentExternalFile(filePath))
+  handleInvoke('remove-recent-external-file', (filePath) => {
+    const wasFolder = loadRecentExternalFiles().some(
+      (e) => e.path === filePath && e.type === 'directory'
+    )
+    const entries = removeRecentExternalFile(filePath)
+    // A folder entry going away stops being watched; a file entry changes
+    // nothing a watcher covers.
+    if (wasFolder) setupWatchers()
+    return entries
+  })
+
+  // Quick Open's Cmd+Enter on a folder. The renderer can only name a folder
+  // it was already allowed to see (a path-mode listing grants what it lists),
+  // so this never widens access; listing the folder is what keeps that grant
+  // across restarts. Home and / are refused: walking and recursively watching
+  // either would be enormous.
+  handleInvoke('open-outside-folder', async (folderPath) => {
+    if (typeof folderPath !== 'string' || pathDenial(folderPath)) return { error: PATH_DENIED }
+    const resolved = path.resolve(folderPath)
+    try {
+      if (!fs.statSync(resolved).isDirectory()) return { error: 'That is not a folder.' }
+    } catch {
+      return { error: 'That folder does not exist.' }
+    }
+    if (resolved === path.parse(resolved).root || resolved === os.homedir()) {
+      return { error: `${resolved} is too large to open in the sidebar. Pick a folder inside it.` }
+    }
+    if (loadWorkspaces().some((root) => resolved === root || resolved.startsWith(root + path.sep)))
+      return { covered: true as const }
+    // Listed folders don't nest: one already holding this folder is where it
+    // gets revealed (and the one that counts as used); folders this one holds
+    // give way to it.
+    const listed = loadOutsideFolders()
+    const container = listed.find((f) => resolved === f || resolved.startsWith(f + path.sep))
+    if (container) {
+      touchRecentExternalFile(container)
+    } else {
+      for (const inner of listed.filter((f) => f.startsWith(resolved + path.sep))) {
+        removeRecentExternalFile(inner)
+      }
+      touchRecentExternalFolder(resolved)
+    }
+    const entries = loadRecentExternalFiles()
+    setupWatchers()
+    return { entries, trees: await getOutsideFolderTrees() }
+  })
+  handleInvoke('get-outside-folder-trees', () => getOutsideFolderTrees())
   // Quick Open's path mode: what main lists here is what the renderer may then
   // open, which is how a file outside every workspace still gets opened.
   handleInvoke('list-path-matches', (rawInput) => {

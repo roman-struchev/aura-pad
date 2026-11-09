@@ -3,7 +3,14 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import type { Ignore } from 'ignore'
-import { loadWorkspaces, getWorkspaceTrees, isIgnored, loadGitignore } from './workspaces'
+import {
+  loadWorkspaces,
+  getWorkspaceTrees,
+  getOutsideFolderTrees,
+  isIgnored,
+  loadGitignore
+} from './workspaces'
+import { loadOutsideFolders } from './recentExternalFiles'
 import { getAllRepoStatuses } from './git'
 import { loadSettings } from './settings'
 import type { EventContracts } from '../shared/ipc'
@@ -33,6 +40,8 @@ const activeWatchers = new Map<string, fs.FSWatcher>()
 // since re-reading and re-parsing .gitignore on every single fs.watch
 // callback would defeat the point of filtering noise out early.
 const rootIgnores = new Map<string, Ignore>()
+// The watched roots that are outside folders rather than workspaces.
+const outsideRoots = new Set<string>()
 const recentSelfWrites = new Map<string, { time: number }>()
 
 interface SelfWrite {
@@ -298,7 +307,10 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
   if (!filename) return
   if (isFullyIgnored(rootPath, filename)) return
 
-  scheduleGitStatusRefresh()
+  // Folders listed under "Recently Opened (Outside)" are watched like roots,
+  // but they are not projects: no git, and their own tree event.
+  const outside = outsideRoots.has(rootPath)
+  if (!outside) scheduleGitStatusRefresh()
 
   // Our own save, echoing back: rebuilding the whole tree on every (auto)save
   // would be pure noise.
@@ -311,7 +323,8 @@ function handleFsWatchEvent(rootPath: string, eventType: string, filename: strin
     rootPath,
     setTimeout(async () => {
       structureDebounceTimers.delete(rootPath)
-      broadcast('workspaces-changed', await getWorkspaceTrees())
+      if (outside) broadcast('outside-folders-changed', await getOutsideFolderTrees())
+      else broadcast('workspaces-changed', await getWorkspaceTrees())
     }, STRUCTURE_DEBOUNCE_MS)
   )
 }
@@ -395,7 +408,13 @@ export function setupWatchers(): void {
   activeWatchers.clear()
   rootIgnores.clear()
 
-  for (const rootPath of loadWorkspaces()) {
+  const workspaceRoots = loadWorkspaces()
+  outsideRoots.clear()
+  for (const p of loadOutsideFolders()) {
+    // A listed folder that sits inside a workspace is already covered.
+    if (!workspaceRoots.some((root) => isUnder(root, p))) outsideRoots.add(p)
+  }
+  for (const rootPath of [...workspaceRoots, ...outsideRoots]) {
     if (!fs.existsSync(rootPath)) continue
     rootIgnores.set(rootPath, loadGitignore(rootPath))
     try {

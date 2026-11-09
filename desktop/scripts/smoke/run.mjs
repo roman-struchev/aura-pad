@@ -46,6 +46,7 @@ const CASE_FILES = [
   'encoding.mjs',
   'search.mjs',
   'navigate.mjs',
+  'outside-folders.mjs',
   'preview.mjs',
   'markdown-images.mjs',
   'images.mjs',
@@ -310,11 +311,14 @@ async function main() {
     },
     // Cases that need a fresh process (session restore, settings applied at
     // startup) ask for this rather than assuming one.
-    restart: async () => {
+    // `whileStopped` runs between quit and relaunch - for planting profile
+    // files main would otherwise overwrite from its in-memory cache.
+    restart: async (whileStopped) => {
       cdp.close()
       await quitApp()
       await sleep(1500)
       killApp(app)
+      if (whileStopped) await whileStopped()
       app = launch(fixture)
       running = { app, fixture }
       cdp = await connect(PORT)

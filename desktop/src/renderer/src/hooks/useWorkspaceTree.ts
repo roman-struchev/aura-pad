@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { FileNode } from '../../../shared/fileNode'
+import type { RecentExternalFile } from '../../../shared/recentExternalFile'
 import type { RevealRequest, RowClickModifiers } from '../components/FileTree'
 import { alertDialog, confirmDialog } from '../lib/dialogs'
 import { dirname } from '../lib/path'
@@ -82,6 +83,14 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   const setRootNodes = (trees: FileNode[]): void => {
     setRawRootNodes((prev) => mergeForest(prev, trees))
   }
+  // The folders listed under "Recently Opened (Outside)": rendered by the
+  // sidebar with the same FileTree, so every tree operation below has to find
+  // their nodes too.
+  const [outsideNodes, setRawOutsideNodes] = useState<FileNode[]>([])
+  const setOutsideNodes = (trees: FileNode[]): void => {
+    setRawOutsideNodes((prev) => mergeForest(prev, trees))
+  }
+  const allNodes = useMemo(() => [...rootNodes, ...outsideNodes], [rootNodes, outsideNodes])
   // False until the initial workspace scan resolves, so callers that need to
   // tell "no workspaces configured" apart from "still loading" (e.g. the
   // outside-workspace reconciliation in App.tsx) don't act on a root list
@@ -126,8 +135,8 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   // Resolved against the current forest, so entries that vanished (deleted
   // outside the app, or by the operation itself) simply drop out.
   const selectedNodes = useMemo(
-    () => selectedPaths.map((p) => findNode(rootNodes, p)).filter((n): n is FileNode => !!n),
-    [rootNodes, selectedPaths]
+    () => selectedPaths.map((p) => findNode(allNodes, p)).filter((n): n is FileNode => !!n),
+    [allNodes, selectedPaths]
   )
 
   useEffect(() => {
@@ -136,10 +145,18 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
       setRootsLoaded(true)
     })
 
+    window.api.getOutsideFolderTrees().then(setOutsideNodes)
+
     const unsubscribe = window.api.onWorkspacesChanged((trees) => {
       setRootNodes(trees || [])
     })
-    return unsubscribe
+    const unsubscribeOutside = window.api.onOutsideFoldersChanged((trees) => {
+      setOutsideNodes(trees || [])
+    })
+    return () => {
+      unsubscribe()
+      unsubscribeOutside()
+    }
   }, [])
 
   useEffect(() => {
@@ -158,6 +175,31 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   const handleAddFolder = async (): Promise<void> => {
     const trees = await window.api.addWorkspace()
     if (trees) setRootNodes(trees)
+  }
+
+  // Quick Open's Cmd+Enter on a folder: main lists it under "Recently Opened
+  // (Outside)" - or, when a workspace already holds it, says so and the
+  // folder is revealed there instead. Main's refusal (home, /, not a folder)
+  // is shown as is. Returns the updated outside entries for the caller's
+  // list, null when nothing was added.
+  const openOutsideFolder = async (path: string): Promise<RecentExternalFile[] | null> => {
+    const result = await window.api.openOutsideFolder(path)
+    if (result.covered) {
+      revealAndSelect(path)
+      return null
+    }
+    if ('error' in result) {
+      await alertDialog(result.error)
+      return null
+    }
+    setOutsideNodes(result.trees)
+    revealAndSelect(path)
+    return result.entries
+  }
+
+  // The sidebar's × on a folder entry: main drops it (and stops watching it).
+  const refreshOutsideNodes = (): void => {
+    window.api.getOutsideFolderTrees().then(setOutsideNodes)
   }
 
   const handleRemoveFolder = async (path: string): Promise<void> => {
@@ -249,7 +291,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
       await alertDialog(result.error || 'Failed to rename.')
       return
     }
-    setRootNodes(result.trees || [])
+    if (result.trees) setRootNodes(result.trees)
     callbacks.onPathChanged(node.path, result.newPath)
     setSelectedPaths([result.newPath])
     setAnchorPath(result.newPath)
@@ -274,7 +316,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
       await alertDialog(result.error || 'Failed to create.')
       return
     }
-    setRootNodes(result.trees || [])
+    if (result.trees) setRootNodes(result.trees)
     setRevealPath(target.parentPath)
     if (target.type === 'file') {
       callbacks.onFileCreated(result.newPath)
@@ -288,7 +330,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
       if (result.error) await alertDialog(result.error)
       return
     }
-    setRootNodes(result.trees || [])
+    if (result.trees) setRootNodes(result.trees)
     setRevealPath(targetDirPath)
     callbacks.onPathChanged(sourcePath, result.newPath)
     setSelectedPaths([result.newPath])
@@ -317,7 +359,7 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
   // Keyboard paste: into the row the user last clicked, falling back to the
   // first row of the selection.
   const pasteIntoSelection = async (): Promise<void> => {
-    const target = (anchorPath ? findNode(rootNodes, anchorPath) : null) ?? selectedNodes[0]
+    const target = (anchorPath ? findNode(allNodes, anchorPath) : null) ?? selectedNodes[0]
     if (target) await pasteIntoNode(target)
   }
 
@@ -363,6 +405,9 @@ export function useWorkspaceTree(callbacks: UseWorkspaceTreeCallbacks) {
     selectedPathSet,
     selectedNodes,
     handleAddFolder,
+    outsideNodes,
+    openOutsideFolder,
+    refreshOutsideNodes,
     handleRemoveFolder,
     handleContextMenu,
     handleRowClick,

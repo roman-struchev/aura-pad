@@ -85,7 +85,9 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
       <ContextMenuItem onClick={() => run(() => onCreateNew(node, 'directory'))}>
         New Folder
       </ContextMenuItem>
-      {!isMulti && (
+      {/* An outside folder's root is addressed by its path in the outside
+          list: renaming it would leave that entry pointing at nothing. */}
+      {!isMulti && !(node.isRoot && node.isOutside) && (
         <ContextMenuItem onClick={() => run(() => onRename(node))}>Rename</ContextMenuItem>
       )}
       <ContextMenuSeparator />
@@ -110,7 +112,9 @@ export const TreeContextMenu: React.FC<TreeContextMenuProps> = ({
           {deleteCount > 1 ? `Delete ${plural(deleteCount, 'Item')}` : 'Delete'}
         </ContextMenuItem>
       )}
-      {node.isRoot && (
+      {/* An outside folder is not a workspace: it leaves through the × on
+          its entry in "Recently Opened (Outside)". */}
+      {node.isRoot && !node.isOutside && (
         <>
           <ContextMenuSeparator />
           <ContextMenuItem danger onClick={() => run(() => onRemoveFolder(node.path))}>

@@ -22,6 +22,11 @@ interface SidebarProps {
   activeExtensionId: string | null
   onOpenExtension: (id: string) => void
   recentExternalFiles: string[]
+  // Which of those entries are folders - a folder whose tree is missing (it
+  // was deleted or moved on disk) must not be opened as if it were a file.
+  recentExternalFolderPaths: ReadonlySet<string>
+  // The listed entries that are folders, as trees (built by main).
+  outsideFolders: FileNode[]
   onRemoveRecentExternalFile: (path: string) => void
   selectedPath: string | null
   selectedPaths: ReadonlySet<string>
@@ -59,6 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeExtensionId,
   onOpenExtension,
   recentExternalFiles,
+  recentExternalFolderPaths,
+  outsideFolders,
   onRemoveRecentExternalFile,
   selectedPath,
   selectedPaths,
@@ -195,33 +202,83 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 px-2">
                 Recently Opened (Outside)
               </div>
-              {recentExternalFiles.map((path) => (
-                <div
-                  key={path}
-                  className={clsx(
-                    'group flex items-center px-2 cursor-pointer leading-normal hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
-                    rowPadding,
-                    selectedPath === path && 'bg-fleet-active text-fleet-textHover'
-                  )}
-                  title={path}
-                  onClick={() => onSelect(path)}
-                >
-                  <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
-                    {getFileIcon(path.split('/').pop() || path, 'file', false)}
-                  </span>
-                  <span className="truncate flex-1">{path.split('/').pop()}</span>
-                  <button
-                    className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover shrink-0"
-                    title="Remove from list"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onRemoveRecentExternalFile(path)
-                    }}
+              {recentExternalFiles.map((path) => {
+                const folder = outsideFolders.find((n) => n.path === path)
+                if (folder) {
+                  // A folder entry: the same tree as a workspace, so it
+                  // expands, opens, and takes the tree's context menu and
+                  // shortcuts - plus the list's own × to drop it.
+                  return (
+                    <div
+                      key={path}
+                      className="relative group/outside"
+                      data-surface="tree"
+                      data-outside-folder={path}
+                      title={path}
+                    >
+                      <FileTree
+                        node={folder}
+                        onSelect={onSelect}
+                        onContextMenu={onContextMenu}
+                        onCreateNew={onCreateNew}
+                        onMove={onMove}
+                        onRowClick={onRowClick}
+                        onRunPython={onRunPython}
+                        onPreviewMarkdown={onPreviewMarkdown}
+                        selectedPath={selectedPath}
+                        selectedPaths={selectedPaths}
+                        revealRequest={revealRequest}
+                        rowPadding={rowPadding}
+                        isPathShared={isPathShared}
+                        onOpenShare={onOpenShare}
+                      />
+                      <button
+                        className="hidden group-hover/outside:block absolute right-1 top-0.5 p-0.5 rounded bg-fleet-sidebar hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover"
+                        title="Remove from list"
+                        data-remove-outside={path}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onRemoveRecentExternalFile(path)
+                        }}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )
+                }
+                const missingFolder = recentExternalFolderPaths.has(path)
+                return (
+                  <div
+                    key={path}
+                    className={clsx(
+                      'group flex items-center px-2 cursor-pointer leading-normal hover:bg-fleet-active text-fleet-text hover:text-fleet-textHover transition-colors',
+                      rowPadding,
+                      selectedPath === path && 'bg-fleet-active text-fleet-textHover'
+                    )}
+                    title={missingFolder ? `${path} (no longer on disk)` : path}
+                    onClick={() => !missingFolder && onSelect(path)}
                   >
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
+                    <span className="mr-1.5 opacity-70 flex items-center justify-center w-4 h-4">
+                      {getFileIcon(
+                        path.split('/').pop() || path,
+                        missingFolder ? 'directory' : 'file',
+                        false
+                      )}
+                    </span>
+                    <span className="truncate flex-1">{path.split('/').pop()}</span>
+                    <button
+                      className="hidden group-hover:block ml-1 p-0.5 rounded hover:bg-fleet-border text-gray-400 hover:text-fleet-textHover shrink-0"
+                      title="Remove from list"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRemoveRecentExternalFile(path)
+                      }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

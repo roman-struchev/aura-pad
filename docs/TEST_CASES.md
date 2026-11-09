@@ -80,6 +80,7 @@ And two helpers worth reaching for instead of a `sleep`:
 | A5 | Text encodings | cp1251 and UTF-16 read and round-trip byte-for-byte; binary files are refused (§1) |
 | A6 | Search, options and replace | Full-text search finds matches and skips ignored paths; double-Shift opens quick open, filters, and closes on Escape; switching between quick open and search-in-files swaps the one dialog and carries the query both ways; match case / whole word / regex / file filter each narrow as advertised and an unfinished regex is reported not thrown; replace-in-files rewrites what it says it did, refuses paths outside the allowed folders, and one Undo puts it back — driven through the API and through the overlay (preview, Replace All, Undo) |
 | A20 | Go to line, structure, palette | `Cmd+L` opens quick open in line mode and offers the line; `Cmd+F12` opens it on the file's structure (classes/functions/constants of a .ts, headings of a .md with fenced blocks skipped) and a fuzzy query narrows it to one symbol; picking one keeps the file active; `name#symbol` opens another file at its symbol; `Shift+Cmd+A` opens the command palette, lists menu-backed and extra actions, filters fuzzily, closes on Escape, and Enter really runs the action (the sidebar toggle, checked in settings); a mode key pressed over an already-open quick open re-seeds it; both dialogs keep a WCAG-AA contrast in the light theme |
+| A25 | Outside folders from Quick Open | The empty quick open hint mentions `~/`; in path mode the selected folder row offers Open in Sidebar and a file row does not; plain Enter still steps into a folder; Cmd+Enter and the button each list an outside folder under Recently Opened (Outside), expanded, without adding a workspace root; the home folder and a never-listed folder are refused, a folder inside a workspace is revealed and not listed; inside it a subfolder expands, a file opens and saves, a file created on disk appears, a file created through the context menu lands on disk; search-in-files finds nothing in it and opening a file in it adds no file entry; the entry and the button keep WCAG-AA in the light theme; after a restart it is still listed and its files still read; an old-format file entry still loads; × removes it, closes its tabs and leaves the folder on disk |
 | A16 | Markdown image paste | An image on the clipboard pasted into a `.md` file lands in `assets/` next to it, the document gets a relative link, the preview renders it as a data: URL, the same paste in a non-Markdown file writes nothing, and a document path outside the allowed folders is refused |
 | A23 | Image viewer and SVG preview | A PNG opens in the viewer (no binary-file error), its info line gives the pixel size, a small image is not enlarged while a large one is fitted, Zoom In / Fit / 1:1 change the zoom, an upper-case extension opens too, an undecodable `.png` says so in the tab; the tab offers no preview toggle, no Local History and no Share, never writes the file back, and follows a rewrite on disk; an `.svg` opens as text and its preview draws it as an `<img>` without running the script inside it |
 | A24 | PlantUML preview | The engine is not loaded until the first diagram; a `.puml` offers the preview toggle and renders a sequence diagram (with Graphviz handed to the engine), follows a change to the file, renders a source without `@startuml`, shows PlantUML's error with its line for an invalid source, reads a local `!include` from disk, reports a missing include and a standard-library include (`<C4/…>`) instead of fetching it, and toggles back to source |
@@ -433,7 +434,9 @@ one and is unreachable from CDP either way.
 ## 18. Path allowlist — the ways a file legitimately comes from outside
 
 Guards: `src/main/pathAccess.ts`, the `getPathForFile` grant in
-`src/preload/index.ts`, `openFileInApp` in `src/main/index.ts`.
+`src/preload/index.ts`, `openFileInApp` in `src/main/index.ts`, the
+folder entries in `src/main/recentExternalFiles.ts` and the `open-outside-folder`
+handler in `src/main/ipcHandlers.ts`.
 
 **The refusals are automated as A11.** These are the grants, and every one of
 them needs a real OS gesture the suite can't perform (drag from Finder, Open
@@ -450,6 +453,7 @@ opened themselves.
 | 18.5 | Copy a file in Finder, then paste into the tree | Pastes in — the OS clipboard's paths are granted when read |
 | 18.6 | Open a terminal on a folder from the tree, and via the toolbar with no folder selected | Both start (workspace folder / `$HOME`); the shell's own `cd /anywhere` is unaffected — the allowlist covers the spawn's cwd, not what the user types into the shell |
 | 18.7 | Remove a workspace whose file is open in a tab, then edit that tab | Saving fails with the allowlist message rather than writing into a folder the user just detached (expected; reopen the workspace to continue) |
+| 18.8 | Quick Open → `~/` → Cmd+Enter on a folder (e.g. `~/.claude`), then add that same folder with Add Folder (native dialog, hence manual) | It becomes a workspace root and leaves Recently Opened (Outside); still a workspace after a restart (A25 covers everything up to the dialog) |
 
 ---
 

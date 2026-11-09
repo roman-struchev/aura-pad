@@ -119,6 +119,11 @@ export function makeUi(cdp) {
         previous = current
         await sleep(120)
       }
+      // A row below the sidebar's fold (the outside section sits under every
+      // workspace) would be measured off-screen and the click land elsewhere.
+      await cdp.evaluate(
+        `document.querySelector(${JSON.stringify(treeRow(path))})?.scrollIntoView({ block: 'nearest' })`
+      )
       const r = await rectOf(treeRow(path))
       if (!r) throw new Error(`nothing to click: ${treeRow(path)}`)
       if ((await pathAtPoint(r.cx, r.cy)) !== path) continue

@@ -418,6 +418,10 @@ function App(): React.JSX.Element {
   // flag every restored workspace tab as "outside".
   const openTabPathsKey = tabs.tabs.map((t) => t.path).join('\n')
   const rootPathsKey = tree.rootNodes.map((r) => r.path).join('\n')
+  const outsideFolderPaths = recentExternalFiles.entries
+    .filter((e) => e.type === 'directory')
+    .map((e) => e.path)
+  const outsideFoldersKey = outsideFolderPaths.join('\n')
   useEffect(() => {
     if (!tree.rootsLoaded) return
     const rootPaths = tree.rootNodes.map((r) => r.path)
@@ -425,17 +429,26 @@ function App(): React.JSX.Element {
       // Extension tabs (ext://...) are synthetic, not real files, so they
       // never belong in the "Recently Opened (Outside)" list.
       if (isExtensionPath(tabPath)) continue
-      if (!isUnderAnyRoot(tabPath, rootPaths)) recentExternalFiles.touch(tabPath)
+      if (isUnderAnyRoot(tabPath, rootPaths)) continue
+      // A file inside a listed outside folder is reached through that folder:
+      // it gets no entry of its own, it keeps the folder's from ageing out.
+      const folder = outsideFolderPaths.find((f) => isUnderAnyRoot(tabPath, [f]))
+      recentExternalFiles.touch(folder ?? tabPath)
     }
     // Undo any past mis-touches (e.g. from this same race before this fix,
     // or a workspace added after a file was opened externally) - an entry
-    // that now resolves under a root, or a synthetic extension path that
-    // slipped in from an older version, doesn't belong in the outside list.
+    // that now resolves under a root (a folder added through Add Folder
+    // included), anything inside another listed folder, or a synthetic
+    // extension path that slipped in from an older version, doesn't belong in
+    // the outside list.
     for (const entry of recentExternalFiles.entries) {
-      if (isExtensionPath(entry.path) || isUnderAnyRoot(entry.path, rootPaths))
+      const coveredByFolder = outsideFolderPaths.some(
+        (f) => f !== entry.path && isUnderAnyRoot(entry.path, [f])
+      )
+      if (isExtensionPath(entry.path) || isUnderAnyRoot(entry.path, rootPaths) || coveredByFolder)
         recentExternalFiles.remove(entry.path)
     }
-  }, [openTabPathsKey, rootPathsKey, tree.rootsLoaded])
+  }, [openTabPathsKey, rootPathsKey, outsideFoldersKey, tree.rootsLoaded])
   const sidebarWidth = useSidebarWidth(settings.sidebarWidth, settings.sidebarPosition, (w) =>
     updateSetting('sidebarWidth', w)
   )
@@ -454,9 +467,13 @@ function App(): React.JSX.Element {
   // Removing an entry from the "Recently Opened" list also closes its tab,
   // if it's still open - otherwise the tab would keep dangling with no way
   // to get back to it from the sidebar.
+  // For a folder entry, that is every tab under it.
   const handleRemoveRecentExternalFile = async (path: string): Promise<void> => {
-    if (tabs.tabs.some((t) => t.path === path)) await tabs.closeTab(path)
-    recentExternalFiles.remove(path)
+    for (const t of tabs.tabs.filter((t) => isUnderAnyRoot(t.path, [path]))) {
+      await tabs.closeTab(t.path)
+    }
+    await window.api.removeRecentExternalFile(path).then(recentExternalFiles.replace)
+    tree.refreshOutsideNodes()
   }
 
   // Search / settings overlay state
@@ -958,6 +975,11 @@ function App(): React.JSX.Element {
     () => recentExternalFiles.entries.map((e) => e.path),
     [recentExternalFiles.entries]
   )
+  const recentExternalFolderPaths = useMemo(
+    () => new Set(outsideFolderPaths),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [outsideFoldersKey]
+  )
 
   // The active file's actions: floated over the editor's top-right corner,
   // or - with breadcrumbs on - at the right end of their strip, where they no
@@ -1278,6 +1300,8 @@ function App(): React.JSX.Element {
                 activeExtensionId={activeExt?.id ?? null}
                 onOpenExtension={(id) => tabs.openTab(makeExtensionPath(id))}
                 recentExternalFiles={recentExternalPaths}
+                outsideFolders={tree.outsideNodes}
+                recentExternalFolderPaths={recentExternalFolderPaths}
                 onRemoveRecentExternalFile={handleRemoveRecent}
                 selectedPath={tabs.selectedPath}
                 selectedPaths={tree.selectedPathSet}
@@ -1361,6 +1385,12 @@ function App(): React.JSX.Element {
             if (type === 'directory') tree.setRevealPath(path)
             else tabs.openTab(path, line)
             setShowFileSearch(false)
+          }}
+          onOpenFolder={(path) => {
+            setShowFileSearch(false)
+            void tree.openOutsideFolder(path).then((entries) => {
+              if (entries) recentExternalFiles.replace(entries)
+            })
           }}
           rootNodes={tree.rootNodes}
         />

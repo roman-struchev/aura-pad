@@ -145,6 +145,15 @@ curl -fsSL https://raw.githubusercontent.com/roman-struchev/aura-pad/main/script
   unsaved edits. That includes open tabs on files from outside the workspaces.
 - Files opened from outside the workspaces (Finder, "Open With…") stay in a "Recently
   Opened" list in the sidebar.
+- **Folders outside the workspaces** — say `~/.claude` — can be kept at hand too: type
+  `~/` or `/` in quick open to browse any folder, `Enter` steps into one, and `Cmd+Enter`
+  (or the row's **Open in Sidebar** button) lists it under "Recently Opened (Outside)". There
+  it expands like a project folder — open, edit, create, rename, delete, live updates from
+  disk — but it is not a project: search, quick open's file list and git leave it alone.
+  It stays listed across restarts like the files there (dropped after a week unused; opening
+  a file in it counts as use), `×` removes it and closes its tabs, and adding the same
+  folder with Add Folder turns it into a workspace. Your home folder itself and `/` are
+  too large to open this way.
 - Respects `.gitignore`. Text files up to 10 MB open in the editor; full-text search scans
   every text file up to 2 MB, whatever its extension (binaries are skipped). The result
   list stops at 500 matches (50 per file) and says so when it does; the match counts —

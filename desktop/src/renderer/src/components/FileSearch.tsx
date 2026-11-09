@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { File as FileIcon, Folder, Hash, Search, SquareFunction, Box, Variable } from 'lucide-react'
+import {
+  File as FileIcon,
+  Folder,
+  FolderOpen,
+  Hash,
+  Search,
+  SquareFunction,
+  Box,
+  Variable
+} from 'lucide-react'
 import type { FileNode } from '../../../shared/fileNode'
 import { extractSymbols, supportsSymbols, type FileSymbol } from '../lib/symbols'
 import { parseQuickOpen, type QuickOpenLocator } from '../lib/quickOpenQuery'
@@ -23,6 +32,10 @@ interface FileSearchProps {
   onClose: () => void
   // `line` is only ever set for a locator query (":42" / "#symbol").
   onSelect: (path: string, type: 'file' | 'directory', line?: number) => void
+  // Path mode's Cmd+Enter (or the row's "Open in Sidebar" button) on a
+  // folder: list it under "Recently Opened (Outside)" - or reveal it in the
+  // workspace tree when a workspace already covers it.
+  onOpenFolder?: (path: string) => void
   rootNodes: FileNode[]
   // The open file, whose structure the "#" and ":" modes navigate.
   activePath: string | null
@@ -67,7 +80,8 @@ export const FileSearch: React.FC<FileSearchProps> = ({
   activePath,
   activeContent,
   initialQuery,
-  onQueryChange
+  onQueryChange,
+  onOpenFolder
 }) => {
   const [query, setQuery] = useState(initialQuery ?? '')
   const [results, setResults] = useState<Row[]>([])
@@ -115,15 +129,20 @@ export const FileSearch: React.FC<FileSearchProps> = ({
   }
 
   // Selecting a directory while browsing a real path drills into it instead
-  // of "opening" it - there's no workspace to reveal it in. Everywhere else
-  // (fuzzy workspace search) behaves exactly as before, plus the locator.
-  const activateResult = async (row: Row): Promise<void> => {
+  // of "opening" it; with `openInTree` (Cmd+Enter, Cmd+click, the row's
+  // button) it goes to the sidebar instead. Everywhere else (fuzzy
+  // workspace search) behaves exactly as before, plus the locator.
+  const activateResult = async (row: Row, openInTree = false): Promise<void> => {
     if (row.kind !== 'file') {
       onSelect(row.path, 'file', row.kind === 'line' ? row.line : row.symbol.line)
       return
     }
     const res = row.file
     if (pathMode && res.type === 'directory') {
+      if (openInTree && onOpenFolder) {
+        onOpenFolder(res.path)
+        return
+      }
       setQuery(res.path + '/')
       return
     }
@@ -189,7 +208,7 @@ export const FileSearch: React.FC<FileSearchProps> = ({
         setSelectedIndex((prev) => Math.max(prev - 1, 0))
       }
       if (e.key === 'Enter' && results[selectedIndex]) {
-        activateRef.current(results[selectedIndex])
+        activateRef.current(results[selectedIndex], e.metaKey)
       }
       if (e.key === 'Tab' && pathMode && results[selectedIndex]?.kind === 'file') {
         e.preventDefault()
@@ -256,7 +275,9 @@ export const FileSearch: React.FC<FileSearchProps> = ({
   // What the footer and the empty state should say, which is entirely about
   // which of the three modes the typed query put the dialog in.
   const modeHint = pathMode
-    ? 'Tab to Complete · Double-Shift to Close'
+    ? onOpenFolder
+      ? 'Tab to Complete · ⌘Enter Open Folder in Sidebar'
+      : 'Tab to Complete · Double-Shift to Close'
     : parsed.locator?.kind === 'symbol'
       ? 'Symbol · Double-Shift to Close'
       : parsed.locator?.kind === 'line'
@@ -281,7 +302,7 @@ export const FileSearch: React.FC<FileSearchProps> = ({
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search files, :42 for a line, #symbol for structure..."
+            placeholder="Search files, ~/ to browse any folder, :42 for a line, #symbol..."
             className="flex-1 bg-transparent border-none outline-none text-fleet-text text-base"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -309,8 +330,8 @@ export const FileSearch: React.FC<FileSearchProps> = ({
                   // which cannot tell them apart by text: the editor
                   // underneath the overlay contributes the same words.
                   data-quick-open-file={res.path}
-                  className={rowClass}
-                  onClick={() => activateResult(row)}
+                  className={`group ${rowClass}`}
+                  onClick={(e) => activateResult(row, e.metaKey)}
                   onMouseEnter={() => setSelectedIndex(i)}
                 >
                   <div className="flex items-center gap-2 text-sm text-fleet-text">
@@ -319,7 +340,28 @@ export const FileSearch: React.FC<FileSearchProps> = ({
                     ) : (
                       <FileIcon size={14} className="text-blue-400" />
                     )}
-                    <span className="font-medium">{res.name}</span>
+                    <span className="font-medium truncate">{res.name}</span>
+                    {/* The visible way to learn that a folder can be opened,
+                        not only stepped into: on the selected row, and on
+                        whichever row the mouse is over. */}
+                    {pathMode && res.type === 'directory' && onOpenFolder && (
+                      <button
+                        type="button"
+                        data-quick-open-open-in-tree={res.path}
+                        title="List this folder under Recently Opened (Outside) in the sidebar (⌘Enter)"
+                        className={`ml-auto shrink-0 items-center gap-1 text-[11px] text-fleet-text hover:text-fleet-textHover px-1.5 py-0.5 rounded border border-fleet-border hover:bg-fleet-border ${
+                          selected ? 'flex' : 'hidden group-hover:flex'
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          activateResult(row, true)
+                        }}
+                      >
+                        <FolderOpen size={12} className="shrink-0" />
+                        <span>Open in Sidebar</span>
+                        <span className="opacity-70">⌘↵</span>
+                      </button>
+                    )}
                   </div>
                   <div className="text-[10px] text-gray-500 truncate pl-6">
                     {pathMode ? res.path : toRelativeDisplay(res.path, rootNodes)}
@@ -371,7 +413,8 @@ export const FileSearch: React.FC<FileSearchProps> = ({
           {!query && (
             <div className="p-8 text-center text-gray-600 text-sm italic">
               Start typing a filename — or <span className="not-italic">:42</span> for a line,{' '}
-              <span className="not-italic">#name</span> for this file&apos;s structure
+              <span className="not-italic">#name</span> for this file&apos;s structure,{' '}
+              <span className="not-italic">~/</span> to browse any folder
             </div>
           )}
         </div>

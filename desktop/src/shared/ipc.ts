@@ -119,6 +119,18 @@ export interface InvokeContracts {
   // null when the user cancels the folder picker.
   'add-workspace': { args: []; result: FileNode[] | null }
   'remove-workspace': { args: [path: string]; result: FileNode[] }
+  // Quick Open's Cmd+Enter on a folder: lists it under "Recently Opened
+  // (Outside)". `covered` when a workspace already holds it (the renderer
+  // reveals it there instead); `error` when main refuses (never listed, not
+  // a folder, home or /).
+  'open-outside-folder': {
+    args: [path: string]
+    result:
+      | { covered: true }
+      | { covered?: false; entries: RecentExternalFile[]; trees: FileNode[] }
+      | { covered?: false; error: string }
+  }
+  'get-outside-folder-trees': { args: []; result: FileNode[] }
   'search-projects': { args: [query: string, options?: SearchOptions]; result: SearchResponse }
   // Replace across files, and the single step back out of it. Both act on the
   // renderer's explicit selection - see src/main/replaceInFiles.ts.
@@ -315,6 +327,8 @@ export const INVOKE_CHANNELS = {
   getWorkspaces: 'get-workspaces',
   addWorkspace: 'add-workspace',
   removeWorkspace: 'remove-workspace',
+  openOutsideFolder: 'open-outside-folder',
+  getOutsideFolderTrees: 'get-outside-folder-trees',
   searchProjects: 'search-projects',
   replaceInFiles: 'replace-in-files',
   undoReplaceInFiles: 'undo-replace-in-files',
@@ -442,6 +456,8 @@ export const SEND_CHANNELS = {
 export interface EventContracts {
   'theme-updated': [isDark: boolean]
   'workspaces-changed': [trees: FileNode[]]
+  // The folders listed under "Recently Opened (Outside)", rebuilt.
+  'outside-folders-changed': [trees: FileNode[]]
   'file-changed-externally': [path: string]
   'open-file-request': [path: string]
   'request-close': []
@@ -454,6 +470,7 @@ export interface EventContracts {
 export const EVENT_CHANNELS = {
   onThemeUpdated: 'theme-updated',
   onWorkspacesChanged: 'workspaces-changed',
+  onOutsideFoldersChanged: 'outside-folders-changed',
   onFileChangedExternally: 'file-changed-externally',
   onOpenFileRequest: 'open-file-request',
   onRequestClose: 'request-close',

@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import ignore, { type Ignore } from 'ignore'
 import { readConfigFile, writeConfigFile } from './configFile'
+import { loadOutsideFolders } from './recentExternalFiles'
 import { decodeFileBuffer, remapEncodingPaths } from './encoding'
 import type { FileNode } from '../shared/fileNode'
 import type { SearchResponse, SearchResult } from '../shared/searchResult'
@@ -146,6 +147,25 @@ export async function getWorkspaceTrees(): Promise<FileNode[]> {
       }
       trees.push(await buildFileTree(p, p, loadGitignore(p), true, new Set([rootReal])))
     }
+  }
+  return trees
+}
+
+// The folders listed under "Recently Opened (Outside)", built exactly like
+// workspace roots (same hiding rules) but kept out of loadWorkspaces() - so
+// search, git status and Quick Open's workspace list never see them.
+export async function getOutsideFolderTrees(): Promise<FileNode[]> {
+  const trees: FileNode[] = []
+  for (const p of loadOutsideFolders()) {
+    let rootReal: string
+    try {
+      rootReal = await fs.promises.realpath(p)
+    } catch {
+      rootReal = p
+    }
+    const tree = await buildFileTree(p, p, loadGitignore(p), true, new Set([rootReal]))
+    tree.isOutside = true
+    trees.push(tree)
   }
   return trees
 }
