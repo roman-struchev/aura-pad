@@ -9,6 +9,7 @@ out
 # IDEs
 .idea
 .vscode
+.claude
 
 # Local env files
 .env
